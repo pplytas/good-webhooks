@@ -1,0 +1,56 @@
+{
+  "name": "@pplytas/webhooks",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Embedded, durable outbound webhooks for TypeScript and PostgreSQL.",
+  "license": "MIT",
+  "author": "pplytas",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./verify": {
+      "types": "./dist/verify.d.ts",
+      "import": "./dist/verify.js"
+    },
+    "./migrations/001-initial.sql": "./migrations/001-initial.sql"
+  },
+  "files": [
+    "dist",
+    "src",
+    "migrations",
+    "docs",
+    "examples",
+    "GLOSSARY.md",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "check": "npm run build && tsc --noEmit",
+    "test": "vitest run",
+    "test:unit": "vitest run test/crypto.test.ts test/transport.test.ts test/config.test.ts",
+    "prepack": "npm run build",
+    "example": "npm run build && node examples/basic/demo.ts",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "dependencies": {
+    "@standard-schema/spec": "^1.1.0",
+    "ipaddr.js": "^2.5.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/pg": "^8.23.1",
+    "pg": "^8.23.1",
+    "prettier": "^3.9.9",
+    "typescript": "~7.0.2",
+    "vitest": "^5.0.3",
+    "zod": "^4.6.5"
+  }
+}
