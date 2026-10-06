@@ -3,11 +3,11 @@
 BEGIN;
 CREATE SCHEMA IF NOT EXISTS webhooks;
 CREATE TABLE webhooks.schema_version (version integer PRIMARY KEY);
-INSERT INTO webhooks.schema_version VALUES (1);
+INSERT INTO webhooks.schema_version VALUES (2);
 
 CREATE TABLE webhooks.endpoints (
   id uuid PRIMARY KEY,
-  tenant_id text NOT NULL,
+  scope_key text NOT NULL,
   url text NOT NULL,
   description text,
   event_types text[] NOT NULL CHECK (cardinality(event_types) > 0),
@@ -18,26 +18,26 @@ CREATE TABLE webhooks.endpoints (
   previous_secret_expires_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT statement_timestamp(),
   updated_at timestamptz NOT NULL DEFAULT statement_timestamp(),
-  UNIQUE (tenant_id,id)
+  UNIQUE (scope_key,id)
 );
-CREATE INDEX endpoints_tenant ON webhooks.endpoints(tenant_id,created_at,id);
+CREATE INDEX endpoints_scope ON webhooks.endpoints(scope_key,created_at,id);
 
 CREATE TABLE webhooks.events (
   id uuid PRIMARY KEY,
-  tenant_id text NOT NULL,
+  scope_key text NOT NULL,
   type text NOT NULL,
   body text NOT NULL,
   fingerprint text NOT NULL,
   idempotency_key text,
   created_at timestamptz NOT NULL DEFAULT statement_timestamp(),
-  UNIQUE (tenant_id,id),
-  UNIQUE (tenant_id,idempotency_key)
+  UNIQUE (scope_key,id),
+  UNIQUE (scope_key,idempotency_key)
 );
 CREATE INDEX events_retention ON webhooks.events(created_at,id);
 
 CREATE TABLE webhooks.deliveries (
   id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  tenant_id text NOT NULL,
+  scope_key text NOT NULL,
   endpoint_id uuid NOT NULL,
   event_id uuid NOT NULL,
   status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','in_flight','succeeded','failed','cancelled')),
@@ -45,19 +45,21 @@ CREATE TABLE webhooks.deliveries (
   next_attempt_at timestamptz NOT NULL DEFAULT statement_timestamp(),
   claim_token uuid,
   lease_expires_at timestamptz,
-  replay_of bigint REFERENCES webhooks.deliveries(id) ON DELETE CASCADE,
+  replay_of bigint,
   last_error text,
   last_status integer,
   created_at timestamptz NOT NULL DEFAULT statement_timestamp(),
-  FOREIGN KEY (tenant_id,endpoint_id) REFERENCES webhooks.endpoints(tenant_id,id),
-  FOREIGN KEY (tenant_id,event_id) REFERENCES webhooks.events(tenant_id,id) ON DELETE CASCADE
+  UNIQUE (scope_key,id),
+  FOREIGN KEY (scope_key,replay_of) REFERENCES webhooks.deliveries(scope_key,id) ON DELETE CASCADE,
+  FOREIGN KEY (scope_key,endpoint_id) REFERENCES webhooks.endpoints(scope_key,id),
+  FOREIGN KEY (scope_key,event_id) REFERENCES webhooks.events(scope_key,id) ON DELETE CASCADE
 );
 CREATE UNIQUE INDEX deliveries_original ON webhooks.deliveries(event_id,endpoint_id) WHERE replay_of IS NULL;
 CREATE UNIQUE INDEX deliveries_active_replay ON webhooks.deliveries(replay_of) WHERE replay_of IS NOT NULL AND status IN ('pending','in_flight');
 CREATE INDEX deliveries_due ON webhooks.deliveries(next_attempt_at,id) WHERE status='pending';
 CREATE INDEX deliveries_leases ON webhooks.deliveries(lease_expires_at) WHERE status='in_flight';
 CREATE INDEX deliveries_endpoint ON webhooks.deliveries(endpoint_id,status,id);
-CREATE INDEX deliveries_tenant ON webhooks.deliveries(tenant_id,id DESC);
+CREATE INDEX deliveries_scope ON webhooks.deliveries(scope_key,id DESC);
 CREATE INDEX deliveries_event ON webhooks.deliveries(event_id);
 
 CREATE TABLE webhooks.attempts (

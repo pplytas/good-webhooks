@@ -14,7 +14,7 @@ Any GitHub repository for this project belongs to the user's personal account, `
 
 - Start with Node.js 24 and PostgreSQL 16 or later. Use one structural database interface that accepts a node-postgres pool.
 - Configure one typed factory. Infer event names and payload inputs from Standard Schema validators.
-- Accept a trusted tenant context established by the host application. Enforce ownership inside all tenant operations.
+- Expose direct operations for the application scope and optional `forScope({ type, id })` clients for isolated named scopes. Enforce scope isolation inside every operation. The host authorizes scope selection.
 - Keep authentication, user and organization permissions, business-event production, and custom recipient entitlement policy in the host.
 - Publish events and matching deliveries transactionally. Support the caller's existing PostgreSQL transaction. Report acceptance separately from remote delivery.
 - Start and stop workers explicitly. Imports and factory construction do not connect, apply DDL, or start polling.
@@ -28,9 +28,9 @@ No queue framework or Standard Webhooks npm dependency has been selected. V0 doe
 
 ## Better Auth influence and future integration
 
-Borrow the typed factory, coherent server operations, inference, stable errors, and clear schema setup described in Better Auth's [TypeScript guide](https://better-auth.com/docs/concepts/typescript), [API guide](https://better-auth.com/docs/concepts/api), and [database guide](https://better-auth.com/docs/concepts/database). Do not copy source code.
+Borrow the typed factory, coherent server operations, inference, stable errors, and clear schema setup described in Better Auth's [TypeScript guide](https://better-auth.com/docs/concepts/typescript), [API guide](https://better-auth.com/docs/concepts/api), and [database guide](https://better-auth.com/docs/concepts/database). Do not copy source code. Borrow optional ownership from the [organization plugin](https://better-auth.com/docs/plugins/organization): keep the base workflow simple without adding identity or membership models to the webhook core.
 
-Keep all core operations independent of a Better Auth instance, user, session, or organization type. A future optional plugin can authenticate callers, check permissions, and map identities into the core's tenant context. The plugin can expose endpoints and inferred client calls by composing typed public operations rather than duplicating domain rules.
+Keep all core operations independent of a Better Auth instance, user, session, or organization type. A future optional plugin can authenticate callers, check permissions, and select application-defined scopes. The plugin can expose endpoints and inferred client calls by composing typed public operations rather than duplicating domain rules.
 
 Worker execution, PostgreSQL transactions, and migration ownership remain explicit. Auth initialization or request-background execution must not become the delivery engine. Review the [integration sketch](better-auth-integration.md) against the completed interface without implementing that plugin.
 
@@ -38,7 +38,7 @@ Worker execution, PostgreSQL transactions, and migration ownership remain explic
 
 1. Install a locally packed tarball in a fresh consumer application and verify runtime exports, types, migrations, and supported imports.
 2. Run an example that registers an endpoint, publishes, verifies a signed request, retries a failure, inspects history, and replays a delivery.
-3. Verify transaction rollback, idempotency, tenant isolation, subscription changes, pause and resume, removal, rotation, and replay on real PostgreSQL.
+3. Verify transaction rollback, idempotency, application and named scope isolation, subscription changes, pause and resume, removal, rotation, and replay on real PostgreSQL.
 4. Verify competing workers, expired claims, fencing of stale results, bounded retries, and the duplicate-delivery case after a receiver accepts a request but success is not recorded.
 5. Verify payload validation, unsafe destinations, bounded responses, signature interoperability, and cancellation.
 6. Review correctness and API usability independently with subagents. Resolve substantive findings before completion.

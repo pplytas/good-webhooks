@@ -2,6 +2,7 @@ import { resolveConfig } from './config.js'
 import { WebhookError } from './errors.js'
 import { toJson } from './json.js'
 import { createStore } from './store.js'
+import { APPLICATION_SCOPE, scopeKey } from './scope.js'
 import { createWorker } from './worker.js'
 import type {
   CreateEndpointInput,
@@ -10,7 +11,7 @@ import type {
   EventName,
   PublishInput,
   PublishOptions,
-  TenantContext,
+  Scope,
   UpdateEndpointInput,
   WebhookOptions,
 } from './types.js'
@@ -37,7 +38,7 @@ export type {
   PublishOptions,
   PublishResult,
   SqlClient,
-  TenantContext,
+  Scope,
   WebhookOptions,
   WorkerResult,
 } from './types.js'
@@ -69,72 +70,66 @@ export function createWebhooks<const E extends EventDefinitions>(options: Webhoo
     }
   }
 
+  function bind(key: string) {
+    return {
+      endpoints: {
+        create: async (input: EndpointInput<E>) => {
+          eventTypes(input?.eventTypes, true)
+          return store.createEndpoint(key, input)
+        },
+        list: () => store.listEndpoints(key),
+        get: (id: string) => store.getEndpoint(key, id),
+        update: async (id: string, patch: EndpointPatch<E>) => {
+          if (!patch || typeof patch !== 'object')
+            throw new WebhookError('INVALID_INPUT', 'An endpoint patch is required.')
+          eventTypes(patch.eventTypes)
+          return store.updateEndpoint(key, id, patch)
+        },
+        pause: (id: string) => store.pauseEndpoint(key, id),
+        resume: (id: string) => store.resumeEndpoint(key, id),
+        remove: (id: string) => store.removeEndpoint(key, id),
+        rotateSecret: (id: string, rotation?: { graceMs?: number }) =>
+          store.rotateSecret(key, id, rotation),
+      },
+      async publish(input: PublishInput<E>, publication?: PublishOptions) {
+        if (!input || !Object.hasOwn(definitions, input.type))
+          throw new WebhookError('INVALID_INPUT', 'Unknown event type.')
+        const { type, data, idempotencyKey } = input
+        const transaction = publication?.transaction
+        const result = await definitions[type]!['~standard'].validate(data)
+        if (result.issues) {
+          // Validators can echo sensitive payloads in issue messages. Keep the public error bounded and generic.
+          throw new WebhookError('INVALID_INPUT', `Payload does not match event type ${type}.`)
+        }
+        return store.publish(
+          key,
+          {
+            type,
+            data: toJson(result.value),
+            ...(idempotencyKey === undefined ? {} : { idempotencyKey }),
+          },
+          transaction === undefined ? undefined : { transaction },
+        )
+      },
+      deliveries: {
+        list: (query?: DeliveryQuery) => store.listDeliveries(key, query),
+        get: (id: string) => store.getDelivery(key, id),
+        replay: (id: string) => store.replay(key, id),
+      },
+    }
+  }
+
   return {
+    ...bind(APPLICATION_SCOPE),
     /** Check schema compatibility after applying migrations. Does not apply DDL. */
     check: () => store.checkSchema(),
+    /** Worker execution and pruning cover all scopes in the configured database. */
     worker,
-    /** Authentication and permission checks happen in the host before it supplies this scope. */
-    forTenant(context: TenantContext) {
-      if (
-        !context ||
-        typeof context.id !== 'string' ||
-        context.id.trim().length === 0 ||
-        context.id.length > 200
-      ) {
-        throw new WebhookError(
-          'INVALID_INPUT',
-          'A trusted tenant id of 1 to 200 characters is required.',
-        )
-      }
-      const tenantId = context.id
-      return {
-        endpoints: {
-          create: async (input: EndpointInput<E>) => {
-            eventTypes(input?.eventTypes, true)
-            return store.createEndpoint(tenantId, input)
-          },
-          list: () => store.listEndpoints(tenantId),
-          get: (id: string) => store.getEndpoint(tenantId, id),
-          update: async (id: string, patch: EndpointPatch<E>) => {
-            if (!patch || typeof patch !== 'object')
-              throw new WebhookError('INVALID_INPUT', 'An endpoint patch is required.')
-            eventTypes(patch.eventTypes)
-            return store.updateEndpoint(tenantId, id, patch)
-          },
-          pause: (id: string) => store.pauseEndpoint(tenantId, id),
-          resume: (id: string) => store.resumeEndpoint(tenantId, id),
-          remove: (id: string) => store.removeEndpoint(tenantId, id),
-          rotateSecret: (id: string, rotation?: { graceMs?: number }) =>
-            store.rotateSecret(tenantId, id, rotation),
-        },
-        async publish(input: PublishInput<E>, publication?: PublishOptions) {
-          if (!input || !Object.hasOwn(definitions, input.type))
-            throw new WebhookError('INVALID_INPUT', 'Unknown event type.')
-          const { type, data, idempotencyKey } = input
-          const transaction = publication?.transaction
-          const result = await definitions[type]!['~standard'].validate(data)
-          if (result.issues) {
-            // Validators can echo sensitive payloads in issue messages. Keep the public error bounded and generic.
-            throw new WebhookError('INVALID_INPUT', `Payload does not match event type ${type}.`)
-          }
-          return store.publish(
-            tenantId,
-            {
-              type,
-              data: toJson(result.value),
-              ...(idempotencyKey === undefined ? {} : { idempotencyKey }),
-            },
-            transaction === undefined ? undefined : { transaction },
-          )
-        },
-        deliveries: {
-          list: (query?: DeliveryQuery) => store.listDeliveries(tenantId, query),
-          get: (id: string) => store.getDelivery(tenantId, id),
-          replay: (id: string) => store.replay(tenantId, id),
-        },
-      }
-    },
+    /** Select an isolated scope after the host has authenticated and authorized the caller. */
+    forScope: (scope: Scope) => bind(scopeKey(scope)),
   }
 }
 
 export type Webhooks<E extends EventDefinitions> = ReturnType<typeof createWebhooks<E>>
+/** Operations bound to one scope, suitable for passing into application request handlers. */
+export type WebhookClient<E extends EventDefinitions> = ReturnType<Webhooks<E>['forScope']>

@@ -4,9 +4,13 @@ This context covers application events delivered to customer-controlled HTTP end
 
 ## Language
 
-**Tenant**:
-The customer or organizational scope that owns endpoints and delivery history.
-_Avoid_: User, account
+**Scope**:
+An isolated collection of endpoints, events, and delivery history. A named scope can represent a user, organization, account, workspace, or another grouping chosen by the producer.
+_Avoid_: Tenant, session, permission
+
+**Application scope**:
+The default scope for webhooks that belong to the application. It excludes all named scopes.
+_Avoid_: Global access, all customers
 
 **Producer**:
 The application that reports an event for delivery.
@@ -17,7 +21,7 @@ An identified occurrence reported by a producer, with a type and associated data
 _Avoid_: Job, delivery, attempt
 
 **Endpoint**:
-A tenant-owned destination for webhook requests.
+A destination for webhook requests that belongs to one scope.
 _Avoid_: Receiver, subscription
 
 **Subscription**:

@@ -8,9 +8,10 @@ export type PublishInput<E extends EventDefinitions> = {
   [K in EventName<E>]: { type: K; data: StandardSchemaV1.InferInput<E[K]>; idempotencyKey?: string }
 }[EventName<E>]
 
-/** A trusted ownership scope established by your application, never by an untrusted request body. */
-export interface TenantContext {
-  id: string
+/** An application-defined namespace and identifier. Selecting a scope does not authorize access. */
+export interface Scope {
+  readonly type: string
+  readonly id: string
 }
 
 export interface QueryResult<R> {
@@ -65,7 +66,6 @@ export interface ResolvedConfig {
 export type EndpointStatus = 'active' | 'paused' | 'deleted'
 export interface Endpoint {
   id: string
-  tenantId: string
   url: string
   description: string | null
   eventTypes: string[]
@@ -93,7 +93,6 @@ export interface EndpointWithSecret {
 export type DeliveryStatus = 'pending' | 'in_flight' | 'succeeded' | 'failed' | 'cancelled'
 export interface Delivery {
   id: string
-  tenantId: string
   endpointId: string
   eventId: string
   status: DeliveryStatus
@@ -143,7 +142,6 @@ export interface WorkerResult {
 /** Persisted claim. Internal to the worker, never part of a customer's management DTO. */
 export interface ClaimedDelivery {
   id: string
-  tenantId: string
   endpointId: string
   eventId: string
   token: string

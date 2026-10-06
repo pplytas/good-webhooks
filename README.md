@@ -30,7 +30,7 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/001-initial.sql
 node examples/basic/demo.ts
 ```
 
-Apply the migration once. The example does not create or reset the schema. Each run creates a new tenant and removes its endpoint on exit. It leaves event and attempt history for inspection.
+Apply the migration once. The example does not create or reset the schema. Each run uses the application scope, publishes a unique invoice, and removes its endpoint on exit. It leaves event and attempt history for inspection.
 
 Expected output includes a rollback with no delivery, a successful delivery after two attempts, and a successful replay. The receiver applies the event once despite repeated requests.
 
@@ -93,15 +93,14 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f 001-webhooks.sql
 
 Review and apply the migration once before calling `check()`. It creates the `webhooks` schema in the database you supply.
 
+This unpublished revision uses schema version 2. The earlier tenant-based prototype used version 1 and is incompatible. This migration initializes a fresh database; it does not upgrade existing prototype data. `check()` rejects that older schema. No schema or data changes happen automatically.
+
 ## Register a receiver and publish
 
-Your application authenticates the caller and checks permissions before choosing a tenant. Never pass an unchecked request-body tenant ID to `forTenant()`.
+Use the configured instance directly for application-wide webhooks. No user, organization, or tenant setup is required. Your application authenticates and authorizes any caller allowed to manage these endpoints.
 
 ```ts
-// Your application has already authorized this tenant.
-const tenant = webhooks.forTenant({ id: 'account_123' })
-
-const { endpoint, secret } = await tenant.endpoints.create({
+const { endpoint, secret } = await webhooks.endpoints.create({
   url: 'https://receiver.example.com/webhooks',
   eventTypes: ['invoice.paid'],
 })
@@ -109,7 +108,7 @@ const { endpoint, secret } = await tenant.endpoints.create({
 // Deliver this secret to the authorized receiver through your own secure channel.
 // Normal endpoint reads do not return secrets.
 
-const publication = await tenant.publish({
+const publication = await webhooks.publish({
   type: 'invoice.paid',
   data: { invoiceId: 'inv_123', amount: 4200 },
   idempotencyKey: 'invoice-paid:inv_123',
@@ -120,7 +119,7 @@ The event map infers event names and input payloads. Each publication also valid
 
 `publish()` accepts the event durably and creates deliveries for matching, nondeleted endpoints. A paused endpoint still receives queued deliveries. `deliveryCount` can be zero. Acceptance does not mean that a receiver has accepted a request.
 
-The same tenant, idempotency key, event type, and validated payload return the existing event with `duplicate: true`. Reusing the key with different content throws `IDEMPOTENCY_CONFLICT`. Keys remain reserved while their events remain in the database.
+The same scope, idempotency key, event type, and validated payload return the existing event with `duplicate: true`. Reusing the key with different content throws `IDEMPOTENCY_CONFLICT`. Keys remain reserved while their events remain in the database.
 
 To publish atomically with a business change, pass a PostgreSQL client inside an active transaction:
 
@@ -129,7 +128,7 @@ const client = await pool.connect()
 try {
   await client.query('BEGIN')
   await client.query('UPDATE invoices SET paid = true WHERE id = $1', ['inv_123'])
-  await tenant.publish(
+  await webhooks.publish(
     {
       type: 'invoice.paid',
       data: { invoiceId: 'inv_123', amount: 4200 },
@@ -147,6 +146,35 @@ try {
 ```
 
 The client must use the configured database and schema. Do not run concurrent operations on that client. The caller owns commit and rollback. Until commit, the returned publication is provisional and invisible to workers.
+
+## Isolate endpoints for different owners
+
+Applications with personal, organization, workspace, or other owner-specific webhooks can select a named scope:
+
+```ts
+// The application has already authenticated the caller and authorized each selection.
+const personal = webhooks.forScope({ type: 'user', id: user.id })
+const organization = webhooks.forScope({ type: 'organization', id: organizationId })
+
+await organization.endpoints.create({
+  url: 'https://receiver.example.com/organization-webhooks',
+  eventTypes: ['invoice.paid'],
+})
+await organization.publish({
+  type: 'invoice.paid',
+  data: { invoiceId: 'inv_456', amount: 4200 },
+  idempotencyKey: 'invoice-paid:inv_456',
+})
+await personal.endpoints.list()
+```
+
+`type` and `id` are application-defined strings. A user and an organization with the same ID have separate endpoints, events, idempotency keys, and delivery history. `type` accepts 1–64 characters; `id` accepts 1–200. Both must be nonblank and contain no null bytes. Values retain their exact spelling and case.
+
+Root operations select only the application scope. They never list or publish across named scopes. Named publications never fall back to application endpoints, even if they have no matching endpoints of their own. The application scope belongs to the configured database and schema, so separate factory instances using that schema share it.
+
+`forScope()` validates and snapshots the selection immediately. It creates no identity record, starts no I/O, and never changes another client's scope. Invalid or missing selections throw `INVALID_INPUT`; they cannot select the application scope. A bound client exposes only `endpoints`, `publish`, and `deliveries`.
+
+Choose and authorize scopes in your application, then pass bound clients into request handlers. Do not pass unchecked request-body identifiers to `forScope()`. The library does not manage users, organizations, membership, or permissions. Management results and signed event envelopes contain no internal scope keys.
 
 ## Run deliveries and retain history
 
@@ -168,7 +196,7 @@ try {
 }
 ```
 
-Each worker claims work through PostgreSQL leases. Multiple processes can share the database. A worker holds no database transaction open during HTTP requests. Shutdown aborts active requests, whose receiver outcomes may be unknown.
+Workers and pruning operate across every scope in the configured database. These maintenance operations are available only on the root instance. Each worker claims work through PostgreSQL leases. Multiple processes can share the database. A worker holds no database transaction open during HTTP requests. Shutdown aborts active requests, whose receiver outcomes may be unknown.
 
 Without `onError`, an unexpected worker error rejects `run()`. With `onError`, the worker reports the error and continues polling. Receiver failures appear in delivery records.
 
@@ -197,29 +225,29 @@ History cleanup is explicit. Schedule `await webhooks.worker.prune()` from your 
 
 ## Manage endpoints and deliveries
 
-All operations below use the trusted tenant scope:
+These operations use the application scope. A client returned by `forScope()` exposes the same methods within its selected scope:
 
 ```ts
-await tenant.endpoints.list()
-await tenant.endpoints.get(endpoint.id)
-await tenant.endpoints.update(endpoint.id, { maxInFlight: 4 })
-await tenant.endpoints.pause(endpoint.id)
-await tenant.endpoints.resume(endpoint.id)
+await webhooks.endpoints.list()
+await webhooks.endpoints.get(endpoint.id)
+await webhooks.endpoints.update(endpoint.id, { maxInFlight: 4 })
+await webhooks.endpoints.pause(endpoint.id)
+await webhooks.endpoints.resume(endpoint.id)
 
-const rotated = await tenant.endpoints.rotateSecret(endpoint.id, { graceMs: 3_600_000 })
+const rotated = await webhooks.endpoints.rotateSecret(endpoint.id, { graceMs: 3_600_000 })
 // Give rotated.secret to the receiver before the overlap expires.
 
-const page = await tenant.deliveries.list({ eventId: publication.eventId, limit: 25 })
+const page = await webhooks.deliveries.list({ eventId: publication.eventId, limit: 25 })
 const delivery = page.items[0]
 if (delivery) {
-  const detail = await tenant.deliveries.get(delivery.id)
+  const detail = await webhooks.deliveries.get(delivery.id)
   console.log(detail.status, detail.attempts)
   if (detail.replayOf === null && ['succeeded', 'failed'].includes(detail.status)) {
-    await tenant.deliveries.replay(detail.id)
+    await webhooks.deliveries.replay(detail.id)
   }
 }
 
-await tenant.endpoints.remove(endpoint.id)
+await webhooks.endpoints.remove(endpoint.id)
 ```
 
 Pausing stops new claims. It does not recall an HTTP request already in flight. Deletion cancels outstanding deliveries but cannot undo a request a receiver has already received.
@@ -228,11 +256,11 @@ Signing-secret rotation accepts an overlap of zero to 24 hours and defaults to 2
 
 A replay creates a new delivery for an original `succeeded` or `failed` delivery. It requires an active endpoint and an event within the retention window. Only one pending or in-flight replay per original delivery is allowed. Replays use the endpoint's current URL and signing secret.
 
-Endpoint lists include at most 1,000 nondeleted endpoints per tenant, which is also the creation limit. Delivery lists use descending ID cursors. Pass `page.nextCursor` as `before` to fetch the next page. Delivery IDs are strings.
+Endpoint lists include at most 1,000 nondeleted endpoints per scope, which is also the creation limit. Delivery lists use descending ID cursors. Pass `page.nextCursor` as `before` to fetch the next page. Delivery IDs are strings.
 
 Filter delivery history by `eventId` from a publication, `endpointId`, or `status`. Filters can be combined. Delivery detail reads status and attempt history from one database snapshot.
 
-Expected operation errors are `WebhookError` instances with a `code`, such as `NOT_FOUND`, `INVALID_INPUT`, `INVALID_STATE`, `IDEMPOTENCY_CONFLICT`, or `REPLAY_IN_PROGRESS`. Infrastructure failures may be ordinary errors. Treat tenant-owned response history as sensitive application data.
+Expected operation errors are `WebhookError` instances with a `code`, such as `NOT_FOUND`, `INVALID_INPUT`, `INVALID_STATE`, `IDEMPOTENCY_CONFLICT`, or `REPLAY_IN_PROGRESS`. Infrastructure failures may be ordinary errors. Treat response history as sensitive application data.
 
 ## Verify incoming requests
 

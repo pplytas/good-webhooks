@@ -25,8 +25,8 @@ const webhooks = createWebhooks({
   retry: { delaysMs: [100, 250] },
 })
 
-// A real application derives this scope from an authenticated, authorized caller.
-const tenant = webhooks.forTenant({ id: `demo_${randomUUID()}` })
+// A unique business ID lets the example run again while preserving earlier history.
+const invoiceId = `inv_${randomUUID()}`
 const receivedIds: string[] = []
 const appliedIds = new Set<string>()
 let appliedCount = 0
@@ -69,7 +69,7 @@ const receiver = createServer((request, response) => {
 async function finishDelivery(id: string): Promise<void> {
   const deadline = Date.now() + 10_000
   while (Date.now() < deadline) {
-    const detail = await tenant.deliveries.get(id)
+    const detail = await webhooks.deliveries.get(id)
     if (detail.status === 'succeeded') return
     assert(!['failed', 'cancelled'].includes(detail.status), `Delivery ended as ${detail.status}`)
     await sleep(Math.max(10, Math.min(500, detail.nextAttemptAt.getTime() - Date.now())))
@@ -84,7 +84,7 @@ try {
   await once(receiver, 'listening')
   const address = receiver.address()
   assert(address && typeof address === 'object')
-  const created = await tenant.endpoints.create({
+  const created = await webhooks.endpoints.create({
     url: `http://127.0.0.1:${address.port}/webhooks`,
     eventTypes: ['invoice.paid'],
   })
@@ -94,7 +94,7 @@ try {
   const client = await pool.connect()
   try {
     await client.query('BEGIN')
-    await tenant.publish(
+    await webhooks.publish(
       {
         type: 'invoice.paid',
         data: { invoiceId: 'rolled_back', amount: 100 },
@@ -109,29 +109,29 @@ try {
   } finally {
     client.release()
   }
-  assert.equal((await tenant.deliveries.list()).items.length, 0)
+  assert.equal((await webhooks.deliveries.list({ endpointId })).items.length, 0)
   console.log('Transaction rollback left no delivery.')
 
   const input = {
     type: 'invoice.paid' as const,
-    data: { invoiceId: 'inv_demo', amount: 4200 },
-    idempotencyKey: 'invoice-paid:inv_demo',
+    data: { invoiceId, amount: 4200 },
+    idempotencyKey: `invoice-paid:${invoiceId}`,
   }
-  const publication = await tenant.publish(input)
-  const duplicate = await tenant.publish(input)
+  const publication = await webhooks.publish(input)
+  const duplicate = await webhooks.publish(input)
   assert.equal(publication.deliveryCount, 1)
   assert.equal(duplicate.eventId, publication.eventId)
   assert.equal(duplicate.duplicate, true)
   console.log('Event accepted:', publication.eventId)
 
-  const [delivery] = (await tenant.deliveries.list({ eventId: publication.eventId })).items
+  const [delivery] = (await webhooks.deliveries.list({ eventId: publication.eventId })).items
   assert(delivery)
   await webhooks.worker.tick()
-  const afterFailure = await tenant.deliveries.get(delivery.id)
+  const afterFailure = await webhooks.deliveries.get(delivery.id)
   assert.equal(afterFailure.status, 'pending')
   assert.equal(afterFailure.attempts[0]?.responseStatus, 503)
   await finishDelivery(delivery.id)
-  const delivered = await tenant.deliveries.get(delivery.id)
+  const delivered = await webhooks.deliveries.get(delivery.id)
   assert.deepEqual(
     delivered.attempts.map((attempt) => attempt.responseStatus),
     [503, 200],
@@ -145,7 +145,7 @@ try {
     })),
   )
 
-  const replay = await tenant.deliveries.replay(delivery.id)
+  const replay = await webhooks.deliveries.replay(delivery.id)
   assert.notEqual(replay.id, delivery.id)
   assert.equal(replay.eventId, publication.eventId)
   await finishDelivery(replay.id)
@@ -158,7 +158,7 @@ try {
 } finally {
   // Keep history, but leave no active endpoint pointing at the stopped receiver.
   if (endpointId)
-    await tenant.endpoints
+    await webhooks.endpoints
       .remove(endpointId)
       .catch((error) => console.error('Endpoint cleanup failed:', error))
   if (receiver.listening)

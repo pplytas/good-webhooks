@@ -13,7 +13,6 @@ export type Completion = 'succeeded' | 'retried' | 'failed' | 'stale'
 
 type DeliveryRow = {
   id: string
-  tenant_id: string
   endpoint_id: string
   event_id: string
   attempt_count: number
@@ -124,7 +123,7 @@ export function createWorkerStore(config: ResolvedConfig) {
         if (capacity <= 0) continue
         const deliveries = await client.query<DeliveryRow & { now: Date }>(
           `
-          SELECT d.id::text, d.tenant_id, d.endpoint_id, d.event_id, d.attempt_count, d.created_at,
+          SELECT d.id::text, d.endpoint_id, d.event_id, d.attempt_count, d.created_at,
             e.body, e.created_at AS event_created_at, clock_timestamp() AS now
           FROM webhooks.deliveries d JOIN webhooks.events e ON e.id=d.event_id
           WHERE d.endpoint_id=$1 AND d.status='pending' AND d.next_attempt_at <= now()
@@ -159,7 +158,6 @@ export function createWorkerStore(config: ResolvedConfig) {
           const attemptCount = delivery.attempt_count + 1
           claims.push({
             id: delivery.id,
-            tenantId: delivery.tenant_id,
             endpointId: delivery.endpoint_id,
             eventId: delivery.event_id,
             token,

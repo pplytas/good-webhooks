@@ -33,8 +33,8 @@ async function fixture(url: string, count = 1, maxInFlight = 2) {
   const endpointId = randomUUID()
   const secret = generateSecret()
   await pool.query(
-    `INSERT INTO webhooks.endpoints(id,tenant_id,url,event_types,secret,max_in_flight)
-    VALUES($1,'tenant-a',$2,ARRAY['test.sent'],$3,$4)`,
+    `INSERT INTO webhooks.endpoints(id,scope_key,url,event_types,secret,max_in_flight)
+    VALUES($1,'scope-a',$2,ARRAY['test.sent'],$3,$4)`,
     [endpointId, url, encryptSecret(secret, testConfig().encryptionKey), maxInFlight],
   )
   const deliveries: { id: string; eventId: string; body: string }[] = []
@@ -42,13 +42,13 @@ async function fixture(url: string, count = 1, maxInFlight = 2) {
     const eventId = randomUUID()
     const body = JSON.stringify({ id: eventId, type: 'test.sent', data: { n } })
     await pool.query(
-      `INSERT INTO webhooks.events(id,tenant_id,type,body,fingerprint)
-      VALUES($1,'tenant-a','test.sent',$2,'fixture')`,
+      `INSERT INTO webhooks.events(id,scope_key,type,body,fingerprint)
+      VALUES($1,'scope-a','test.sent',$2,'fixture')`,
       [eventId, body],
     )
     const result = await pool.query<{ id: string }>(
-      `INSERT INTO webhooks.deliveries(tenant_id,endpoint_id,event_id)
-      VALUES('tenant-a',$1,$2) RETURNING id::text`,
+      `INSERT INTO webhooks.deliveries(scope_key,endpoint_id,event_id)
+      VALUES('scope-a',$1,$2) RETURNING id::text`,
       [endpointId, eventId],
     )
     deliveries.push({ id: result.rows[0]!.id, eventId, body })
@@ -90,7 +90,7 @@ afterEach(async () => {
 afterAll(closeDatabase)
 
 describe('worker delivery durability', () => {
-  it('skips an endpoint locked by publication and delivers another tenant in the same tick', async () => {
+  it('skips an endpoint locked by publication and delivers another scope in the same tick', async () => {
     const received: string[] = []
     const url = await receiver((request, response) => {
       received.push(request.url!)
@@ -98,20 +98,20 @@ describe('worker delivery durability', () => {
       response.end('ok')
     })
     const store = createStore(testConfig())
-    for (const id of ['tenant-a', 'tenant-b']) {
+    for (const id of ['scope-a', 'scope-b']) {
       await store.createEndpoint(id, { url: `${url}/${id}`, eventTypes: ['test.sent'] })
       await store.publish(id, { type: 'test.sent', data: {} })
     }
     await pool.query(
-      "UPDATE webhooks.deliveries SET next_attempt_at=now()-interval '1 minute' WHERE tenant_id='tenant-a'",
+      "UPDATE webhooks.deliveries SET next_attempt_at=now()-interval '1 minute' WHERE scope_key='scope-a'",
     )
     const client = await pool.connect()
     try {
       await client.query('BEGIN')
-      await store.publish('tenant-a', { type: 'test.sent', data: {} }, { transaction: client })
+      await store.publish('scope-a', { type: 'test.sent', data: {} }, { transaction: client })
       const result = await createWorker(testConfig({ concurrency: 1 })).tick()
       expect(result).toMatchObject({ claimed: 1, succeeded: 1 })
-      expect(received).toEqual(['/webhook/tenant-b'])
+      expect(received).toEqual(['/webhook/scope-b'])
     } finally {
       await client.query('ROLLBACK')
       client.release()
@@ -479,11 +479,11 @@ describe('worker delivery durability', () => {
     const worker = createWorker(testConfig())
     const first = worker.tick()
     await received.promise
-    await createStore(testConfig()).pauseEndpoint('tenant-a', endpointId)
+    await createStore(testConfig()).pauseEndpoint('scope-a', endpointId)
     finish.resolve()
     expect((await first).succeeded).toBe(1)
     expect((await worker.tick()).claimed).toBe(0)
-    await createStore(testConfig()).resumeEndpoint('tenant-a', endpointId)
+    await createStore(testConfig()).resumeEndpoint('scope-a', endpointId)
     expect((await worker.tick()).succeeded).toBe(1)
   })
 
@@ -498,7 +498,7 @@ describe('worker delivery durability', () => {
     const worker = createWorker(testConfig())
     const first = worker.tick()
     await received.promise
-    await createStore(testConfig()).removeEndpoint('tenant-a', endpointId)
+    await createStore(testConfig()).removeEndpoint('scope-a', endpointId)
     finish.resolve()
     expect((await first).stale).toBe(1)
     expect((await worker.tick()).claimed).toBe(0)
@@ -589,7 +589,7 @@ describe('worker delivery durability', () => {
     await pool.query(
       "UPDATE webhooks.deliveries SET status='failed', created_at=now()-interval '2 minutes'",
     )
-    const replay = await createStore(testConfig()).replay('tenant-a', delivery!.id)
+    const replay = await createStore(testConfig()).replay('scope-a', delivery!.id)
     expect((await createWorker(testConfig()).tick()).succeeded).toBe(1)
     expect((await state(replay.id)).delivery.status).toBe('succeeded')
     expect(await createWorker(testConfig({ retentionMs: 60_000 })).prune()).toBe(1)
@@ -625,8 +625,8 @@ describe('worker delivery durability', () => {
     } = await fixture('http://127.0.0.1:12345')
     await createWorkerStore(testConfig()).claim()
     await pool.query("UPDATE webhooks.events SET created_at=now()-interval '2 days'")
-    await pool.query(`INSERT INTO webhooks.events(id,tenant_id,type,body,fingerprint,created_at)
-      SELECT gen_random_uuid(),'tenant-a','test.sent','{}','fixture',now()-interval '2 days' FROM generate_series(1,101)`)
+    await pool.query(`INSERT INTO webhooks.events(id,scope_key,type,body,fingerprint,created_at)
+      SELECT gen_random_uuid(),'scope-a','test.sent','{}','fixture',now()-interval '2 days' FROM generate_series(1,101)`)
     const worker = createWorker(testConfig())
     const first = await worker.prune()
     expect(first).toBeGreaterThanOrEqual(99)

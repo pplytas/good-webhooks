@@ -14,24 +14,24 @@ beforeEach(resetDatabase)
 afterAll(closeDatabase)
 
 describe('public server API', () => {
-  it('finds a publication across endpoints without mixing other events or tenants', async () => {
+  it('finds a publication across endpoints without mixing other events or scopes', async () => {
     const app = createWebhooks(options)
-    const tenant = app.forTenant({ id: 'tenant-a' })
+    const scope = app.forScope({ type: 'account', id: 'scope-a' })
     const endpoints = await Promise.all(
       [1, 2].map(() =>
-        tenant.endpoints.create({
+        scope.endpoints.create({
           url: 'http://127.0.0.1:12345',
           eventTypes: ['order.created'],
         }),
       ),
     )
     const event = { type: 'order.created' as const, data: { id: 'o1', total: 1 } }
-    const published = await tenant.publish(event)
-    await tenant.publish(event)
-    const first = await tenant.deliveries.list({ eventId: published.eventId, limit: 1 })
+    const published = await scope.publish(event)
+    await scope.publish(event)
+    const first = await scope.deliveries.list({ eventId: published.eventId, limit: 1 })
     expect(first.items).toHaveLength(1)
     expect(first.items[0]!.eventId).toBe(published.eventId)
-    const second = await tenant.deliveries.list({
+    const second = await scope.deliveries.list({
       eventId: published.eventId,
       before: first.nextCursor!,
       limit: 1,
@@ -42,7 +42,7 @@ describe('public server API', () => {
     expect(second.nextCursor).toBeNull()
     expect(
       (
-        await tenant.deliveries.list({
+        await scope.deliveries.list({
           eventId: published.eventId,
           endpointId: endpoints[0]!.endpoint.id,
           status: 'pending',
@@ -50,10 +50,13 @@ describe('public server API', () => {
       ).items,
     ).toHaveLength(1)
     expect(
-      (await app.forTenant({ id: 'tenant-b' }).deliveries.list({ eventId: published.eventId }))
-        .items,
+      (
+        await app
+          .forScope({ type: 'account', id: 'scope-b' })
+          .deliveries.list({ eventId: published.eventId })
+      ).items,
     ).toEqual([])
-    await expect(tenant.deliveries.list({ eventId: 'invalid' })).rejects.toMatchObject({
+    await expect(scope.deliveries.list({ eventId: 'invalid' })).rejects.toMatchObject({
       code: 'INVALID_INPUT',
     })
   })
@@ -61,7 +64,7 @@ describe('public server API', () => {
   it('construction does not connect or start a worker', () => {
     const database = { query: vi.fn(), connect: vi.fn() } as unknown as Database
     const webhooks = createWebhooks({ ...options, database })
-    webhooks.forTenant({ id: 'tenant-a' })
+    webhooks.forScope({ type: 'account', id: 'scope-a' })
     expect(database.connect).not.toHaveBeenCalled()
     expect(database.query).not.toHaveBeenCalled()
   })
@@ -71,18 +74,18 @@ describe('public server API', () => {
     await expect(createWebhooks(options).check()).rejects.toMatchObject({ code: 'SCHEMA_MISMATCH' })
   })
 
-  it('validates payloads at runtime and retains the trusted tenant scope', async () => {
-    const context = { id: 'tenant-a' }
-    const tenant = createWebhooks(options).forTenant(context)
-    context.id = 'tenant-b'
+  it('validates payloads at runtime and retains the selected scope', async () => {
+    const context = { type: 'account', id: 'scope-a' }
+    const scope = createWebhooks(options).forScope(context)
+    context.id = 'scope-b'
     await expect(
-      tenant.publish({ type: 'order.created', data: { id: 7, total: 1 } } as never),
+      scope.publish({ type: 'order.created', data: { id: 7, total: 1 } } as never),
     ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
-    const result = await tenant.publish({ type: 'order.created', data: { id: 'o1', total: 1 } })
-    const event = await pool.query('SELECT tenant_id,body FROM webhooks.events WHERE id=$1', [
+    const result = await scope.publish({ type: 'order.created', data: { id: 'o1', total: 1 } })
+    const event = await pool.query('SELECT scope_key,body FROM webhooks.events WHERE id=$1', [
       result.eventId,
     ])
-    expect(event.rows[0].tenant_id).toBe('tenant-a')
+    expect(JSON.parse(event.rows[0].scope_key)).toEqual(['named', 'account', 'scope-a'])
     expect(JSON.parse(event.rows[0].body).data).toEqual({ id: 'o1', total: 1 })
   })
 
@@ -94,13 +97,13 @@ describe('public server API', () => {
         invalid: z.string().transform(() => ({ count: NaN })),
       },
     })
-    const tenant = webhooks.forTenant({ id: 'tenant-a' })
-    const accepted = await tenant.publish({ type: 'transformed', data: 'o1' })
+    const scope = webhooks.forScope({ type: 'account', id: 'scope-a' })
+    const accepted = await scope.publish({ type: 'transformed', data: 'o1' })
     const event = await pool.query('SELECT body FROM webhooks.events WHERE id=$1', [
       accepted.eventId,
     ])
     expect(JSON.parse(event.rows[0].body).data).toEqual({ id: 'o1' })
-    await expect(tenant.publish({ type: 'invalid', data: 'o1' })).rejects.toMatchObject({
+    await expect(scope.publish({ type: 'invalid', data: 'o1' })).rejects.toMatchObject({
       code: 'INVALID_INPUT',
     })
   })
@@ -114,12 +117,12 @@ describe('public server API', () => {
       await gate
       return value
     })
-    const tenant = createWebhooks({
+    const scope = createWebhooks({
       ...options,
       events: { first: schema, second: z.number() },
-    }).forTenant({ id: 'tenant-a' })
+    }).forScope({ type: 'account', id: 'scope-a' })
     const input = { type: 'first' as const, data: { id: 'o1' }, idempotencyKey: 'original' }
-    const pending = tenant.publish(input)
+    const pending = scope.publish(input)
     Object.assign(input, { type: 'second', idempotencyKey: 'changed' })
     release()
     const accepted = await pending
@@ -132,11 +135,11 @@ describe('public server API', () => {
   })
 
   it('rejects unknown event subscriptions without publishing or creating endpoints', async () => {
-    const tenant = createWebhooks(options).forTenant({ id: 'tenant-a' })
+    const scope = createWebhooks(options).forScope({ type: 'account', id: 'scope-a' })
     await expect(
-      tenant.endpoints.create({ url: 'http://localhost:12345', eventTypes: ['missing'] } as never),
+      scope.endpoints.create({ url: 'http://localhost:12345', eventTypes: ['missing'] } as never),
     ).rejects.toThrow(/eventTypes/)
-    await expect(tenant.publish({ type: 'missing', data: {} } as never)).rejects.toMatchObject({
+    await expect(scope.publish({ type: 'missing', data: {} } as never)).rejects.toMatchObject({
       code: 'INVALID_INPUT',
     })
     expect((await pool.query('SELECT id FROM webhooks.events')).rows).toHaveLength(0)
