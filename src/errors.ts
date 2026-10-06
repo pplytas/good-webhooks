@@ -9,6 +9,7 @@ export type WebhookErrorCode =
   | 'SCHEMA_MISMATCH'
   | 'SIGNATURE_INVALID'
   | 'SIGNATURE_EXPIRED'
+  | 'PAYLOAD_INVALID'
   | 'TRANSACTION_REQUIRED'
 
 /** Expected operation failures. Recipient failures are recorded on deliveries instead. */

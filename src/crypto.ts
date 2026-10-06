@@ -160,13 +160,20 @@ function readHeaders(
 }
 
 /** Verify the exact request body before parsing JSON. The host must deduplicate webhook-id. */
-export function verifyWebhook(input: {
+export interface VerifyWebhookInput {
   body: string | Uint8Array
   headers: Headers | Record<string, string | string[] | undefined>
   secret: string | readonly string[]
   now?: Date
   toleranceSeconds?: number
-}): void {
+}
+
+export function verifyWebhook(input: VerifyWebhookInput): void {
+  verifySignature(input)
+}
+
+/** Internal shared verifier. Its ID comes from the same header snapshot as the signature. */
+export function verifySignature(input: VerifyWebhookInput): { id: string } {
   const tolerance = input.toleranceSeconds ?? 300
   const now = (input.now ?? new Date()).getTime()
   if (!Number.isSafeInteger(tolerance) || tolerance < 0 || !Number.isFinite(now)) {
@@ -223,4 +230,5 @@ export function verifyWebhook(input: {
     }
   }
   if (!matched) throw signatureError()
+  return { id }
 }

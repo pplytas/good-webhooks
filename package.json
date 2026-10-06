@@ -33,8 +33,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "check": "npm run build && tsc --noEmit",
-    "test": "vitest run",
-    "test:unit": "vitest run test/crypto.test.ts test/transport.test.ts test/config.test.ts",
+    "test": "npm run build && vitest run",
+    "test:unit": "npm run build && vitest run test/crypto.test.ts test/transport.test.ts test/config.test.ts test/verify.test.ts test/receiver-example.test.ts",
     "prepack": "npm run build",
     "example": "npm run build && node examples/basic/demo.ts",
     "format": "prettier --write .",

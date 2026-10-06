@@ -1,12 +1,12 @@
-# Receiver and operations proposal
+# Receiver and operations design
 
-Status: revised after three independent audits of scope, security, and TypeScript design against commit `3450f61`. The parser and operational examples described here are proposed work. The migration transaction correction is implemented alongside this document.
+Status: implemented after three independent audits of scope, security, and TypeScript design against commit `3450f61`. The receiver parser, operational examples, and migration correction are complete. This document records their contract and the accepted audit findings. See the [receiver guide](receiving.md) and [operations guide](operations.md) for usage.
 
 The v0 addition is one receiver parser and its result type. Database setup remains explicit. Worker execution keeps `run()` and `tick()`. Better examples carry the deployment guidance without introducing a scheduler, migration CLI, receiver factory, or adapter ecosystem.
 
 ## Receiver schemas describe the transmitted payload
 
-The proposed `parseWebhook()` takes the existing verifier inputs and a required event-schema map. It authenticates the raw body, checks the Good Webhooks envelope, validates its payload, and returns a typed result. It does not deduplicate events, choose an HTTP response, or execute business work.
+`parseWebhook()` takes the existing verifier inputs and a required event-schema map. It authenticates the raw body, checks the Good Webhooks envelope, validates its payload, and returns a typed result. It does not deduplicate events, choose an HTTP response, or execute business work.
 
 ```ts
 const event = await parseWebhook({
@@ -22,7 +22,7 @@ if (event.type === 'invoice.paid') {
 }
 ```
 
-The receiver map defines the accepted event names. Each validator accepts the JSON transmitted in `data`. The parser awaits validation and returns the validator's output exactly once. Standard Schema permits asynchronous validation and distinguishes input from output types. [Standard Schema specification](https://standardschema.dev/)
+The receiver map defines the accepted event names. Each validator accepts the JSON transmitted in `data`. The parser calls the selected validator's `~standard.validate()` once, awaits its result, and returns its output without revalidation. Standard Schema permits asynchronous validation and distinguishes input from output types. [Standard Schema specification](https://standardschema.dev/)
 
 The result preserves the relationship between each event name and its decoded payload:
 
@@ -47,7 +47,7 @@ The main example uses a standalone `events.ts` containing validators for the tra
 
 Normalize domain inputs before publishing when sharing validators between sender and receiver. A producer schema that converts dollars to cents can otherwise convert `42` to `4200` on publication and `4200` to `420000` on receipt. Matching input and output types does not make a transformation safe to repeat.
 
-Existing producer transformations remain supported. Those applications supply a separate receiver map that describes the transmitted output. Receiver-only transformations are also allowed and run once on receipt. No automatic output-validator derivation, inverse transformation, paired-schema abstraction, or identity check is proposed.
+Existing producer transformations remain supported. Those applications supply a separate receiver map that describes the transmitted output. Receiver-only transformations are also allowed. The schema provider controls how often it invokes its own callbacks. Keep transforms free of business side effects. The [receiver guide](receiving.md#use-asynchronous-zod-schemas-safely) documents the installed Zod version's async probe behavior and the tested application-level workaround. No automatic output-validator derivation, inverse transformation, paired-schema abstraction, or identity check is included.
 
 Keep an existing event name backward compatible with retained events. Use a new name such as `invoice.paid.v2` for a breaking payload change. Deploy receiver support before enabling new producer events and subscriptions. Retain old receiver schemas while old events can still be retried or replayed. Sharing the latest schema module does not update previously stored event bodies.
 
@@ -88,7 +88,7 @@ No new migration API, CLI, ORM integration, or runtime DDL is needed.
 
 ## The worker example owns its process lifecycle
 
-The proposed worker entry point imports an inert configuration module. It installs signal and pool-error handling before startup I/O, checks persistent configuration and schema, awaits `worker.run()`, and closes its pool in `finally`, including when startup fails.
+The worker entry point imports an inert configuration module. It installs signal and pool-error handling before startup I/O, checks persistent configuration and schema, awaits `worker.run()`, and closes its pool in `finally`, including when startup fails.
 
 The default recipe omits `onError`. An unexpected worker or pool failure produces a nonzero exit status after cleanup. The host's process supervisor supplies restart backoff. Normal receiver failures already use the delivery retry policy and remain visible in history.
 
@@ -96,7 +96,7 @@ Logging and continuing through `onError` remains an explicit alternative. It is 
 
 Configure finite database connection and statement timeouts. Document the supervisor's final shutdown deadline. Aborting the worker interrupts HTTP work but does not cancel every database operation or prove that a receiver did not process a request. The pool can wait for checked-out clients during closure. [node-postgres pool documentation](https://node-postgres.com/apis/pool)
 
-The runnable example must exercise startup failure, worker failure, pool errors, normal termination, and termination during delivery. It introduces no worker-hosting abstraction or hidden background process.
+Process integration tests exercise startup failure, worker failure, pool errors, normal termination, and termination during delivery. It introduces no worker-hosting abstraction or hidden background process.
 
 ## Cleanup needs a bounded schedule with enough capacity
 
@@ -108,7 +108,7 @@ Pruning remains explicit and independent of `run()`. No timers or scheduling fra
 
 ## Acceptance and audit disposition
 
-The migration defect is corrected in the current revision, with a regression covering failure, rollback of schema and bookkeeping, and successful retry. The following remain acceptance requirements for the proposed parser and examples:
+The migration defect is corrected in the current revision, with a regression covering failure, rollback of schema and bookkeeping, and successful retry. The parser and examples have these acceptance requirements, covered by the runtime tests, compile-time assertions, and packed-consumer checks:
 
 - Compile positive and negative examples for multiple event names, discriminated payloads, and transformed receiver output. Exercise asynchronous validation and a shared value-preserving schema through a complete publication-to-parser round trip.
 - Cover missing fields, malformed bodies, bad signatures, header/body ID mismatch, unknown and inherited names, legitimate own names such as `constructor`, and old events with fresh retry signatures. Invalid signatures must never invoke a schema.
@@ -119,4 +119,4 @@ The migration defect is corrected in the current revision, with a regression cov
 
 All three audits support the existing database and worker interfaces and a single receiver parser. Accepted revisions address transaction ownership, double transformations, correlated output types, authenticated envelope identity, input bounds, error classification, event evolution, worker failure policy, and cleanup capacity. Receiver factories, automatic schema conversion, event registries, arbitrary envelope formats, HTTP adapters, and migration infrastructure remain deferred.
 
-The independent audits included source and specification inspection and focused transform reproductions. The coordinator separately reproduced the migration failure on disposable PostgreSQL 16. Proposed parser and process behavior require implementation tests; this review does not claim those features are implemented or verified.
+The independent audits included source and specification inspection and focused transform reproductions. The coordinator separately reproduced the migration failure on disposable PostgreSQL 16. Runtime verification covers the parser, HTTP receiver, durable demo, and spawned worker and cleanup processes. The host still owns its supervisor restart policy and final shutdown deadline; those deployment settings are documented, not provisioned by the package.

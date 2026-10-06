@@ -1,7 +1,7 @@
 import { Pool } from 'pg'
 import { z } from 'zod'
 import { createWebhooks, type WebhookClient, type Scope } from '../src/index.js'
-import { verifyWebhook } from '../src/verify.js'
+import { parseWebhook, verifyWebhook, type ParsedWebhook } from '../src/verify.js'
 import type { IncomingMessage } from 'node:http'
 
 // Compiled, never executed. These assertions test the consumer's public TypeScript experience.
@@ -45,3 +45,50 @@ function consumerTypes(request: IncomingMessage) {
   scoped.endpoints.create({ url: 'https://example.com/hook', eventTypes: ['missing'] })
 }
 void consumerTypes
+
+async function receiverTypes(request: IncomingMessage) {
+  const events = {
+    'invoice.paid': z.object({ invoiceId: z.string(), amount: z.number() }),
+    'account.activated': z.string().transform(async (value) => new Date(value)),
+  }
+  const event = await parseWebhook({
+    body: Buffer.from('{}'),
+    headers: request.headers,
+    secret: 'test-only',
+    events,
+  })
+  const typed: ParsedWebhook<typeof events> = event
+  void typed
+  if (event.type === 'invoice.paid') {
+    const amount: number = event.data.amount
+    // @ts-expect-error one event's fields cannot leak into another event's payload
+    event.data.getTime()
+    // @ts-expect-error the payload field remains numeric
+    const invalid: string = event.data.amount
+    void amount
+    void invalid
+  } else {
+    const decoded: Date = event.data
+    // @ts-expect-error decoded data uses the validator output, not its string input
+    const input: string = event.data
+    void decoded
+    void input
+  }
+  const unknownEvent = {
+    id: 'e',
+    type: 'missing',
+    occurredAt: '',
+    data: new Date(),
+  }
+  // @ts-expect-error unknown event names cannot construct the public union
+  const missing: ParsedWebhook<typeof events> = unknownEvent
+  await parseWebhook({
+    body: '',
+    headers: request.headers,
+    secret: 'test-only',
+    // @ts-expect-error the receiver map requires Standard Schema validators
+    events: { broken: {} },
+  })
+  void missing
+}
+void receiverTypes

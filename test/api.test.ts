@@ -1,6 +1,9 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import { createWebhooks } from '../src/index.js'
+import { signWebhook } from '../src/crypto.js'
+import { parseWebhook } from '../src/verify.js'
+import { events } from '../examples/basic/events.js'
 import type { Database } from '../src/types.js'
 import { pool, resetDatabase, closeDatabase } from './db.js'
 
@@ -14,6 +17,33 @@ beforeEach(resetDatabase)
 afterAll(closeDatabase)
 
 describe('public server API', () => {
+  it('round-trips a maximum-sized persisted producer envelope through the receiver', async () => {
+    const definitions = { ...events, large: z.string() }
+    const app = createWebhooks({ ...options, events: definitions })
+    const endpoint = await app.endpoints.create({
+      url: 'http://127.0.0.1:12345',
+      eventTypes: ['invoice.paid'],
+    })
+    for (const input of [
+      { type: 'invoice.paid', data: { invoiceId: 'inv_1', amount: 4200 } },
+      { type: 'large', data: 'é'.repeat(131071) },
+    ] as const) {
+      const publication = await app.publish(input)
+      const body: string = (
+        await pool.query('SELECT body FROM webhooks.events WHERE id=$1', [publication.eventId])
+      ).rows[0].body
+      const headers = signWebhook({
+        id: publication.eventId,
+        timestamp: Math.floor(Date.now() / 1000),
+        body,
+        secrets: [endpoint.secret],
+      })
+      await expect(
+        parseWebhook({ body, headers, secret: endpoint.secret, events: definitions }),
+      ).resolves.toMatchObject({ id: publication.eventId, type: input.type, data: input.data })
+    }
+  })
+
   it('finds a publication across endpoints without mixing other events or scopes', async () => {
     const app = createWebhooks(options)
     const scope = app.forScope({ type: 'account', id: 'scope-a' })

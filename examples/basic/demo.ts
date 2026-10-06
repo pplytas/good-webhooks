@@ -4,9 +4,10 @@ import { once } from 'node:events'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { createWebhooks, generateEncryptionKey } from '@pplytas/webhooks'
-import { verifyWebhook } from '@pplytas/webhooks/verify'
+import { parseWebhook, type ParsedWebhook } from '@pplytas/webhooks/verify'
 import { Pool } from 'pg'
-import { z } from 'zod'
+import { events } from './events.ts'
+import { readBody, respondToRequestError, respondToProcessingError } from './receiver.ts'
 
 const pool = new Pool({
   connectionString:
@@ -18,9 +19,7 @@ const pool = new Pool({
 const webhooks = createWebhooks({
   database: pool,
   encryptionKey: process.env.WEBHOOK_ENCRYPTION_KEY ?? generateEncryptionKey(),
-  events: {
-    'invoice.paid': z.object({ invoiceId: z.string(), amount: z.number().int().nonnegative() }),
-  },
+  events,
   allowLocalhost: true,
   retry: { delaysMs: [100, 250] },
 })
@@ -28,41 +27,56 @@ const webhooks = createWebhooks({
 // A unique business ID lets the example run again while preserving earlier history.
 const invoiceId = `inv_${randomUUID()}`
 const receivedIds: string[] = []
-const appliedIds = new Set<string>()
-let appliedCount = 0
 let signingSecret = ''
 let endpointId: string | undefined
 
 async function receive(request: IncomingMessage, response: ServerResponse): Promise<void> {
-  const chunks: Buffer[] = []
-  for await (const chunk of request) chunks.push(Buffer.from(chunk))
-  const body = Buffer.concat(chunks)
-  verifyWebhook({
-    body,
-    secret: signingSecret,
-    headers: request.headers,
-  })
-  const event: { id: string; type: string; data: { invoiceId: string; amount: number } } =
-    JSON.parse(body.toString('utf8'))
-  assert.equal(event.id, request.headers['webhook-id'])
-  assert.equal(event.type, 'invoice.paid')
+  let event: ParsedWebhook<typeof events>
+  try {
+    event = await parseWebhook({
+      body: await readBody(request),
+      secret: signingSecret,
+      headers: request.headers,
+      events,
+    })
+  } catch (error) {
+    respondToRequestError(error, response)
+    return
+  }
+  assert.equal(event.data.invoiceId, invoiceId)
+  assert.equal(event.data.amount, 4200)
   receivedIds.push(event.id)
   if (receivedIds.length === 1) {
     response.writeHead(503).end('Try again')
     return
   }
-  // Production receivers use durable deduplication in the same transaction as their work.
-  if (!appliedIds.has(event.id)) {
-    appliedCount += 1
-    appliedIds.add(event.id)
+  // This demo's application tables are installed through receiver.sql, not by the library.
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+    const receipt = await client.query(
+      'INSERT INTO webhooks_example.receipts (event_id) VALUES ($1) ON CONFLICT DO NOTHING RETURNING event_id',
+      [event.id],
+    )
+    if (receipt.rowCount) {
+      await client.query('INSERT INTO webhooks_example.invoices (id,amount) VALUES ($1,$2)', [
+        event.data.invoiceId,
+        event.data.amount,
+      ])
+    }
+    await client.query('COMMIT')
+  } catch (error) {
+    await client.query('ROLLBACK')
+    throw error
+  } finally {
+    client.release()
   }
   response.writeHead(200).end('Accepted')
 }
 
 const receiver = createServer((request, response) => {
   void receive(request, response).catch((error) => {
-    console.error('Receiver rejected the request:', error)
-    response.writeHead(400).end('Invalid webhook')
+    respondToProcessingError(error, response)
   })
 })
 
@@ -150,8 +164,19 @@ try {
   assert.equal(replay.eventId, publication.eventId)
   await finishDelivery(replay.id)
   assert.deepEqual(receivedIds, [publication.eventId, publication.eventId, publication.eventId])
-  assert.equal(appliedIds.size, 1)
-  assert.equal(appliedCount, 1)
+  assert.equal(
+    (
+      await pool.query('SELECT event_id FROM webhooks_example.receipts WHERE event_id=$1', [
+        publication.eventId,
+      ])
+    ).rowCount,
+    1,
+  )
+  assert.deepEqual(
+    (await pool.query('SELECT amount FROM webhooks_example.invoices WHERE id=$1', [invoiceId]))
+      .rows,
+    [{ amount: 4200 }],
+  )
   console.log(
     `Replay ${replay.id} succeeded with the same event ID. Receiver applied the event once.`,
   )

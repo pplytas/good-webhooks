@@ -27,10 +27,11 @@ npm install
 npm run build
 export DATABASE_URL='postgres://postgres:webhooks_dev_only@127.0.0.1:55439/webhooks'
 psql "$DATABASE_URL" --single-transaction -v ON_ERROR_STOP=1 -f migrations/001-initial.sql
+psql "$DATABASE_URL" --single-transaction -v ON_ERROR_STOP=1 -f examples/basic/receiver.sql
 node examples/basic/demo.ts
 ```
 
-Apply the migration once. The example does not create or reset the schema. Each run uses the application scope, publishes a unique invoice, and removes its endpoint on exit. It leaves event and attempt history for inspection.
+Apply each SQL file once. The second file creates the demo application's receipt and invoice tables for durable deduplication. The example does not create or reset the schema. Each run uses the application scope, publishes a unique invoice, and removes its endpoint on exit. It leaves event, attempt, and receiver history for inspection.
 
 Expected output includes a rollback with no delivery, a successful delivery after two attempts, and a successful replay. The receiver applies the event once despite repeated requests.
 
@@ -61,22 +62,33 @@ node --input-type=module -e 'import { generateEncryptionKey } from "@pplytas/web
 
 Keep the same key across application and worker instances. Replacing it makes existing endpoint secrets unreadable. Automated encryption-key rotation is outside v0.
 
+Keep event schemas in a module that both the producer and receiver can import:
+
+```ts
+// events.ts
+import { z } from 'zod'
+
+export const events = {
+  'invoice.paid': z.object({
+    invoiceId: z.string(),
+    amount: z.number().int().nonnegative(),
+  }),
+}
+```
+
+Configure the producer with that map:
+
 ```ts
 import { createWebhooks } from '@pplytas/webhooks'
 import { Pool } from 'pg'
-import { z } from 'zod'
+import { events } from './events.js'
 
 export const pool = new Pool({ connectionString: process.env.DATABASE_URL })
 
 export const webhooks = createWebhooks({
   database: pool,
   encryptionKey: process.env.WEBHOOK_ENCRYPTION_KEY!,
-  events: {
-    'invoice.paid': z.object({
-      invoiceId: z.string(),
-      amount: z.number().int().nonnegative(),
-    }),
-  },
+  events,
 })
 
 await webhooks.check()
@@ -180,23 +192,16 @@ Choose and authorize scopes in your application, then pass bound clients into re
 
 ## Run deliveries and retain history
 
-Call `tick()` to process one batch, or run a worker until an abort signal stops it:
+Call `tick()` to process one batch, or await `run()` with an abort signal:
 
 ```ts
+await webhooks.worker.tick()
+// Or, in a long-running process:
 const stop = new AbortController()
-process.once('SIGTERM', () => stop.abort())
-process.once('SIGINT', () => stop.abort())
-
-try {
-  await webhooks.worker.run({
-    signal: stop.signal,
-    pollIntervalMs: 1000,
-    onError: (error) => console.error('Webhook worker failed:', error),
-  })
-} finally {
-  await pool.end()
-}
+await webhooks.worker.run({ signal: stop.signal, pollIntervalMs: 1000 })
 ```
+
+Use the [runnable worker and cleanup entry points](docs/operations.md) for complete process setup, signal handling, database timeouts, failure reporting, pool closure, and cleanup scheduling.
 
 Workers and pruning operate across every scope in the configured database. These maintenance operations are available only on the root instance. Each worker claims work through PostgreSQL leases. Multiple processes can share the database. A worker holds no database transaction open during HTTP requests. Shutdown aborts active requests, whose receiver outcomes may be unknown.
 
@@ -223,7 +228,7 @@ Defaults are:
 
 The worker retries network failures, `408`, `425`, `429`, and `5xx` responses within its attempt and age limits. A `2xx` response succeeds. Other responses fail without a retry. Redirects are never followed.
 
-History cleanup is explicit. Schedule `await webhooks.worker.prune()` from your application. Each call deletes at most 100 expired events with their deliveries and attempts. Unexpired worker leases defer deletion. An expired lease does not prevent cleanup, even if its worker never recovers. Neither `tick()` nor `run()` prunes history automatically.
+History cleanup is explicit. Each `worker.prune()` call deletes at most 100 expired events with their deliveries and attempts. Use the [bounded cleanup recipe](docs/operations.md#schedule-bounded-cleanup-runs) to schedule enough deletion capacity. Unexpired worker leases defer deletion. A zero result does not prove that no expired records remain. Neither `tick()` nor `run()` prunes history automatically.
 
 ## Manage endpoints and deliveries
 
@@ -264,22 +269,29 @@ Filter delivery history by `eventId` from a publication, `endpointId`, or `statu
 
 Expected operation errors are `WebhookError` instances with a `code`, such as `NOT_FOUND`, `INVALID_INPUT`, `INVALID_STATE`, `IDEMPOTENCY_CONFLICT`, or `REPLAY_IN_PROGRESS`. Infrastructure failures may be ordinary errors. Treat response history as sensitive application data.
 
-## Verify incoming requests
+## Receive typed events
 
 The package implements the [Standard Webhooks symmetric signing format](https://github.com/standard-webhooks/standard-webhooks/blob/main/spec/standard-webhooks.md) with Node.js crypto. It does not depend on the `standardwebhooks` npm package or Better Auth.
 
 ```ts
-import { verifyWebhook } from '@pplytas/webhooks/verify'
+import { parseWebhook } from '@pplytas/webhooks/verify'
+import { events } from './events.js'
 
-// Preserve the exact bytes before parsing JSON.
-const body = await request.text()
-verifyWebhook({ body, headers: request.headers, secret })
-const event = JSON.parse(body)
+// Read the original bytes through your framework's bounded body reader.
+const event = await parseWebhook({ body: rawBody, headers: request.headers, secret, events })
+if (event.type === 'invoice.paid') {
+  event.data.invoiceId // string
+  event.data.amount // number
+}
 ```
 
-`verifyWebhook()` returns normally on success and throws on failure. It checks `webhook-id`, `webhook-timestamp`, and `webhook-signature`, with a default timestamp tolerance of five minutes. It does not deduplicate events or validate the parsed payload.
+`parseWebhook()` verifies the original bytes, matches the signed ID to the envelope, validates the payload, and returns a discriminated union of your schemas' output types. `ParsedWebhook<typeof events>` exports that inferred result type. The parser accepts secret rotation and timestamp settings.
 
-The JSON envelope contains `id`, `type`, `occurredAt`, and `data`. `occurredAt` records publication time. The signed header ID matches the envelope's event ID.
+The envelope contains `id`, `type`, `occurredAt`, and `data`. Share value-preserving schemas between producer and receiver. Normalize domain inputs before publication or use a separate receiver map for transforming producer schemas.
+
+The [receiver guide](docs/receiving.md) covers request limits, durable deduplication, schema evolution, errors, and the workaround for asynchronous Zod schemas. Unexpected server failures must return `5xx` so the sender can retry.
+
+`verifyWebhook()` remains available for signature-only verification of other payload formats. The default timestamp tolerance is five minutes. Neither function deduplicates events or authorizes a scope.
 
 ## Scope and security
 
