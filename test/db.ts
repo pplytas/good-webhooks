@@ -12,10 +12,22 @@ export const pool = new Pool({
 
 /** Dedicated disposable test database only. Never set TEST_DATABASE_URL to a production database. */
 export async function resetDatabase(): Promise<void> {
-  await pool.query('DROP SCHEMA IF EXISTS webhooks CASCADE')
-  await pool.query(
-    await readFile(new URL('../migrations/001-initial.sql', import.meta.url), 'utf8'),
+  const migration = await readFile(
+    new URL('../migrations/001-initial.sql', import.meta.url),
+    'utf8',
   )
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+    await client.query('DROP SCHEMA IF EXISTS webhooks CASCADE')
+    await client.query(migration)
+    await client.query('COMMIT')
+  } catch (error) {
+    await client.query('ROLLBACK')
+    throw error
+  } finally {
+    client.release()
+  }
 }
 
 export async function closeDatabase(): Promise<void> {

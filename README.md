@@ -26,7 +26,7 @@ Wait for PostgreSQL to accept connections, then run these commands from the chec
 npm install
 npm run build
 export DATABASE_URL='postgres://postgres:webhooks_dev_only@127.0.0.1:55439/webhooks'
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/001-initial.sql
+psql "$DATABASE_URL" --single-transaction -v ON_ERROR_STOP=1 -f migrations/001-initial.sql
 node examples/basic/demo.ts
 ```
 
@@ -88,10 +88,12 @@ For an installed package, resolve its SQL migration through the exported path:
 
 ```sh
 node --input-type=module -e 'import { readFile } from "node:fs/promises"; process.stdout.write(await readFile(new URL(import.meta.resolve("@pplytas/webhooks/migrations/001-initial.sql")), "utf8"))' > 001-webhooks.sql
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f 001-webhooks.sql
+psql "$DATABASE_URL" --single-transaction -v ON_ERROR_STOP=1 -f 001-webhooks.sql
 ```
 
 Review and apply the migration once before calling `check()`. It creates the `webhooks` schema in the database you supply.
+
+The SQL contains no `BEGIN` or `COMMIT`. Your migration runner must execute it and its migration bookkeeping in one transaction on the same connection. For standalone setup, the `psql` command above supplies that transaction and rolls back on failure. The application's migration ledger tracks execution order; `webhooks.schema_version` records schema compatibility.
 
 This unpublished revision uses schema version 2. The earlier tenant-based prototype used version 1 and is incompatible. This migration initializes a fresh database; it does not upgrade existing prototype data. `check()` rejects that older schema. No schema or data changes happen automatically.
 

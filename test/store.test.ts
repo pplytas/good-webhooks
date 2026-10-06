@@ -1,5 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { randomUUID } from 'node:crypto'
+import { readFile } from 'node:fs/promises'
 import { decryptSecret } from '../src/crypto.js'
 import { createStore } from '../src/store.js'
 import { createWorkerStore } from '../src/worker-store.js'
@@ -22,6 +23,44 @@ async function queued(scopeKey = 'scope-a') {
 }
 
 describe('schema setup and endpoint management', () => {
+  it('lets a migration runner roll back schema installation and bookkeeping together', async () => {
+    const migration = await readFile(
+      new URL('../migrations/001-initial.sql', import.meta.url),
+      'utf8',
+    )
+    const client = await pool.connect()
+    try {
+      await client.query('DROP SCHEMA webhooks CASCADE')
+      await client.query('CREATE TEMP TABLE migration_ledger (version integer PRIMARY KEY)')
+      await client.query('BEGIN')
+      await client.query('INSERT INTO migration_ledger VALUES (2)')
+      await client.query(migration)
+      // A failed ledger write must not leave either the schema or earlier bookkeeping committed.
+      await expect(client.query('INSERT INTO migration_ledger VALUES (2)')).rejects.toMatchObject({
+        code: '23505',
+      })
+      await client.query('ROLLBACK')
+      expect((await client.query('SELECT version FROM migration_ledger')).rows).toEqual([])
+      expect(
+        (await client.query("SELECT to_regnamespace('webhooks') AS schema")).rows[0].schema,
+      ).toBeNull()
+
+      // A runner can retry the same migration after the rollback.
+      await client.query('BEGIN')
+      await client.query(migration)
+      await client.query('INSERT INTO migration_ledger VALUES (2)')
+      await client.query('COMMIT')
+      await store.checkSchema()
+      expect((await client.query('SELECT version FROM migration_ledger')).rows).toEqual([
+        { version: 2 },
+      ])
+    } finally {
+      await client.query('ROLLBACK')
+      await client.query('DROP TABLE IF EXISTS migration_ledger')
+      client.release()
+    }
+  })
+
   it('checks explicit schema version and reports missing or incompatible migrations', async () => {
     await store.checkSchema()
     await pool.query('UPDATE webhooks.schema_version SET version=1')

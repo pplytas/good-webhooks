@@ -1,6 +1,6 @@
 -- Apply explicitly with your migration runner, before starting the application.
--- PostgreSQL 16+. This migration is transactional and safe to apply once.
-BEGIN;
+-- PostgreSQL 16+. The caller must wrap this migration in one transaction.
+-- With psql, use --single-transaction -v ON_ERROR_STOP=1. Apply once.
 CREATE SCHEMA IF NOT EXISTS webhooks;
 CREATE TABLE webhooks.schema_version (version integer PRIMARY KEY);
 INSERT INTO webhooks.schema_version VALUES (2);
@@ -73,4 +73,3 @@ CREATE TABLE webhooks.attempts (
   error text,
   PRIMARY KEY (delivery_id,number)
 );
-COMMIT;
