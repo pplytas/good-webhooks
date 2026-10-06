@@ -21,7 +21,7 @@ jobs:
         postgres: [16, 17]
     env:
       TEST_DATABASE_URL: postgres://postgres:webhooks_dev_only@127.0.0.1:55439/webhooks
-      DATABASE_URL: postgres://postgres:webhooks_dev_only@127.0.0.1:55439/webhooks
+      DATABASE_URL: postgres://postgres:webhooks_dev_only@127.0.0.1:55439/webhooks_demo
     services:
       postgres:
         image: postgres:${{ matrix.postgres }}
@@ -47,8 +47,11 @@ jobs:
       - run: npm run check
       - run: npm run format:check
       - run: npm test
-      - name: Prepare demo tables
-        run: psql "$DATABASE_URL" --single-transaction -v ON_ERROR_STOP=1 -f examples/basic/receiver.sql
+      - name: Prepare a fresh demo database
+        run: |
+          psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -c 'CREATE DATABASE webhooks_demo'
+          psql "$DATABASE_URL" --single-transaction -v ON_ERROR_STOP=1 -f migrations/001-initial.sql
+          psql "$DATABASE_URL" --single-transaction -v ON_ERROR_STOP=1 -f examples/basic/receiver.sql
       - name: Run the delivery and replay demo
         run: npm run example
       - name: Build and install the package archive
