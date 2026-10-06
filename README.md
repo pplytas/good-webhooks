@@ -2,6 +2,8 @@
 
 Build webhook delivery into your TypeScript application.
 
+[![CI](https://github.com/pplytas/webhook-dispatch/actions/workflows/ci.yml/badge.svg)](https://github.com/pplytas/webhook-dispatch/actions/workflows/ci.yml)
+
 An embedded TypeScript package for outbound webhooks. Your application publishes typed events to PostgreSQL. An explicit worker delivers signed HTTP requests, records attempts, and retries failures.
 
 This is an unpublished v0 package. It requires Node.js 24 or later and PostgreSQL 16 or later.
@@ -304,3 +306,7 @@ Endpoint URLs must use HTTPS and resolve to public addresses. Registration and e
 Endpoint secrets use AES-256-GCM encryption at rest. Store the encryption key outside PostgreSQL. Access to the database still exposes event payloads and response history.
 
 The [Better Auth integration sketch](docs/better-auth-integration.md) describes a possible later adapter. The delivery core requires no auth instance or Better Auth identity types.
+
+## Contribute
+
+Read the [contribution guide](CONTRIBUTING.md) for local checks and pull requests. Report vulnerabilities through the [security policy](SECURITY.md).

@@ -8,7 +8,7 @@ Build a general-purpose embedded TypeScript server package for public OSS use. A
 
 V0 delivers a standalone package, explicit database setup, documentation, and a runnable example. It includes endpoint management, durable publication, HTTP delivery, signing, retries, attempt history, and replay. HTTP management routes, a browser client, a dashboard, and a Better Auth plugin remain outside v0.
 
-The intended GitHub repository is `pplytas/webhook-dispatch`, under the user's personal account. The current work is local. npm publication and public repository publication are separate release actions.
+The GitHub repository is [pplytas/webhook-dispatch](https://github.com/pplytas/webhook-dispatch), under the user's personal account. npm publication remains a separate release action.
 
 ## Interface and runtime
 

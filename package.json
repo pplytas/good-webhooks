@@ -5,6 +5,14 @@
   "description": "Build webhook delivery into your TypeScript application.",
   "license": "MIT",
   "author": "pplytas",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pplytas/webhook-dispatch.git"
+  },
+  "homepage": "https://github.com/pplytas/webhook-dispatch#readme",
+  "bugs": {
+    "url": "https://github.com/pplytas/webhook-dispatch/issues"
+  },
   "type": "module",
   "engines": {
     "node": ">=24"
@@ -27,6 +35,8 @@
     "docs",
     "examples",
     "GLOSSARY.md",
+    "CONTRIBUTING.md",
+    "SECURITY.md",
     "README.md",
     "LICENSE"
   ],
