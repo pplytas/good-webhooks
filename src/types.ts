@@ -44,7 +44,6 @@ export interface WebhookOptions<E extends EventDefinitions> {
     concurrency?: number
     leaseMs?: number
     maxResponseBytes?: number
-    pollIntervalMs?: number
   }
   retentionMs?: number
   /** Development only: permits HTTP and loopback addresses. Other private addresses remain forbidden. */
@@ -59,7 +58,6 @@ export interface ResolvedConfig {
   concurrency: number
   leaseMs: number
   maxResponseBytes: number
-  pollIntervalMs: number
   retentionMs: number
   allowLocalhost: boolean
 }
@@ -120,6 +118,7 @@ export interface DeliveryDetail extends Delivery {
 }
 export interface DeliveryQuery {
   endpointId?: string
+  eventId?: string
   status?: DeliveryStatus
   limit?: number
   before?: string

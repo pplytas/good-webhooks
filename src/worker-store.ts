@@ -97,27 +97,20 @@ export function createWorkerStore(config: ResolvedConfig) {
   async function claim(signal?: AbortSignal): Promise<ClaimedDelivery[]> {
     if (signal?.aborted) return []
     return transaction(async (client) => {
-      const endpoints = await client.query<EndpointRow & { due: Date }>(
+      const endpoints = await client.query<EndpointRow>(
         `
-        WITH candidates AS MATERIALIZED (
-          SELECT e.id, pending.due FROM webhooks.endpoints e
-          JOIN LATERAL (SELECT min(d.next_attempt_at) AS due FROM webhooks.deliveries d
-            WHERE d.endpoint_id=e.id AND d.status='pending' AND d.next_attempt_at <= now()) pending ON pending.due IS NOT NULL
-          WHERE e.status='active' AND (SELECT count(*) FROM webhooks.deliveries active
-            WHERE active.endpoint_id=e.id AND active.status='in_flight') < e.max_in_flight
-          ORDER BY pending.due,e.id LIMIT $1
-        )
-        SELECT e.id, e.url, e.secret, e.previous_secret, e.previous_secret_expires_at, e.max_in_flight, e.status,c.due
-        FROM webhooks.endpoints e JOIN candidates c ON c.id=e.id WHERE e.status='active'
-        ORDER BY e.id FOR UPDATE OF e SKIP LOCKED`,
+        SELECT e.id, e.url, e.secret, e.previous_secret, e.previous_secret_expires_at, e.max_in_flight, e.status
+        FROM webhooks.endpoints e
+        JOIN LATERAL (SELECT min(d.next_attempt_at) AS due FROM webhooks.deliveries d
+          WHERE d.endpoint_id=e.id AND d.status='pending' AND d.next_attempt_at <= now()) pending ON pending.due IS NOT NULL
+        WHERE e.status='active' AND (SELECT count(*) FROM webhooks.deliveries active
+          WHERE active.endpoint_id=e.id AND active.status='in_flight') < e.max_in_flight
+        ORDER BY pending.due,e.id LIMIT $1 FOR UPDATE OF e SKIP LOCKED`,
         [config.concurrency],
       )
       const claims: ClaimedDelivery[] = []
-      // Acquire locks by UUID, then allocate the finite batch in original due-time order.
-      const prioritized = endpoints.rows.sort(
-        (a, b) => a.due.getTime() - b.due.getTime() || a.id.localeCompare(b.id),
-      )
-      for (const endpoint of prioritized) {
+      // SKIP LOCKED never waits for another endpoint lock and lets LIMIT count available rows.
+      for (const endpoint of endpoints.rows) {
         if (signal?.aborted || claims.length >= config.concurrency) break
         const count = await client.query<{ count: number }>(
           `SELECT count(*)::int AS count FROM webhooks.deliveries
@@ -164,15 +157,6 @@ export function createWorkerStore(config: ResolvedConfig) {
           }
           const token = randomUUID()
           const attemptCount = delivery.attempt_count + 1
-          await client.query(
-            `UPDATE webhooks.deliveries SET status='in_flight', attempt_count=$2,
-            claim_token=$3, lease_expires_at=clock_timestamp()+($4 * interval '1 millisecond') WHERE id=$1`,
-            [delivery.id, attemptCount, token, config.leaseMs],
-          )
-          await client.query('INSERT INTO webhooks.attempts(delivery_id,number) VALUES($1,$2)', [
-            delivery.id,
-            attemptCount,
-          ])
           claims.push({
             id: delivery.id,
             tenantId: delivery.tenant_id,
@@ -189,13 +173,22 @@ export function createWorkerStore(config: ResolvedConfig) {
         }
       }
       if (claims.length) {
-        // Starting every lease together avoids spending early claims' leases on the rest of the batch.
-        // This is deliberately the final statement before the transaction commits.
+        // Persist attempts and start every lease together after selection and secret decryption.
+        // Endpoint and delivery locks remain held through this final statement and commit.
         await client.query(
-          `UPDATE webhooks.deliveries
-          SET lease_expires_at=statement_timestamp()+($2 * interval '1 millisecond')
-          WHERE id=ANY($1::bigint[])`,
-          [claims.map((delivery) => delivery.id), config.leaseMs],
+          `WITH claimed AS (
+            UPDATE webhooks.deliveries d SET status='in_flight',attempt_count=d.attempt_count+1,
+              claim_token=input.token,lease_expires_at=statement_timestamp()+($3 * interval '1 millisecond')
+            FROM unnest($1::bigint[],$2::uuid[]) AS input(id,token)
+            WHERE d.id=input.id RETURNING d.id,d.attempt_count
+          )
+          INSERT INTO webhooks.attempts(delivery_id,number,started_at)
+          SELECT id,attempt_count,statement_timestamp() FROM claimed`,
+          [
+            claims.map((delivery) => delivery.id),
+            claims.map((delivery) => delivery.token),
+            config.leaseMs,
+          ],
         )
       }
       return claims
@@ -260,13 +253,14 @@ export function createWorkerStore(config: ResolvedConfig) {
     })
   }
 
-  /** Delete at most 100 expired events. Active claims defer deletion to a later invocation. */
+  /** Delete at most 100 expired events. Unexpired leases defer deletion to a later invocation. */
   async function prune(): Promise<number> {
     return transaction(async (client) => {
       const candidates = await client.query<{ id: string }>(
         `SELECT id FROM webhooks.events
         WHERE created_at < now()-($1 * interval '1 millisecond')
-        AND NOT EXISTS (SELECT 1 FROM webhooks.deliveries d WHERE d.event_id=webhooks.events.id AND d.status='in_flight')
+        AND NOT EXISTS (SELECT 1 FROM webhooks.deliveries d WHERE d.event_id=webhooks.events.id
+          AND d.status='in_flight' AND d.lease_expires_at>clock_timestamp())
         ORDER BY created_at,id LIMIT 100`,
         [config.retentionMs],
       )
@@ -282,7 +276,7 @@ export function createWorkerStore(config: ResolvedConfig) {
       const eligible = await client.query<{ id: string }>(
         `SELECT e.id FROM webhooks.events e WHERE e.id=ANY($1::uuid[])
         AND NOT EXISTS (SELECT 1 FROM webhooks.deliveries d WHERE d.event_id=e.id
-          AND (d.status='in_flight' OR NOT(d.endpoint_id=ANY($2::uuid[]))))
+          AND ((d.status='in_flight' AND d.lease_expires_at>clock_timestamp()) OR NOT(d.endpoint_id=ANY($2::uuid[]))))
         ORDER BY e.id FOR UPDATE OF e SKIP LOCKED`,
         [ids, locked.rows.map((row) => row.id)],
       )

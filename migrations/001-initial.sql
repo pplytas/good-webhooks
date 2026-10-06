@@ -16,8 +16,8 @@ CREATE TABLE webhooks.endpoints (
   secret text NOT NULL,
   previous_secret text,
   previous_secret_expires_at timestamptz,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now(),
+  created_at timestamptz NOT NULL DEFAULT statement_timestamp(),
+  updated_at timestamptz NOT NULL DEFAULT statement_timestamp(),
   UNIQUE (tenant_id,id)
 );
 CREATE INDEX endpoints_tenant ON webhooks.endpoints(tenant_id,created_at,id);
@@ -29,7 +29,7 @@ CREATE TABLE webhooks.events (
   body text NOT NULL,
   fingerprint text NOT NULL,
   idempotency_key text,
-  created_at timestamptz NOT NULL DEFAULT now(),
+  created_at timestamptz NOT NULL DEFAULT statement_timestamp(),
   UNIQUE (tenant_id,id),
   UNIQUE (tenant_id,idempotency_key)
 );
@@ -42,13 +42,13 @@ CREATE TABLE webhooks.deliveries (
   event_id uuid NOT NULL,
   status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','in_flight','succeeded','failed','cancelled')),
   attempt_count integer NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
-  next_attempt_at timestamptz NOT NULL DEFAULT now(),
+  next_attempt_at timestamptz NOT NULL DEFAULT statement_timestamp(),
   claim_token uuid,
   lease_expires_at timestamptz,
   replay_of bigint REFERENCES webhooks.deliveries(id) ON DELETE CASCADE,
   last_error text,
   last_status integer,
-  created_at timestamptz NOT NULL DEFAULT now(),
+  created_at timestamptz NOT NULL DEFAULT statement_timestamp(),
   FOREIGN KEY (tenant_id,endpoint_id) REFERENCES webhooks.endpoints(tenant_id,id),
   FOREIGN KEY (tenant_id,event_id) REFERENCES webhooks.events(tenant_id,id) ON DELETE CASCADE
 );
@@ -63,7 +63,7 @@ CREATE INDEX deliveries_event ON webhooks.deliveries(event_id);
 CREATE TABLE webhooks.attempts (
   delivery_id bigint NOT NULL REFERENCES webhooks.deliveries(id) ON DELETE CASCADE,
   number integer NOT NULL CHECK (number > 0),
-  started_at timestamptz NOT NULL DEFAULT now(),
+  started_at timestamptz NOT NULL DEFAULT statement_timestamp(),
   finished_at timestamptz,
   outcome text NOT NULL DEFAULT 'started' CHECK (outcome IN ('started','succeeded','retry','failed','abandoned')),
   response_status integer,

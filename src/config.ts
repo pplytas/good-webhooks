@@ -90,13 +90,6 @@ export function resolveConfig<E extends EventDefinitions>(
       0,
       65536,
     ),
-    pollIntervalMs: integer(
-      'delivery.pollIntervalMs',
-      options.delivery?.pollIntervalMs,
-      1000,
-      10,
-      60000,
-    ),
     allowLocalhost: options.allowLocalhost ?? false,
   })
 }

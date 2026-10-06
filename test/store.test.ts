@@ -2,6 +2,8 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { randomUUID } from 'node:crypto'
 import { decryptSecret } from '../src/crypto.js'
 import { createStore } from '../src/store.js'
+import { createWorkerStore } from '../src/worker-store.js'
+import type { Database } from '../src/types.js'
 import { closeDatabase, pool, resetDatabase, testConfig } from './db.js'
 
 const config = testConfig()
@@ -168,6 +170,25 @@ describe('schema setup and endpoint management', () => {
 })
 
 describe('atomic publication', () => {
+  it('starts delivery age at publication inside an older caller transaction', async () => {
+    await store.createEndpoint('tenant-a', input)
+    const client = await pool.connect()
+    try {
+      await client.query('BEGIN')
+      await client.query('SELECT pg_sleep(1.1)')
+      await store.publish('tenant-a', event, { transaction: client })
+      await client.query('COMMIT')
+    } finally {
+      await client.query('ROLLBACK')
+      client.release()
+    }
+    const claims = await createWorkerStore(testConfig({ maxAgeMs: 1000 })).claim()
+    expect(claims).toHaveLength(1)
+    expect(claims[0]!.createdAt.getTime()).toBeGreaterThanOrEqual(
+      claims[0]!.eventCreatedAt.getTime(),
+    )
+  })
+
   it('fans out only to matching tenant subscriptions, includes paused endpoints, and excludes deleted endpoints', async () => {
     await store.createEndpoint('tenant-a', input)
     const paused = await store.createEndpoint('tenant-a', input)
@@ -363,6 +384,40 @@ describe('history, deletion and replay', () => {
       responseBody: 'temporarily unavailable',
       error: 'HTTP 503',
     })
+  })
+
+  it('reads delivery state and attempts from the same snapshot while a worker completes', async () => {
+    const { delivery } = await queued()
+    const workerStore = createWorkerStore(config)
+    let advanced = false
+    const database: Database = {
+      connect: () => pool.connect(),
+      async query(text, values) {
+        const result = await pool.query(text, values)
+        if (!advanced && text.includes('FROM webhooks.deliveries')) {
+          advanced = true
+          const [claim] = await workerStore.claim()
+          await workerStore.complete(claim!, {
+            status: 200,
+            responseBody: 'accepted',
+            error: null,
+            retryable: false,
+          })
+        }
+        return result
+      },
+    }
+    const history = await createStore(testConfig({ database })).getDelivery('tenant-a', delivery.id)
+    expect(advanced).toBe(true)
+    expect(history).toMatchObject({ status: 'pending', attemptCount: 0, attempts: [] })
+    const completed = await store.getDelivery('tenant-a', delivery.id)
+    expect(completed).toMatchObject({
+      status: 'succeeded',
+      attemptCount: 1,
+      attempts: [{ number: 1, outcome: 'succeeded' }],
+    })
+    expect(completed.attempts[0]!.startedAt).toBeInstanceOf(Date)
+    expect(completed.attempts[0]!.finishedAt).toBeInstanceOf(Date)
   })
 
   it('cancels pending and inflight delivery, closes attempts, and fences stale worker writes on deletion', async () => {

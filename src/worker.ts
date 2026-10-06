@@ -113,15 +113,11 @@ export function createWorker(config: ResolvedConfig) {
   }): Promise<void> {
     if (running || ticking)
       throw new WebhookError('INVALID_STATE', 'This worker is already running.')
-    const pollIntervalMs = options.pollIntervalMs ?? config.pollIntervalMs
-    if (
-      !Number.isSafeInteger(pollIntervalMs) ||
-      pollIntervalMs < 1 ||
-      pollIntervalMs > 2_147_483_647
-    ) {
+    const pollIntervalMs = options.pollIntervalMs ?? 1000
+    if (!Number.isSafeInteger(pollIntervalMs) || pollIntervalMs < 10 || pollIntervalMs > 60_000) {
       throw new WebhookError(
         'INVALID_INPUT',
-        'The polling interval must be an integer between 1 and 2147483647 milliseconds.',
+        'The polling interval must be an integer between 10 and 60000 milliseconds.',
       )
     }
     running = true

@@ -144,7 +144,9 @@ function signatureError(): WebhookError {
   )
 }
 
-function readHeaders(headers: Headers | Record<string, string | undefined>): Map<string, string> {
+function readHeaders(
+  headers: Headers | Record<string, string | string[] | undefined>,
+): Map<string, string> {
   const result = new Map<string, string>()
   if (!headers || typeof headers !== 'object') throw signatureError()
   const entries = headers instanceof Headers ? headers.entries() : Object.entries(headers)
@@ -160,7 +162,7 @@ function readHeaders(headers: Headers | Record<string, string | undefined>): Map
 /** Verify the exact request body before parsing JSON. The host must deduplicate webhook-id. */
 export function verifyWebhook(input: {
   body: string | Uint8Array
-  headers: Headers | Record<string, string | undefined>
+  headers: Headers | Record<string, string | string[] | undefined>
   secret: string | readonly string[]
   now?: Date
   toleranceSeconds?: number

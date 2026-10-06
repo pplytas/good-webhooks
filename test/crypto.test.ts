@@ -25,6 +25,17 @@ const headers = {
 }
 
 describe('Standard Webhooks signatures', () => {
+  it('accepts unrelated Node header arrays and rejects arrays in signing headers', () => {
+    expect(() =>
+      verifyWebhook({ body, headers: { ...headers, 'set-cookie': ['a', 'b'] }, secret, now }),
+    ).not.toThrow()
+    for (const name of ['webhook-id', 'webhook-timestamp', 'webhook-signature'] as const) {
+      expect(() =>
+        verifyWebhook({ body, headers: { ...headers, [name]: [headers[name]!] }, secret, now }),
+      ).toThrow()
+    }
+  })
+
   it('matches an independent published test vector', () => {
     expect(signWebhook({ id, timestamp, body, secrets: [secret] })).toEqual(headers)
     expect(() => verifyWebhook({ body, headers, secret, now })).not.toThrow()

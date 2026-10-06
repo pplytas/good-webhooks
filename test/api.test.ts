@@ -14,6 +14,50 @@ beforeEach(resetDatabase)
 afterAll(closeDatabase)
 
 describe('public server API', () => {
+  it('finds a publication across endpoints without mixing other events or tenants', async () => {
+    const app = createWebhooks(options)
+    const tenant = app.forTenant({ id: 'tenant-a' })
+    const endpoints = await Promise.all(
+      [1, 2].map(() =>
+        tenant.endpoints.create({
+          url: 'http://127.0.0.1:12345',
+          eventTypes: ['order.created'],
+        }),
+      ),
+    )
+    const event = { type: 'order.created' as const, data: { id: 'o1', total: 1 } }
+    const published = await tenant.publish(event)
+    await tenant.publish(event)
+    const first = await tenant.deliveries.list({ eventId: published.eventId, limit: 1 })
+    expect(first.items).toHaveLength(1)
+    expect(first.items[0]!.eventId).toBe(published.eventId)
+    const second = await tenant.deliveries.list({
+      eventId: published.eventId,
+      before: first.nextCursor!,
+      limit: 1,
+    })
+    expect(second.items).toHaveLength(1)
+    expect(second.items[0]!.eventId).toBe(published.eventId)
+    expect(second.items[0]!.id).not.toBe(first.items[0]!.id)
+    expect(second.nextCursor).toBeNull()
+    expect(
+      (
+        await tenant.deliveries.list({
+          eventId: published.eventId,
+          endpointId: endpoints[0]!.endpoint.id,
+          status: 'pending',
+        })
+      ).items,
+    ).toHaveLength(1)
+    expect(
+      (await app.forTenant({ id: 'tenant-b' }).deliveries.list({ eventId: published.eventId }))
+        .items,
+    ).toEqual([])
+    await expect(tenant.deliveries.list({ eventId: 'invalid' })).rejects.toMatchObject({
+      code: 'INVALID_INPUT',
+    })
+  })
+
   it('construction does not connect or start a worker', () => {
     const database = { query: vi.fn(), connect: vi.fn() } as unknown as Database
     const webhooks = createWebhooks({ ...options, database })

@@ -33,12 +33,6 @@ let appliedCount = 0
 let signingSecret = ''
 let endpointId: string | undefined
 
-function header(request: IncomingMessage, name: string): string | undefined {
-  const value = request.headers[name]
-  assert(!Array.isArray(value), `Duplicate ${name} header`)
-  return value
-}
-
 async function receive(request: IncomingMessage, response: ServerResponse): Promise<void> {
   const chunks: Buffer[] = []
   for await (const chunk of request) chunks.push(Buffer.from(chunk))
@@ -46,15 +40,11 @@ async function receive(request: IncomingMessage, response: ServerResponse): Prom
   verifyWebhook({
     body,
     secret: signingSecret,
-    headers: {
-      'webhook-id': header(request, 'webhook-id'),
-      'webhook-timestamp': header(request, 'webhook-timestamp'),
-      'webhook-signature': header(request, 'webhook-signature'),
-    },
+    headers: request.headers,
   })
   const event: { id: string; type: string; data: { invoiceId: string; amount: number } } =
     JSON.parse(body.toString('utf8'))
-  assert.equal(event.id, header(request, 'webhook-id'))
+  assert.equal(event.id, request.headers['webhook-id'])
   assert.equal(event.type, 'invoice.paid')
   receivedIds.push(event.id)
   if (receivedIds.length === 1) {
@@ -134,7 +124,7 @@ try {
   assert.equal(duplicate.duplicate, true)
   console.log('Event accepted:', publication.eventId)
 
-  const [delivery] = (await tenant.deliveries.list()).items
+  const [delivery] = (await tenant.deliveries.list({ eventId: publication.eventId })).items
   assert(delivery)
   await webhooks.worker.tick()
   const afterFailure = await tenant.deliveries.get(delivery.id)

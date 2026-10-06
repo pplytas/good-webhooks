@@ -1,9 +1,12 @@
 import { Pool } from 'pg'
 import { z } from 'zod'
 import { createWebhooks } from '../src/index.js'
+import { verifyWebhook } from '../src/verify.js'
+import type { IncomingMessage } from 'node:http'
 
 // Compiled, never executed. These assertions test the consumer's public TypeScript experience.
-function consumerTypes() {
+function consumerTypes(request: IncomingMessage) {
+  verifyWebhook({ body: Buffer.from('{}'), headers: request.headers, secret: 'test-only' })
   const app = createWebhooks({
     database: new Pool(),
     encryptionKey: new Uint8Array(32),
@@ -13,6 +16,7 @@ function consumerTypes() {
     },
   })
   const tenant = app.forTenant({ id: 'customer-1' })
+  tenant.deliveries.list({ eventId: '00000000-0000-0000-0000-000000000001' })
   tenant.publish({ type: 'order.created', data: { id: 'o1', total: 1 } })
   tenant.endpoints.create({ url: 'https://example.com/hook', eventTypes: ['order.created'] })
   // @ts-expect-error event names are inferred, not arbitrary strings

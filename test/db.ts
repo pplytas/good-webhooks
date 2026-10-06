@@ -32,7 +32,6 @@ export function testConfig(overrides: Partial<ResolvedConfig> = {}): ResolvedCon
     concurrency: 2,
     leaseMs: 5000,
     maxResponseBytes: 1024,
-    pollIntervalMs: 10,
     retentionMs: 86_400_000,
     allowLocalhost: true,
     ...overrides,

@@ -90,6 +90,34 @@ afterEach(async () => {
 afterAll(closeDatabase)
 
 describe('worker delivery durability', () => {
+  it('skips an endpoint locked by publication and delivers another tenant in the same tick', async () => {
+    const received: string[] = []
+    const url = await receiver((request, response) => {
+      received.push(request.url!)
+      request.resume()
+      response.end('ok')
+    })
+    const store = createStore(testConfig())
+    for (const id of ['tenant-a', 'tenant-b']) {
+      await store.createEndpoint(id, { url: `${url}/${id}`, eventTypes: ['test.sent'] })
+      await store.publish(id, { type: 'test.sent', data: {} })
+    }
+    await pool.query(
+      "UPDATE webhooks.deliveries SET next_attempt_at=now()-interval '1 minute' WHERE tenant_id='tenant-a'",
+    )
+    const client = await pool.connect()
+    try {
+      await client.query('BEGIN')
+      await store.publish('tenant-a', { type: 'test.sent', data: {} }, { transaction: client })
+      const result = await createWorker(testConfig({ concurrency: 1 })).tick()
+      expect(result).toMatchObject({ claimed: 1, succeeded: 1 })
+      expect(received).toEqual(['/webhook/tenant-b'])
+    } finally {
+      await client.query('ROLLBACK')
+      client.release()
+    }
+  })
+
   it('persists the started attempt before HTTP and signs exactly the persisted body', async () => {
     const received = deferred<{ body: string; headers: IncomingMessage['headers'] }>()
     const finish = deferred()
@@ -117,7 +145,7 @@ describe('worker delivery durability', () => {
     expect(request.body).toBe(delivery!.body)
     verifyWebhook({
       body: request.body,
-      headers: request.headers as Record<string, string>,
+      headers: request.headers,
       secret,
     })
     expect(request.headers['webhook-id']).toBe(delivery!.eventId)
@@ -375,9 +403,9 @@ describe('worker delivery durability', () => {
     })
   })
 
-  it('refreshes every lease after a slow multirow claim transaction', async () => {
+  it('starts all leases together after slow selection and persists attempts before returning', async () => {
     await fixture('http://127.0.0.1:12345', 3, 3)
-    let delayedInserts = 0
+    let delayedSelections = 0
     const database: Database = {
       query: pool.query.bind(pool),
       async connect() {
@@ -386,9 +414,9 @@ describe('worker delivery durability', () => {
           release: () => client.release(),
           async query<R extends Record<string, unknown>>(text: string, values?: unknown[]) {
             const result = await client.query<R>(text, values)
-            if (text.startsWith('INSERT INTO webhooks.attempts')) {
-              delayedInserts++
-              await new Promise((resolve) => setTimeout(resolve, 150))
+            if (text.includes('FOR UPDATE OF d SKIP LOCKED')) {
+              delayedSelections++
+              await new Promise((resolve) => setTimeout(resolve, 450))
             }
             return result
           },
@@ -399,13 +427,16 @@ describe('worker delivery durability', () => {
       testConfig({ database, concurrency: 3, timeoutMs: 40, leaseMs: 100 }),
     )
     const claims = await storage.claim()
-    expect(delayedInserts).toBe(3)
+    expect(delayedSelections).toBe(1)
     expect(claims).toHaveLength(3)
     const leases = await pool.query<{ live: boolean; lease_expires_at: Date }>(
       'SELECT lease_expires_at>clock_timestamp() AS live,lease_expires_at FROM webhooks.deliveries',
     )
     expect(leases.rows.every((row) => row.live)).toBe(true)
     expect(new Set(leases.rows.map((row) => row.lease_expires_at.getTime())).size).toBe(1)
+    const attempts = await pool.query('SELECT * FROM webhooks.attempts')
+    expect(attempts.rows).toHaveLength(3)
+    expect(attempts.rows.every((row) => row.outcome === 'started')).toBe(true)
     const outcomes = await Promise.all(
       claims.map((claim) =>
         storage.complete(claim, {
@@ -565,6 +596,29 @@ describe('worker delivery durability', () => {
     expect((await pool.query('SELECT * FROM webhooks.deliveries')).rows).toEqual([])
   })
 
+  it('prunes expired history with an expired lease and fences its stale completion', async () => {
+    const {
+      deliveries: [delivery],
+    } = await fixture('http://127.0.0.1:12345')
+    const storage = createWorkerStore(testConfig())
+    const [claim] = await storage.claim()
+    await pool.query("UPDATE webhooks.events SET created_at=now()-interval '2 days'")
+    await expire(claim!)
+    expect(await createWorker(testConfig()).prune()).toBe(1)
+    expect(
+      (await pool.query('SELECT id FROM webhooks.events WHERE id=$1', [delivery!.eventId])).rows,
+    ).toEqual([])
+    expect((await pool.query('SELECT * FROM webhooks.attempts')).rows).toEqual([])
+    expect(
+      await storage.complete(claim!, {
+        status: 200,
+        responseBody: 'ok',
+        error: null,
+        retryable: false,
+      }),
+    ).toBe('stale')
+  })
+
   it('prunes expired events in bounded batches and defers active claims', async () => {
     const {
       deliveries: [delivery],
@@ -585,6 +639,19 @@ describe('worker delivery durability', () => {
 })
 
 describe('explicit worker lifecycle', () => {
+  it('validates the single polling option before starting the loop', async () => {
+    const signal = AbortSignal.abort()
+    const worker = createWorker(testConfig())
+    for (const pollIntervalMs of [1, 5, 60_001, NaN, 10.5]) {
+      await expect(worker.run({ signal, pollIntervalMs })).rejects.toMatchObject({
+        code: 'INVALID_INPUT',
+      })
+    }
+    for (const pollIntervalMs of [10, 1000, 60_000]) {
+      await worker.run({ signal, pollIntervalMs })
+    }
+  })
+
   it('does not connect or start polling on construction or with an aborted signal', async () => {
     const database = { query: vi.fn(), connect: vi.fn() }
     const worker = createWorker(testConfig({ database }))

@@ -53,11 +53,11 @@ interface DeliveryRow extends Record<string, unknown> {
   last_error: string | null
   last_status: number | null
 }
-interface AttemptRow extends Record<string, unknown> {
-  number: number
-  started_at: Date
+interface DeliveryHistoryRow extends DeliveryRow {
+  number: number | null
+  started_at: Date | null
   finished_at: Date | null
-  outcome: Attempt['outcome']
+  outcome: Attempt['outcome'] | null
   response_status: number | null
   response_body: string | null
   error: string | null
@@ -482,6 +482,11 @@ export function createStore(config: ResolvedConfig) {
     tenant(tenantId)
     object(query, 'Delivery query')
     if (query.endpointId !== undefined) endpointId(query.endpointId)
+    if (
+      query.eventId !== undefined &&
+      (typeof query.eventId !== 'string' || !UUID.test(query.eventId))
+    )
+      invalid('Event id must be a UUID.')
     if (query.before !== undefined) deliveryId(query.before)
     if (query.status !== undefined && !DELIVERY_STATUSES.has(query.status))
       invalid('Unknown delivery status.')
@@ -489,8 +494,15 @@ export function createStore(config: ResolvedConfig) {
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100)
       invalid('Delivery list limit must be an integer from 1 to 100.')
     const { rows } = await config.database.query<DeliveryRow>(
-      `SELECT ${DELIVERY_FIELDS} FROM webhooks.deliveries WHERE tenant_id=$1 AND ($2::uuid IS NULL OR endpoint_id=$2) AND ($3::text IS NULL OR status=$3) AND ($4::bigint IS NULL OR id<$4) ORDER BY id DESC LIMIT $5`,
-      [tenantId, query.endpointId ?? null, query.status ?? null, query.before ?? null, limit + 1],
+      `SELECT ${DELIVERY_FIELDS} FROM webhooks.deliveries WHERE tenant_id=$1 AND ($2::uuid IS NULL OR endpoint_id=$2) AND ($3::text IS NULL OR status=$3) AND ($4::bigint IS NULL OR id<$4) AND ($6::uuid IS NULL OR event_id=$6) ORDER BY id DESC LIMIT $5`,
+      [
+        tenantId,
+        query.endpointId ?? null,
+        query.status ?? null,
+        query.before ?? null,
+        limit + 1,
+        query.eventId ?? null,
+      ],
     )
     const items = rows.slice(0, limit).map(delivery)
     return { items, nextCursor: rows.length > limit ? items.at(-1)!.id : null }
@@ -499,26 +511,32 @@ export function createStore(config: ResolvedConfig) {
   async function getDelivery(tenantId: string, id: string): Promise<DeliveryDetail> {
     tenant(tenantId)
     deliveryId(id)
-    const { rows } = await config.database.query<DeliveryRow>(
-      `SELECT ${DELIVERY_FIELDS} FROM webhooks.deliveries WHERE tenant_id=$1 AND id=$2`,
+    const { rows } = await config.database.query<DeliveryHistoryRow>(
+      `WITH delivery AS (
+        SELECT ${DELIVERY_FIELDS} FROM webhooks.deliveries WHERE tenant_id=$1 AND id=$2
+      )
+      SELECT d.*,a.number,a.started_at,a.finished_at,a.outcome,a.response_status,a.response_body,a.error
+      FROM delivery d LEFT JOIN webhooks.attempts a ON a.delivery_id=d.id::bigint ORDER BY a.number`,
       [tenantId, id],
     )
     if (!rows[0]) throw new WebhookError('NOT_FOUND', 'Delivery not found in this tenant.')
-    const attempts = await config.database.query<AttemptRow>(
-      'SELECT a.number,a.started_at,a.finished_at,a.outcome,a.response_status,a.response_body,a.error FROM webhooks.attempts a JOIN webhooks.deliveries d ON d.id=a.delivery_id WHERE d.tenant_id=$1 AND d.id=$2 ORDER BY a.number',
-      [tenantId, id],
-    )
     return {
       ...delivery(rows[0]),
-      attempts: attempts.rows.map((row) => ({
-        number: row.number,
-        startedAt: row.started_at,
-        finishedAt: row.finished_at,
-        outcome: row.outcome,
-        responseStatus: row.response_status,
-        responseBody: row.response_body,
-        error: row.error,
-      })),
+      attempts: rows.flatMap((row) =>
+        row.number === null
+          ? []
+          : [
+              {
+                number: row.number,
+                startedAt: row.started_at!,
+                finishedAt: row.finished_at,
+                outcome: row.outcome!,
+                responseStatus: row.response_status,
+                responseBody: row.response_body,
+                error: row.error,
+              },
+            ],
+      ),
     }
   }
 

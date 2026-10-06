@@ -4,6 +4,8 @@ An embedded TypeScript package for outbound webhooks. Your application publishes
 
 This is an unpublished v0 prototype. The package name is provisional. It requires Node.js 24 or later and PostgreSQL 16 or later.
 
+The package ships ESM. On Node.js 24+, both `import` and CommonJS `require()` load the same build.
+
 ## Try the example
 
 The [runnable example](examples/basic/demo.ts) registers a local receiver, rolls back one publication, then delivers a committed event. The receiver returns `503` once, verifies every signature, and accepts the retry. The example then inspects attempts and replays the delivery.
@@ -158,6 +160,7 @@ process.once('SIGINT', () => stop.abort())
 try {
   await webhooks.worker.run({
     signal: stop.signal,
+    pollIntervalMs: 1000,
     onError: (error) => console.error('Webhook worker failed:', error),
   })
 } finally {
@@ -168,6 +171,8 @@ try {
 Each worker claims work through PostgreSQL leases. Multiple processes can share the database. A worker holds no database transaction open during HTTP requests. Shutdown aborts active requests, whose receiver outcomes may be unknown.
 
 Without `onError`, an unexpected worker error rejects `run()`. With `onError`, the worker reports the error and continues polling. Receiver failures appear in delivery records.
+
+Set `pollIntervalMs` on `worker.run()` only. It defaults to 1,000 ms and accepts integers from 10 to 60,000 ms. `tick()` processes one batch without polling.
 
 Delivery is bounded and may occur more than once. There is no exactly-once or ordering guarantee. Receivers must deduplicate `webhook-id`. Retries and manual replays preserve the event ID and body.
 
@@ -188,7 +193,7 @@ Defaults are:
 
 The worker retries network failures, `408`, `425`, `429`, and `5xx` responses within its attempt and age limits. A `2xx` response succeeds. Other responses fail without a retry. Redirects are never followed.
 
-History cleanup is explicit. Schedule `await webhooks.worker.prune()` from your application. Each call deletes at most 100 expired events with their deliveries and attempts. Active claims defer deletion. Neither `tick()` nor `run()` prunes history automatically.
+History cleanup is explicit. Schedule `await webhooks.worker.prune()` from your application. Each call deletes at most 100 expired events with their deliveries and attempts. Unexpired worker leases defer deletion. An expired lease does not prevent cleanup, even if its worker never recovers. Neither `tick()` nor `run()` prunes history automatically.
 
 ## Manage endpoints and deliveries
 
@@ -204,7 +209,7 @@ await tenant.endpoints.resume(endpoint.id)
 const rotated = await tenant.endpoints.rotateSecret(endpoint.id, { graceMs: 3_600_000 })
 // Give rotated.secret to the receiver before the overlap expires.
 
-const page = await tenant.deliveries.list({ endpointId: endpoint.id, limit: 25 })
+const page = await tenant.deliveries.list({ eventId: publication.eventId, limit: 25 })
 const delivery = page.items[0]
 if (delivery) {
   const detail = await tenant.deliveries.get(delivery.id)
@@ -224,6 +229,8 @@ Signing-secret rotation accepts an overlap of zero to 24 hours and defaults to 2
 A replay creates a new delivery for an original `succeeded` or `failed` delivery. It requires an active endpoint and an event within the retention window. Only one pending or in-flight replay per original delivery is allowed. Replays use the endpoint's current URL and signing secret.
 
 Endpoint lists include at most 1,000 nondeleted endpoints per tenant, which is also the creation limit. Delivery lists use descending ID cursors. Pass `page.nextCursor` as `before` to fetch the next page. Delivery IDs are strings.
+
+Filter delivery history by `eventId` from a publication, `endpointId`, or `status`. Filters can be combined. Delivery detail reads status and attempt history from one database snapshot.
 
 Expected operation errors are `WebhookError` instances with a `code`, such as `NOT_FOUND`, `INVALID_INPUT`, `INVALID_STATE`, `IDEMPOTENCY_CONFLICT`, or `REPLAY_IN_PROGRESS`. Infrastructure failures may be ordinary errors. Treat tenant-owned response history as sensitive application data.
 
