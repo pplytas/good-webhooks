@@ -13,7 +13,7 @@ A later plugin would select the appropriate scope from a verified session and ch
 The following sketch shows the boundary with application-defined authorization functions. The function names do not represent Better Auth APIs:
 
 ```ts
-import type { EndpointInput } from '@pplytas/webhooks'
+import type { EndpointInput } from 'webhook-dispatch'
 import { events, webhooks } from './application-webhooks.js'
 
 type AuthorizedContext = { type: 'user' | 'organization'; id: string }

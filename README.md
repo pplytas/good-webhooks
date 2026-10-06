@@ -1,8 +1,10 @@
-# @pplytas/webhooks
+# Webhook Dispatch
+
+Build webhook delivery into your TypeScript application.
 
 An embedded TypeScript package for outbound webhooks. Your application publishes typed events to PostgreSQL. An explicit worker delivers signed HTTP requests, records attempts, and retries failures.
 
-This is an unpublished v0 prototype. The package name is provisional. It requires Node.js 24 or later and PostgreSQL 16 or later.
+This is an unpublished v0 package. It requires Node.js 24 or later and PostgreSQL 16 or later.
 
 The package ships ESM. On Node.js 24+, both `import` and CommonJS `require()` load the same build.
 
@@ -46,7 +48,7 @@ npm pack
 Install that archive in your application:
 
 ```sh
-npm install /absolute/path/to/pplytas-webhooks-0.0.0.tgz pg zod
+npm install /absolute/path/to/webhook-dispatch-0.0.0.tgz pg zod
 npm install --save-dev @types/pg
 ```
 
@@ -57,7 +59,7 @@ npm install --save-dev @types/pg
 Generate an encryption key once, then store it in your secret manager:
 
 ```sh
-node --input-type=module -e 'import { generateEncryptionKey } from "@pplytas/webhooks"; console.log(generateEncryptionKey())'
+node --input-type=module -e 'import { generateEncryptionKey } from "webhook-dispatch"; console.log(generateEncryptionKey())'
 ```
 
 Keep the same key across application and worker instances. Replacing it makes existing endpoint secrets unreadable. Automated encryption-key rotation is outside v0.
@@ -79,7 +81,7 @@ export const events = {
 Configure the producer with that map:
 
 ```ts
-import { createWebhooks } from '@pplytas/webhooks'
+import { createWebhooks } from 'webhook-dispatch'
 import { Pool } from 'pg'
 import { events } from './events.js'
 
@@ -99,7 +101,7 @@ Construction starts no background work and applies no DDL. `check()` checks the 
 For an installed package, resolve its SQL migration through the exported path:
 
 ```sh
-node --input-type=module -e 'import { readFile } from "node:fs/promises"; process.stdout.write(await readFile(new URL(import.meta.resolve("@pplytas/webhooks/migrations/001-initial.sql")), "utf8"))' > 001-webhooks.sql
+node --input-type=module -e 'import { readFile } from "node:fs/promises"; process.stdout.write(await readFile(new URL(import.meta.resolve("webhook-dispatch/migrations/001-initial.sql")), "utf8"))' > 001-webhooks.sql
 psql "$DATABASE_URL" --single-transaction -v ON_ERROR_STOP=1 -f 001-webhooks.sql
 ```
 
@@ -274,7 +276,7 @@ Expected operation errors are `WebhookError` instances with a `code`, such as `N
 The package implements the [Standard Webhooks symmetric signing format](https://github.com/standard-webhooks/standard-webhooks/blob/main/spec/standard-webhooks.md) with Node.js crypto. It does not depend on the `standardwebhooks` npm package or Better Auth.
 
 ```ts
-import { parseWebhook } from '@pplytas/webhooks/verify'
+import { parseWebhook } from 'webhook-dispatch/verify'
 import { events } from './events.js'
 
 // Read the original bytes through your framework's bounded body reader.

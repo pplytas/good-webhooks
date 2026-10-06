@@ -1,8 +1,8 @@
 {
-  "name": "@pplytas/webhooks",
+  "name": "webhook-dispatch",
   "version": "0.0.0",
   "private": true,
-  "description": "Embedded, durable outbound webhooks for TypeScript and PostgreSQL.",
+  "description": "Build webhook delivery into your TypeScript application.",
   "license": "MIT",
   "author": "pplytas",
   "type": "module",

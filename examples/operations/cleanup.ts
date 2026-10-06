@@ -1,4 +1,4 @@
-import { createWebhooks } from '@pplytas/webhooks'
+import { createWebhooks } from 'webhook-dispatch'
 import { Pool } from 'pg'
 import { errorDetails, readOperationsConfig } from './config.ts'
 

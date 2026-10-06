@@ -143,6 +143,7 @@ function postgresCode(error: unknown): string | undefined {
 
 /** Endpoint mutations and event fanout serialize within each scope, including caller-owned transactions. */
 async function lockScope(client: SqlClient, scopeKey: string): Promise<void> {
+  // Keep this database lock namespace stable across package renames.
   await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
     `@pplytas/webhooks:scope:${scopeKey}`,
   ])

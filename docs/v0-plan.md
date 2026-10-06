@@ -1,6 +1,6 @@
-# Webhook library v0
+# Webhook Dispatch v0
 
-Status: accepted, 6 October 2026. Working package name: `@pplytas/webhooks`.
+Status: accepted, 6 October 2026. Approved name: Webhook Dispatch. Package and repository slug: `webhook-dispatch`.
 
 ## Product scope
 
@@ -8,7 +8,7 @@ Build a general-purpose embedded TypeScript server package for public OSS use. A
 
 V0 delivers a standalone package, explicit database setup, documentation, and a runnable example. It includes endpoint management, durable publication, HTTP delivery, signing, retries, attempt history, and replay. HTTP management routes, a browser client, a dashboard, and a Better Auth plugin remain outside v0.
 
-Any GitHub repository for this project belongs to the user's personal account, `pplytas`. The current work is local. npm publication and public repository publication are separate release actions.
+The intended GitHub repository is `pplytas/webhook-dispatch`, under the user's personal account. The current work is local. npm publication and public repository publication are separate release actions.
 
 ## Interface and runtime
 
@@ -43,4 +43,4 @@ Worker execution, PostgreSQL transactions, and migration ownership remain explic
 5. Verify payload validation, unsafe destinations, bounded responses, signature interoperability, and cancellation.
 6. Review correctness and API usability independently with subagents. Resolve substantive findings before completion.
 
-Package branding and public release metadata remain provisional. Production operations and downstream integration are not implied by local acceptance checks.
+The approved tagline is "Build webhook delivery into your TypeScript application." Public release remains a separate milestone. Production operations and downstream integration are not implied by local acceptance checks.
