@@ -1,0 +1,3 @@
+# Read authoritative endpoints through an injected management provider
+
+Senders obtain recipient IDs and current endpoint configuration through a framework-independent provider supplied by the host. The Better Auth integration implements that interface through the configured adapter, while standalone applications use their own management provider, keeping Better Auth dependencies and physical storage formats outside the delivery core. Separate workers initialize the provider with management database access and decryption configuration; a built-in remote management service and replicated endpoint cache are deferred.

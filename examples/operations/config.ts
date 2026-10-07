@@ -58,7 +58,20 @@ export function readOperationsConfig(
 }
 
 /** Log operational errors without dumping configuration, payloads, or signing material. */
-export function errorDetails(error: unknown): { name: string; message: string; code?: string } {
+interface ErrorDetails {
+  name: string
+  message: string
+  code?: string
+  causes?: ErrorDetails[]
+}
+export function errorDetails(error: unknown): ErrorDetails {
+  const details = singleErrorDetails(error)
+  if (error instanceof AggregateError)
+    details.causes = error.errors.slice(0, 10).map(singleErrorDetails)
+  return details
+}
+
+function singleErrorDetails(error: unknown): ErrorDetails {
   return {
     name: error instanceof Error ? error.name : 'Error',
     message: error instanceof Error ? error.message : 'Unexpected non-Error failure.',

@@ -1,7 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import { createWebhooks } from '../src/index.js'
-import { signWebhook } from '../src/crypto.js'
+import { decryptSecret, signWebhook } from '../src/crypto.js'
 import { parseWebhook } from '../src/verify.js'
 import { events } from '../examples/basic/events.js'
 import type { Database } from '../src/types.js'
@@ -99,6 +99,27 @@ describe('public server API', () => {
     expect(database.query).not.toHaveBeenCalled()
   })
 
+  it('copies the standalone management encryption key before later caller mutation', async () => {
+    const key = new Uint8Array(32).fill(7)
+    const app = createWebhooks({ ...options, encryptionKey: key })
+    key.fill(0)
+    const created = await app.endpoints.create({
+      url: 'http://127.0.0.1:12345',
+      eventTypes: ['order.created'],
+    })
+    const row = (
+      await pool.query('SELECT secret FROM webhooks_management.endpoints WHERE id=$1', [
+        created.endpoint.id,
+      ])
+    ).rows[0]!
+    expect(decryptSecret(row.secret, new Uint8Array(32).fill(7))).toBe(created.secret)
+    expect(created.endpoint).not.toHaveProperty('maxInFlight')
+    expect(await app.deliverySettings.get(created.endpoint.id)).toEqual({ maxInFlight: 2 })
+    expect(await app.deliverySettings.set(created.endpoint.id, { maxInFlight: 4 })).toEqual({
+      maxInFlight: 4,
+    })
+  })
+
   it('reports missing schema with an actionable code', async () => {
     await pool.query('DROP SCHEMA webhooks CASCADE')
     await expect(createWebhooks(options).check()).rejects.toMatchObject({ code: 'SCHEMA_MISMATCH' })
@@ -168,7 +189,7 @@ describe('public server API', () => {
     const scope = createWebhooks(options).forScope({ type: 'account', id: 'scope-a' })
     await expect(
       scope.endpoints.create({ url: 'http://localhost:12345', eventTypes: ['missing'] } as never),
-    ).rejects.toThrow(/eventTypes/)
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
     await expect(scope.publish({ type: 'missing', data: {} } as never)).rejects.toMatchObject({
       code: 'INVALID_INPUT',
     })

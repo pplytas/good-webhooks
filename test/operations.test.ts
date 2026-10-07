@@ -5,9 +5,15 @@ import { createServer as createTcpServer, type Server, type Socket } from 'node:
 import { fileURLToPath } from 'node:url'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { createStore } from '../src/store.js'
 import { createWorkerStore } from '../src/worker-store.js'
-import { closeDatabase, pool, resetDatabase, testConfig } from './db.js'
+import {
+  closeDatabase,
+  pool,
+  resetDatabase,
+  testConfig,
+  testStore as createStore,
+  testScopeKey,
+} from './db.js'
 
 const cwd = fileURLToPath(new URL('..', import.meta.url))
 const databaseUrl =
@@ -148,9 +154,9 @@ async function queued(url = 'http://127.0.0.1:19001/hooks') {
 async function expired(count: number): Promise<void> {
   await pool.query(
     `INSERT INTO webhooks.events(id,scope_key,type,body,fingerprint,created_at)
-    SELECT gen_random_uuid(),'operations','invoice.paid','{}','fixture',now()-interval '8 days'
+    SELECT gen_random_uuid(),$2,'invoice.paid','{}','fixture',now()-interval '8 days'
     FROM generate_series(1,$1::integer)`,
-    [count],
+    [count, testScopeKey('operations')],
   )
 }
 
@@ -227,7 +233,7 @@ describe('worker process lifecycle', () => {
     expect(await running.result).toEqual({ code: 1, signal: null })
     expect(running.stdout).toContain('webhooks.worker.started')
     expect(records(running.stderr)).toContainEqual(
-      expect.objectContaining({ code: 'INVALID_CONFIG', phase: 'run' }),
+      expect.objectContaining({ name: 'AggregateError', phase: 'run' }),
     )
     expect(
       (
@@ -285,7 +291,7 @@ describe('worker process lifecycle', () => {
     const lock = await pool.connect()
     try {
       await lock.query('BEGIN')
-      await lock.query('LOCK TABLE webhooks.endpoints IN ACCESS EXCLUSIVE MODE')
+      await lock.query('LOCK TABLE webhooks.endpoint_state IN ACCESS EXCLUSIVE MODE')
       const running = example('worker', { WEBHOOK_DB_STATEMENT_TIMEOUT_MS: '5000' })
       await ready(running)
       let pid: number | undefined
@@ -506,7 +512,10 @@ describe('bounded cleanup process', () => {
     const lock = await pool.connect()
     try {
       await lock.query('BEGIN')
-      await lock.query('SELECT id FROM webhooks.endpoints WHERE id=$1 FOR UPDATE', [endpoint.id])
+      await lock.query(
+        'SELECT endpoint_id FROM webhooks.endpoint_state WHERE endpoint_id=$1 FOR UPDATE',
+        [endpoint.id],
+      )
       const running = example('cleanup')
       expect(await running.result).toEqual({ code: 0, signal: null })
       expect(records(running.stdout)).toContainEqual({

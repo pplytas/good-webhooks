@@ -203,7 +203,7 @@ describe('optional scope isolation', () => {
     }
   })
 
-  it('rejects cross-scope endpoint, event, and replay relationships in PostgreSQL', async () => {
+  it('rejects cross-scope delivery coordination, event, and replay relationships in PostgreSQL', async () => {
     const [app, user] = clients()
     const first = await app!.endpoints.create(endpointInput)
     const second = await user!.endpoints.create(endpointInput)

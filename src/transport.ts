@@ -1,124 +1,20 @@
-import { lookup } from 'node:dns/promises'
 import http, { type ClientRequest, type IncomingMessage } from 'node:http'
 import https from 'node:https'
 import { isIP } from 'node:net'
 import { StringDecoder } from 'node:string_decoder'
 import { checkServerIdentity } from 'node:tls'
-import ipaddr from 'ipaddr.js'
 import { WebhookError } from './errors.js'
+import {
+  DnsResolutionError,
+  resolveTarget,
+  type ResolvedTarget as Target,
+} from './management/node-url.js'
 
-type Address = { address: string; family: number }
-type Target = { url: URL; hostname: string; address: Address }
 type SendResult = { status: number | null; responseBody: string; error: string | null }
 
 class TransportFailure extends Error {
   constructor(readonly reason: string) {
     super(reason)
-  }
-}
-
-function unsafeUrl(): WebhookError {
-  return new WebhookError(
-    'UNSAFE_URL',
-    'Webhook URLs must use HTTPS and resolve only to public IP addresses. Localhost requires explicit development configuration.',
-  )
-}
-
-function isLoopback(address: string): boolean {
-  return ipaddr.isValid(address) && ipaddr.parse(address).range() === 'loopback'
-}
-
-function isPublicAddress(address: string): boolean {
-  if (!ipaddr.isValid(address) || address.includes('%')) return false
-  const parsed = ipaddr.parse(address)
-  if (parsed.range() !== 'unicast') return false
-  if (parsed.kind() === 'ipv6') {
-    // Special ranges are excluded above. Limit the rest to global unicast.
-    const ipv6 = parsed as ipaddr.IPv6
-    return ipv6.match(ipaddr.IPv6.parse('2000::'), 3)
-  }
-  // This otherwise public address exposes Azure's internal platform services.
-  return address !== '168.63.129.16'
-}
-
-function parseUrl(
-  input: string,
-  allowLocalhost: boolean,
-): { url: URL; hostname: string; local: boolean } {
-  if (typeof input !== 'string' || input.length > 8192 || /[\s\\\x00-\x1f\x7f#]/.test(input))
-    throw unsafeUrl()
-  let url: URL
-  try {
-    url = new URL(input)
-  } catch {
-    throw unsafeUrl()
-  }
-  const authority = input.match(/^[A-Za-z][A-Za-z0-9+.-]*:\/\/([^/?#]*)/)?.[1]
-  if (!authority || authority.includes('@') || url.username || url.password || url.hash)
-    throw unsafeUrl()
-  const hostname = url.hostname.replace(/^\[|\]$/g, '').toLowerCase()
-  const local = hostname === 'localhost' || isLoopback(hostname)
-  if (url.protocol !== 'https:' && !(url.protocol === 'http:' && allowLocalhost && local))
-    throw unsafeUrl()
-  if (local && !allowLocalhost) throw unsafeUrl()
-  if (hostname.endsWith('.') || hostname.includes('%')) throw unsafeUrl()
-  return { url, hostname, local }
-}
-
-function raceAbort<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
-  if (signal.aborted) return Promise.reject(signal.reason)
-  return new Promise<T>((resolve, reject) => {
-    const onAbort = () => reject(signal.reason)
-    signal.addEventListener('abort', onAbort, { once: true })
-    promise.then(resolve, reject).finally(() => signal.removeEventListener('abort', onAbort))
-  })
-}
-
-async function resolveTarget(
-  input: string,
-  allowLocalhost: boolean,
-  signal: AbortSignal,
-): Promise<Target> {
-  const { url, hostname, local } = parseUrl(input, allowLocalhost)
-  if (signal.aborted) throw signal.reason
-  let addresses: Address[]
-  if (isIP(hostname)) {
-    addresses = [{ address: hostname, family: isIP(hostname) }]
-  } else {
-    try {
-      addresses = await raceAbort(lookup(hostname, { all: true, verbatim: true }), signal)
-    } catch (error) {
-      if (signal.aborted) throw signal.reason
-      throw new TransportFailure('dns_error')
-    }
-  }
-  if (
-    addresses.length === 0 ||
-    addresses.some(
-      ({ address, family }) =>
-        isIP(address) !== family ||
-        (local && allowLocalhost ? !isLoopback(address) : !isPublicAddress(address)),
-    )
-  ) {
-    throw unsafeUrl()
-  }
-  // Prefer IPv4 for workers without an IPv6 route. All answers must still pass validation.
-  const address = addresses.find((entry) => entry.family === 4) ?? addresses[0]
-  if (!address) throw unsafeUrl()
-  return { url, hostname, address }
-}
-
-/** Validate registration input. Delivery resolves and validates again on every attempt. */
-export async function assertSafeUrl(url: string, allowLocalhost: boolean): Promise<void> {
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(new TransportFailure('timeout')), 10_000)
-  try {
-    await resolveTarget(url, allowLocalhost, controller.signal)
-  } catch (error) {
-    if (error instanceof WebhookError) throw error
-    throw new WebhookError('UNSAFE_URL', 'The webhook host could not be resolved and validated.')
-  } finally {
-    clearTimeout(timer)
   }
 }
 
@@ -282,7 +178,7 @@ export async function sendWebhook(input: {
   else input.signal?.addEventListener('abort', abort, { once: true })
   const timer = setTimeout(() => controller.abort(new TransportFailure('timeout')), input.timeoutMs)
   try {
-    const target = await resolveTarget(input.url, input.allowLocalhost, controller.signal)
+    const target = await resolveTarget(input.url, input.allowLocalhost, controller.signal, 8192)
     return await performRequest(target, input, controller.signal)
   } catch (error) {
     return {
@@ -291,9 +187,11 @@ export async function sendWebhook(input: {
       error:
         error instanceof WebhookError
           ? 'unsafe_url'
-          : error instanceof TransportFailure
-            ? error.reason
-            : 'network_error',
+          : error instanceof DnsResolutionError
+            ? 'dns_error'
+            : error instanceof TransportFailure
+              ? error.reason
+              : 'network_error',
     }
   } finally {
     clearTimeout(timer)

@@ -41,7 +41,7 @@ export function createWorker(config: ResolvedConfig) {
       id: claim.eventId,
       timestamp: Math.floor(Date.now() / 1000),
       body: claim.body,
-      secrets: claim.previousSecret ? [claim.secret, claim.previousSecret] : [claim.secret],
+      secrets: claim.secrets,
     })
     const response = await sendWebhook({
       url: claim.url,
@@ -87,13 +87,12 @@ export function createWorker(config: ResolvedConfig) {
     ticking = true
     try {
       await store.recoverExpired()
-      const claims = await store.claim(options.signal)
+      const { claims, errors } = await store.claim(options.signal)
       const result = { ...emptyResult(), claimed: claims.length }
       // Wait for every sibling even if an unexpected internal failure occurs.
       const outcomes = await Promise.allSettled(
         claims.map((claim) => deliver(claim, options.signal)),
       )
-      const errors: unknown[] = []
       for (const outcome of outcomes) {
         if (outcome.status === 'fulfilled') result[outcome.value]++
         else errors.push(outcome.reason)

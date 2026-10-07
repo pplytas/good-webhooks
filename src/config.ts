@@ -1,6 +1,5 @@
-import { parseEncryptionKey } from './crypto.js'
 import { WebhookError } from './errors.js'
-import type { EventDefinitions, ResolvedConfig, WebhookOptions } from './types.js'
+import type { EventDefinitions, ResolvedConfig, DeliveryOptions } from './types.js'
 
 function integer(name: string, value: unknown, fallback: number, min: number, max: number): number {
   const resolved = value ?? fallback
@@ -19,7 +18,7 @@ function integer(name: string, value: unknown, fallback: number, min: number, ma
 }
 
 export function resolveConfig<E extends EventDefinitions>(
-  options: WebhookOptions<E>,
+  options: DeliveryOptions<E>,
 ): ResolvedConfig {
   if (
     !options ||
@@ -49,6 +48,14 @@ export function resolveConfig<E extends EventDefinitions>(
       throw new WebhookError('INVALID_CONFIG', `Invalid event definition: ${name}.`)
     }
   }
+  if (
+    typeof options.source?.matchRecipients !== 'function' ||
+    typeof options.source.resolveEndpoint !== 'function'
+  )
+    throw new WebhookError(
+      'INVALID_CONFIG',
+      'source must provide matchRecipients() and resolveEndpoint().',
+    )
   if (options.allowLocalhost !== undefined && typeof options.allowLocalhost !== 'boolean') {
     throw new WebhookError('INVALID_CONFIG', 'allowLocalhost must be a boolean.')
   }
@@ -76,7 +83,7 @@ export function resolveConfig<E extends EventDefinitions>(
     throw new WebhookError('INVALID_CONFIG', 'retentionMs must be at least retry.maxAgeMs.')
   return Object.freeze({
     database: options.database,
-    encryptionKey: parseEncryptionKey(options.encryptionKey),
+    source: options.source,
     retryDelaysMs: Object.freeze([...delays]),
     maxAgeMs,
     timeoutMs,

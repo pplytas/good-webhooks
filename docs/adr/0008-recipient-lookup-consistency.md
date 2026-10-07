@@ -1,0 +1,3 @@
+# Fix recipients after a complete lookup without requiring a scope-wide snapshot
+
+Publication selects recipients through the management provider and durably saves that selection with the event and pending work before reporting success. Concurrent endpoint edits may produce a recipient set reflecting different moments, so the common provider contract no longer requires the current PostgreSQL scope-wide snapshot. This permits portable management storage while preserving complete lookup, inclusion of unchanged matching endpoints, scope isolation, and one committed recipient set per accepted idempotent publication.

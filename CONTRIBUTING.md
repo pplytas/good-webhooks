@@ -21,13 +21,18 @@ export TEST_DATABASE_URL='postgres://postgres:webhooks_dev_only@127.0.0.1:55439/
 npm run check
 npm run format:check
 npm test
+npm run test:package
 ```
 
 The test suite applies its own schema. For database-free tests, run `npm run test:unit`. To format changes, run `npm run format`.
 
 Follow the [README example](README.md#try-the-example) to verify delivery, retry, replay, and durable receiver deduplication. Apply its separate receiver SQL before running the demo.
 
-CI runs the full suite and demo on PostgreSQL 16 and 17 with Node.js 24. It also installs the package archive and checks ESM, CommonJS, and the exported migration. It does not publish to npm.
+CI runs the full suite and demo on PostgreSQL 16 and 17 with Node.js 24. It also installs the package archive and checks all entry points through ESM and CommonJS, standalone installation without Better Auth, and the exported migrations. It does not publish to npm.
+
+## Verify Better Auth adapters
+
+`npm run test:adapters` runs the [database matrix](docs/better-auth-database-compatibility.md). It requires local disposable server instances and creates its own temporary databases. You can select profiles, for example `npm run test:adapters -- libsql,d1` without database servers or `npm run test:adapters -- postgres,drizzle,prisma` with PostgreSQL. The CI adapter job supplies PostgreSQL, MySQL, MongoDB, and SQL Server services.
 
 ## Propose a change
 

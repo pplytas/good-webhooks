@@ -6,7 +6,7 @@ Status: accepted, 6 October 2026. Name updated 7 October 2026. Approved name: Go
 
 Build a general-purpose embedded TypeScript server package for public OSS use. A new application must be able to use it without any company-specific identities, schemas, event types, or internal dependencies. Adoption by a particular company is a separate project and is not an acceptance criterion here.
 
-V0 delivers a standalone package, explicit database setup, documentation, and a runnable example. It includes endpoint management, durable publication, HTTP delivery, signing, retries, attempt history, and replay. HTTP management routes, a browser client, a dashboard, and a Better Auth plugin remain outside v0.
+V0 delivers a standalone package, explicit database setup, documentation, and a runnable example. It includes endpoint management, durable publication, HTTP delivery, signing, retries, attempt history, and replay. The management and delivery separation in the [implementation plan](better-auth-implementation-plan.md) supersedes this original scope: an optional Better Auth management plugin and client are now included. A dashboard remains outside scope.
 
 The GitHub repository is [pplytas/good-webhooks](https://github.com/pplytas/good-webhooks), under the user's personal account. npm publication remains a separate release action.
 
@@ -26,13 +26,13 @@ The GitHub repository is [pplytas/good-webhooks](https://github.com/pplytas/good
 
 No queue framework or Standard Webhooks npm dependency has been selected. V0 does not build an adapter ecosystem, an interactive setup CLI, or a general plugin framework.
 
-## Better Auth influence and future integration
+## Better Auth influence and integration
 
 Borrow the typed factory, coherent server operations, inference, stable errors, and clear schema setup described in Better Auth's [TypeScript guide](https://better-auth.com/docs/concepts/typescript), [API guide](https://better-auth.com/docs/concepts/api), and [database guide](https://better-auth.com/docs/concepts/database). Do not copy source code. Borrow optional ownership from the [organization plugin](https://better-auth.com/docs/plugins/organization): keep the base workflow simple without adding identity or membership models to the webhook core.
 
-Keep all core operations independent of a Better Auth instance, user, session, or organization type. A future optional plugin can authenticate callers, check permissions, and select application-defined scopes. The plugin can expose endpoints and inferred client calls by composing typed public operations rather than duplicating domain rules.
+Keep all core operations independent of a Better Auth instance, user, session, or organization type. The optional plugin authenticates callers, checks permissions, and selects application-defined scopes. It exposes management endpoints and inferred client calls while sharing domain rules with the standalone provider.
 
-Worker execution, PostgreSQL transactions, and migration ownership remain explicit. Auth initialization or request-background execution must not become the delivery engine. Review the [integration sketch](better-auth-integration.md) against the completed interface without implementing that plugin.
+Worker execution, PostgreSQL transactions, and migration ownership remain explicit. Auth initialization or request-background execution must not become the delivery engine. The [integration design record](better-auth-integration.md) and [consumer guide](better-auth.md) describe the implemented plugin and its boundary.
 
 ## Acceptance criteria
 
