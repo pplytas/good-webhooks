@@ -29,10 +29,10 @@ This document replaces the earlier sketch that wrapped the complete Good Webhook
 
 These describe the implementation before this redesign. The source paths now contain the separated modules; consult the consumer guides for current behavior.
 
-- [`createWebhooks`](../src/index.ts) constructs endpoint management, publication, delivery history, and worker operations together.
-- [`migrations/001-initial.sql`](../migrations/001-initial.sql) creates endpoints, events, deliveries, attempts, and a schema compatibility table. The endpoint table also contains delivery concurrency settings.
-- [`src/store.ts`](../src/store.ts) uses PostgreSQL transactions and scope locks to coordinate endpoint mutations and publication. Endpoint removal also cancels deliveries and abandons unfinished attempts in the same transaction.
-- [`src/worker-store.ts`](../src/worker-store.ts) reads endpoint status, URLs, signing secrets, and concurrency settings directly when claiming work.
+- [`createWebhooks`](../packages/good-webhooks/src/index.ts) constructs endpoint management, publication, delivery history, and worker operations together.
+- [`migrations/001-initial.sql`](../packages/good-webhooks/migrations/001-initial.sql) creates endpoints, events, deliveries, attempts, and a schema compatibility table. The endpoint table also contains delivery concurrency settings.
+- [`src/store.ts`](../packages/good-webhooks/src/store.ts) uses PostgreSQL transactions and scope locks to coordinate endpoint mutations and publication. Endpoint removal also cancels deliveries and abandons unfinished attempts in the same transaction.
+- [`src/worker-store.ts`](../packages/good-webhooks/src/worker-store.ts) reads endpoint status, URLs, signing secrets, and concurrency settings directly when claiming work.
 - Publication can join a caller-owned PostgreSQL transaction. Better Auth's adapter [exposes a transaction-scoped adapter](https://github.com/better-auth/better-auth/blob/v1.7.7/packages/core/src/db/adapter/index.ts#L399-L401), not the raw PostgreSQL connection. Separate queries cannot automatically join that transaction.
 - Better Auth's schema generators can produce different physical representations for the same logical field. For example, subscriptions declared as a string array become [JSONB through Kysely](https://github.com/better-auth/better-auth/blob/v1.7.7/packages/better-auth/src/db/get-migration.ts#L931-L941) and a [native text array through Drizzle](https://github.com/better-auth/better-auth/blob/v1.7.7/packages/drizzle-adapter/src/relations-v2/generate-drizzle-schema.ts#L237-L245). A shared raw SQL reader needs an explicit storage contract.
 - The package is currently private and versioned `0.0.0`. The user permits changing its interface and schema without preserving an upgrade path for this redesign.

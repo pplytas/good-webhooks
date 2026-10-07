@@ -1,0 +1,88 @@
+---
+title: Authorize endpoint scopes
+description: Choose ownership explicitly and configure Better Auth organization and custom-scope permissions.
+---
+
+Authorize the caller before choosing a scope. A scope separates records; it is not an authorization check.
+
+## Use the right default
+
+| API                        | Application scope                          | Named scope                | Omitted scope                         |
+| -------------------------- | ------------------------------------------ | -------------------------- | ------------------------------------- |
+| Combined API and delivery  | Root instance                              | `forScope({ type, id })`   | Root operations use application scope |
+| Direct management provider | Pass `null`                                | Pass `{ type, id }`        | Required argument                     |
+| Better Auth routes         | Pass `scope: null` with an explicit policy | Pass `scope: { type, id }` | Current signed-in user                |
+
+Root operations never aggregate named scopes. A named publication never falls back to application endpoints. Use the endpoint owner's exact scope when publishing.
+
+For standalone APIs, authorize the chosen owner in your application before calling `forScope` or direct management methods. Do not pass unchecked request-body IDs into these methods.
+
+## Grant organization actions
+
+Install Better Auth's organization plugin alongside `goodWebhooks`. Extend its access-control statements with the `webhookEndpoint` resource:
+
+```ts
+import { createAccessControl } from 'better-auth/plugins/access'
+import { organization } from 'better-auth/plugins/organization'
+import {
+  adminAc,
+  defaultStatements,
+  memberAc,
+  ownerAc,
+} from 'better-auth/plugins/organization/access'
+
+const ac = createAccessControl({
+  ...defaultStatements,
+  webhookEndpoint: ['create', 'read', 'update', 'delete'] as const,
+})
+const organizations = organization({
+  ac,
+  roles: {
+    owner: ac.newRole(ownerAc.statements),
+    admin: ac.newRole({
+      ...adminAc.statements,
+      webhookEndpoint: ['create', 'read', 'update', 'delete'],
+    }),
+    member: ac.newRole(memberAc.statements),
+  },
+})
+```
+
+Add `organizations` to the auth instance's `plugins`. The organization's configured creator role has full endpoint access. It defaults to `owner`. Other roles need explicit grants; the name `admin` alone grants no webhook permissions.
+
+Create organization-owned endpoints with an explicit scope:
+
+```ts
+await authClient.goodWebhooks.create({
+  scope: { type: 'organization', id: organizationId },
+  url: 'https://receiver.example/webhooks',
+  eventTypes: ['invoice.created'],
+})
+```
+
+Each request checks current membership and the permission for its action. Removing a member removes that member's management access without pausing the organization's endpoints.
+
+## Authorize application and custom scopes
+
+Supply `authorizeScope` for application scope or a custom scope type. The default is denial. The callback receives the exact scope, action, user, and session.
+
+```ts
+goodWebhooks({
+  eventTypes,
+  async authorizeScope({ scope, action, user, session }) {
+    return applicationPolicy.canManageWebhooks({ scope, action, user, session })
+  },
+})
+```
+
+Implement `applicationPolicy` in your application. Check both the requested scope and the requested action, and return `false` for unknown scope types. This callback cannot override personal ownership or organization permissions.
+
+Organization API keys do not authenticate these routes. This version does not promise user API-key session impersonation support.
+
+## Handle owner deletion
+
+The Better Auth plugin retires personal endpoints when a user is deleted and organization endpoints when an organization is deleted. Trusted sender lookups also check that the owner still exists. A failed owner lookup fails the lookup; it does not silently accept an empty result.
+
+Standalone management has no identity system. Call `management.removeScope(scope)` from your own owner-deletion workflow.
+
+Direct `createBetterAuthManagement(auth)` methods bypass route authorization. Restrict them to trusted server code, including workers. If you expose them through your own API, authorize each request first.

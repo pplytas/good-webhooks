@@ -1,0 +1,32 @@
+---
+title: Errors
+description: Expected operation errors and failures recorded in delivery history.
+---
+
+```ts
+import { WebhookError } from 'good-webhooks'
+import type { WebhookErrorCode } from 'good-webhooks'
+```
+
+`WebhookError` extends `Error`. It has `name: 'WebhookError'`, a stable `code`, a descriptive `message`, and an optional `cause`. The receiver entrypoint also exports the class and code type.
+
+| Code                   | Meaning                                                                          |
+| ---------------------- | -------------------------------------------------------------------------------- |
+| `INVALID_CONFIG`       | Invalid constructor, encryption, migration, or receiver-validator configuration. |
+| `INVALID_INPUT`        | Invalid operation arguments or producer payload.                                 |
+| `UNSAFE_URL`           | Destination fails URL or resolved-address validation.                            |
+| `NOT_FOUND`            | Record or owner is absent in the selected scope.                                 |
+| `INVALID_STATE`        | Operation conflicts with lifecycle, limits, retention, or concurrent state.      |
+| `IDEMPOTENCY_CONFLICT` | An accepted key identifies different event content.                              |
+| `REPLAY_IN_PROGRESS`   | An original delivery already has a pending or in-flight replay.                  |
+| `SCHEMA_MISMATCH`      | Expected PostgreSQL storage is missing or incompatible.                          |
+| `SIGNATURE_INVALID`    | Webhook headers or signature are invalid.                                        |
+| `SIGNATURE_EXPIRED`    | Webhook timestamp falls outside the configured tolerance.                        |
+| `PAYLOAD_INVALID`      | An authenticated webhook body fails envelope or receiver-payload validation.     |
+| `TRANSACTION_REQUIRED` | A supplied publication client has no active PostgreSQL transaction.              |
+
+Database errors, provider lookup failures, and unexpected validator failures can propagate as other error types. Code that handles `WebhookError` still needs a path for unexpected failures.
+
+An HTTP recipient failure normally becomes a delivery and attempt record. It does not reject `publish`, because publication queues work without sending it. Worker internal failures can reject `tick` with an `AggregateError`.
+
+The Better Auth plugin [maps expected management errors to HTTP responses](/reference/better-auth#route-errors). That mapping does not change the direct provider API.

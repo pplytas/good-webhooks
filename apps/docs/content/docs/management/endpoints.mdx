@@ -1,0 +1,73 @@
+---
+title: Manage standalone endpoints
+description: Create a PostgreSQL management provider without requiring the delivery engine.
+---
+
+Use `createPostgresManagement` to store endpoints in PostgreSQL without installing delivery tables. Your application owns authentication and authorization for these methods.
+
+## Prepare the provider
+
+Install the [local package](/getting-started/installation) and `pg`. Apply the management-only migration to fresh storage:
+
+```sh
+node --input-type=module -e 'import { getPostgresMigration } from "good-webhooks/migrations"; process.stdout.write(getPostgresMigration({ component: "management" }))' > 001-webhook-management.sql
+psql "$MANAGEMENT_DATABASE_URL" --single-transaction -v ON_ERROR_STOP=1 -f 001-webhook-management.sql
+```
+
+Generate a storage encryption key once, then save it outside the database:
+
+```sh
+node --input-type=module -e 'import { generateEncryptionKey } from "good-webhooks"; console.log(generateEncryptionKey())'
+```
+
+Set `WEBHOOK_ENCRYPTION_KEY` to that saved value. Reuse it across restarts and every process that reads these endpoints.
+
+```ts
+import { Pool } from 'pg'
+import { createPostgresManagement } from 'good-webhooks/management/postgres'
+
+const database = new Pool({ connectionString: process.env.MANAGEMENT_DATABASE_URL })
+const management = createPostgresManagement({
+  database,
+  eventTypes: ['invoice.created', 'invoice.paid'],
+  encryptionKey: process.env.WEBHOOK_ENCRYPTION_KEY!,
+})
+await management.check()
+```
+
+The default schema is `public`. To change it, generate and apply the [matching migration](/operations/migrations). `check()` verifies expected columns but does not create or migrate tables. Close the pool when your application shuts down.
+
+## Create an endpoint in an authorized scope
+
+Pass `null` for application scope. For a named scope, pass `{ type, id }` after your application authorizes that selection.
+
+```ts
+const scope = { type: 'organization', id: organizationId }
+const created = await management.create(scope, {
+  url: 'https://receiver.example/webhooks',
+  description: 'Invoice notifications',
+  eventTypes: ['invoice.created'],
+})
+```
+
+Transfer `created.secret` securely to the receiver. Ordinary reads return no signing material. Endpoint IDs are opaque strings.
+
+Each scope permits at most 1,000 nondeleted endpoints. An endpoint subscribes to 1–100 configured event names. Management uses names only, without payload validators.
+
+## Edit, pause, and retire endpoints
+
+```ts
+await management.update(scope, created.endpoint.id, {
+  description: 'Created and paid invoices',
+  eventTypes: ['invoice.created', 'invoice.paid'],
+})
+await management.pause(scope, created.endpoint.id)
+await management.resume(scope, created.endpoint.id)
+await management.remove(scope, created.endpoint.id)
+```
+
+Pause preserves subscriptions and backlog. Resume allows eligible deliveries to continue within the sender's age limits. Removal is permanent, clears stored signing secrets, and leaves a tombstone. Management returns without waiting for queue cleanup. A request prepared before pause or removal may still arrive.
+
+Use `removeScope(scope)` when your application retires an owner. Your application owns that lifecycle hook for standalone management.
+
+Connect [your own sender](/management/custom-senders), or pass `management` to `createWebhooks` to use the combined API with this provider. See [management methods](/reference/management) for the complete contract.

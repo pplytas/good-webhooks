@@ -1,0 +1,79 @@
+---
+title: Database compatibility
+description: Tested Better Auth adapter profiles and the limits of that coverage.
+---
+
+The management plugin uses Better Auth's schema and public adapter. Delivery does not query its tables. The current compatibility baseline is Better Auth **1.7.7** on Node.js 24.
+
+SQL Server requires a UTF8 database or column collation for Unicode scope identities, URLs, and descriptions. Better Auth generates `varchar` columns, so a legacy non-UTF8 collation can corrupt these values. The matrix uses `Latin1_General_100_CI_AS_SC_UTF8` and verifies maximum-length Unicode inputs through the repository. Its `varchar(8000)` columns fit the existing URL and description limits of 2,048 and 2,000 UTF16 code units, whose maximum UTF8 sizes are 6,144 and 6,000 bytes.
+
+## Verified profiles
+
+Each profile below runs against the real database adapter. Tests generate and apply the schema, rename the endpoint model and fields, and exercise the repository. They do not substitute an in-memory fake adapter.
+
+| Database or adapter | Local test profile                                                | ID modes verified      |
+| ------------------- | ----------------------------------------------------------------- | ---------------------- |
+| SQLite              | Node.js `DatabaseSync`; normal test suite                         | Default, serial, UUID  |
+| PostgreSQL 16       | Better Auth's native Kysely adapter                               | Default, serial, UUID  |
+| MySQL 8.4           | Better Auth's native Kysely adapter                               | Default, serial, UUID  |
+| MongoDB 8           | Native MongoDB adapter, transactions disabled                     | Default ObjectId, UUID |
+| SQL Server 2022     | Native Kysely adapter, UTF8 collation                             | Default, serial, UUID  |
+| libSQL              | Local libSQL client through Kysely                                | Default, serial, UUID  |
+| Cloudflare D1       | Local Miniflare/workerd D1 binding                                | Default, serial, UUID  |
+| Drizzle             | PostgreSQL; BA schema generation and `drizzle-kit push`           | Default, serial, UUID  |
+| Prisma              | PostgreSQL; BA schema generation, Prisma generation and `db push` | Default, serial, UUID  |
+
+The storage matrix verifies:
+
+- Twenty concurrent creates competing for the last five of 1,000 endpoint slots.
+- Complete enumeration of all 1,000 endpoints without relying on an adapter's default page size.
+- Twenty concurrent revision-guarded mutations with exactly one winner.
+- Atomic secret fields and expiry updates, deletion, slot reuse, and retained tombstones.
+- One hundred subscriptions with 120-character event names, date values, maximum-length Unicode scopes/URLs/descriptions, scope isolation, and application scope.
+
+The normal SQLite tests also inject failed lookups, ambiguous committed writes, explicit database rollbacks, and concurrent deletion between enumeration batches. Those checks establish that failures do not become partial successful lookups or automatic duplicate writes.
+
+Native PostgreSQL integration tests cover management and delivery in default `public`, a shared custom schema, and separate schemas. Each case creates an endpoint through an authenticated BA route and sends a signed delivery through a separately initialized provider. Decoy tables and connection search paths verify that each component uses its configured schema.
+
+The matrix does **not** establish every database, ORM, driver, and runtime combination. Bun's SQLite runtime, hosted D1, remote Turso/libSQL, MongoDB replica-set transactions, and Drizzle/Prisma on other databases have not been exercised here. Native database coverage does not imply deployment or performance certification. Use the host's usual database migration workflow before serving requests.
+
+## Storage invariants
+
+The plugin adds one management model. Each live endpoint occupies one of 1,000 deterministic slots for its scope. A unique index on `allocationKey` makes slot allocation an atomic insert, including concurrent creators. Deletion changes status and releases that slot in the same conditional write. The endpoint's opaque Better Auth ID remains in its tombstone.
+
+The repository uses a SHA-256 scope digest for bounded slot keys and separately verifies the full scope identity after reads. It fails closed on an inconsistent scope, duplicate slot, or malformed row. It never treats a database's case-insensitive comparison as proof that two scope identities are equal.
+
+Recipient lookup reads fixed batches of 50 slot keys. This avoids offset pagination gaps under concurrent deletion and keeps D1 queries below its parameter limit. A successful lookup contains all unchanged matching endpoints. Overlapping management edits may be observed before or after that edit; the lookup does not promise one scope-wide snapshot. Any failed batch fails the lookup.
+
+Mutations use Better Auth's `incrementOne` to apply the expected revision predicate, patch, and revision increment together. No repository-managed transaction is required. An adapter may use its own transaction internally. Retry is limited to explicit uniqueness contention or known database rollback errors. An ambiguous connection failure is returned to the caller, because retrying it could create a second endpoint after a committed insert.
+
+Two internal array fields hold up to 50 subscriptions each. This retains the public limit of 100 names of up to 120 ASCII characters while fitting Better Auth's SQL Server `varchar(8000)` array representation. Both fields change in the same conditional mutation. These are storage details, not separate public subscription lists.
+
+The slot index is declared as a table-level unique index. Better Auth's MongoDB adapter creates those indexes before writes. SQL and ORM users must apply their generated migrations. Removing the index invalidates the cap guarantee; runtime validation is not a substitute for correct migrations.
+
+## Run the matrix
+
+From the repository root, select comma-separated profiles. These scripts build the library first. Omit the profiles to run all eight matrix profiles:
+
+```sh
+pnpm --filter good-webhooks test:adapters libsql,d1
+pnpm --filter good-webhooks test:adapters postgres,mysql,mongodb,mssql,drizzle,prisma
+```
+
+Server profiles accept these environment variables:
+
+| Variable                 | Local default                                                    |
+| ------------------------ | ---------------------------------------------------------------- |
+| `BA_MATRIX_POSTGRES_URL` | `postgres://postgres:webhooks_dev_only@127.0.0.1:55439/postgres` |
+| `BA_MATRIX_MYSQL_URL`    | `mysql://root:webhooks_local_proof@127.0.0.1:55440/mysql`        |
+| `BA_MATRIX_MONGODB_URL`  | `mongodb://127.0.0.1:55441`                                      |
+| `BA_MATRIX_MSSQL_URL`    | `mssql://sa:Local-Proof-Only-Pass123@127.0.0.1:55442/master`     |
+
+These are test-only local defaults. The script accepts loopback hosts only. Accounts need permission to create and drop disposable databases. Every profile uses a new random database name and drops only that database. Existing application databases are not reset. Drizzle and Prisma create temporary generated files in the library workspace and remove them when the profile ends. libSQL and D1 run locally without database servers.
+
+## Upstream contracts
+
+- [Better Auth's public adapter contract](https://github.com/better-auth/better-auth/blob/v1.7.7/packages/core/src/db/adapter/index.ts) defines `incrementOne`, conditional predicates, and adapter-normalized IDs.
+- [Native SQL schema generation](https://github.com/better-auth/better-auth/blob/v1.7.7/packages/better-auth/src/db/get-migration.ts) defines provider column types, including SQL Server string and array widths.
+- [MongoDB adapter](https://github.com/better-auth/better-auth/blob/v1.7.7/packages/mongo-adapter/src/mongodb-adapter.ts) ensures declared table indexes and uses atomic increment-and-set writes.
+- [Drizzle adapter](https://github.com/better-auth/better-auth/blob/v1.7.7/packages/drizzle-adapter/src/drizzle-adapter.ts) and [Prisma adapter](https://github.com/better-auth/better-auth/blob/v1.7.7/packages/prisma-adapter/src/prisma-adapter.ts) apply model and field mappings and implement guarded mutations.

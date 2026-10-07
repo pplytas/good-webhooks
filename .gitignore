@@ -4,3 +4,9 @@ coverage/
 *.tgz
 .env
 .DS_Store
+.next/
+.source/
+out/
+*.tsbuildinfo
+.ba-storage-matrix-*/
+apps/docs/next-env.d.ts

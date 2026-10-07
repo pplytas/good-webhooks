@@ -1,0 +1,49 @@
+---
+title: Better Auth client
+description: Client methods, event-name inference, and JSON result types.
+---
+
+```ts
+import { goodWebhooksClient } from 'good-webhooks/better-auth/client'
+```
+
+## goodWebhooksClient
+
+```ts
+goodWebhooksClient<const EventTypes extends readonly string[] = readonly string[]>(
+	options?: { eventTypes: EventTypes },
+)
+```
+
+Returns a Better Auth client plugin for `createAuthClient`. Its optional `eventTypes` tuple carries the server's event-name literals into client types. Omitting it leaves event names typed as `string`. It does not change the server's configured event names or authorize requests.
+
+The dedicated client entrypoint has no runtime import of the server plugin, database driver, or delivery worker. It configures all Good Webhooks route methods as POST and preserves JSON values with `JSON.parse`, including descriptions that look like dates.
+
+## Client methods
+
+All methods return Better Auth's client result containing `data` and `error`. Request bodies and data shapes match the [server route reference](/reference/better-auth#authenticated-routes).
+
+| Client method                                 | Server method                 |
+| --------------------------------------------- | ----------------------------- |
+| `authClient.goodWebhooks.create(input)`       | `createWebhookEndpoint`       |
+| `authClient.goodWebhooks.list(input)`         | `listWebhookEndpoints`        |
+| `authClient.goodWebhooks.get(input)`          | `getWebhookEndpoint`          |
+| `authClient.goodWebhooks.update(input)`       | `updateWebhookEndpoint`       |
+| `authClient.goodWebhooks.pause(input)`        | `pauseWebhookEndpoint`        |
+| `authClient.goodWebhooks.resume(input)`       | `resumeWebhookEndpoint`       |
+| `authClient.goodWebhooks.remove(input)`       | `removeWebhookEndpoint`       |
+| `authClient.goodWebhooks.rotateSecret(input)` | `rotateWebhookEndpointSecret` |
+
+Each input accepts optional `scope`. Omission selects the signed-in user's personal scope. `scope: null` requests application scope and requires server policy. The client does not weaken server authorization.
+
+Creation and rotation return `{ endpoint, secret }` in `data`. Other writes and `get` return one endpoint. `list` returns an array. Endpoint timestamps remain ISO strings.
+
+## Inference example
+
+This compile-only example checks the public server and client types. It omits the database and session setup required by a running application. The [first endpoint tutorial](/better-auth/first-endpoint) provides that setup.
+
+<include cwd lang="ts" meta='title="Typed Better Auth client"'>
+  ./examples/typed-api.ts#better-auth
+</include>
+
+The same event-name tuple restricts both APIs to `invoice.created` and `invoice.paid`. Unknown names fail typechecking.

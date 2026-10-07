@@ -1,0 +1,42 @@
+---
+title: Storage and security
+description: Scope authorization, signing secrets, storage keys, and migration ownership.
+---
+
+Scopes isolate records. They do not grant access. Storage encryption protects signing secrets at rest. It does not replace request signatures or host authorization.
+
+## Application and named scopes
+
+Application scope is a separate namespace from every named scope. Direct management uses `null` for application scope. The root delivery client and `createWebhooks` endpoint client use application scope by default.
+
+`forScope({ type, id })` selects a named scope. The same ID under two different types identifies two different scopes. Neither selection authenticates a user or checks a permission. A host API must authorize the caller before providing a scoped client.
+
+Better Auth's HTTP routes have a different default. Omitted `scope` selects the signed-in user's personal scope. Explicit user scope must identify that user. Organization scope requires the organization plugin, current membership, and the requested `webhookEndpoint` permission. Application and custom scopes require `authorizeScope`. That callback cannot override personal ownership or organization permissions.
+
+The trusted provider returned by `createBetterAuthManagement` bypasses these HTTP checks. A worker needs database and key access, not a user's session. See [scope authorization](/management/scopes).
+
+## Signing secrets and storage encryption keys
+
+Each endpoint has a receiver-facing signing secret. The sender signs the exact body and timestamp with that secret. The receiver uses the same secret to verify requests.
+
+The storage encryption key encrypts those signing secrets in management storage. Standalone PostgreSQL management uses a 32-byte key supplied by the host. Better Auth management uses the auth instance's secret configuration.
+
+Signing-secret rotation changes what the receiver uses. Storage-key rotation re-encrypts stored values while preserving the signing secrets. The host must retain old storage keys until it has rewritten every affected scope. Reads do not perform that rewrite. See [key rotation](/operations/key-rotation).
+
+## Destination checks
+
+Management rejects unsafe URL syntax, credentials, and unsafe IP literals. Standalone PostgreSQL management also checks DNS during registration and URL updates. Better Auth management uses portable URL checks.
+
+A stored URL can resolve differently later. Every sender must validate the resolved address again before connecting. Good Webhooks delivery pins a validated address for the connection and does not follow redirects. A custom sender owns equivalent protection.
+
+`allowLocalhost: true` permits HTTP loopback destinations for development. It does not permit arbitrary private network addresses.
+
+## Migration ownership
+
+The host executes migrations. Constructors and `check()` never apply DDL.
+
+The shipped PostgreSQL migrations create `webhook_` tables in `public`. Generated SQL can target a custom schema. Management and delivery runtime options must match the migrations applied to each component.
+
+The current delivery schema version is `3`. Initial SQL creates fresh storage once. It is not an upgrade from an earlier prototype, even when the file name is `001-initial.sql`.
+
+Better Auth management uses Better Auth's adapter and schema workflow. Its model-name option is not a PostgreSQL namespace selector. Standalone `management.sql` does not create the Better Auth model. See [migration reference](/reference/migrations).

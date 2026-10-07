@@ -1,0 +1,73 @@
+---
+title: Core
+description: Compose endpoint management and PostgreSQL delivery.
+---
+
+```ts
+import { createWebhooks, generateEncryptionKey, WebhookError } from 'good-webhooks'
+import type { WebhookOptions, Webhooks, WebhookClient } from 'good-webhooks'
+```
+
+## createWebhooks
+
+```ts
+createWebhooks<const E extends EventDefinitions>(options: WebhookOptions<E>): Webhooks<E>
+```
+
+Combines endpoint management with the [delivery engine](/reference/delivery). Construction does not open connections, apply migrations, or start a worker.
+
+`WebhookOptions<E>` has all delivery options except `source`, plus the following fields.
+
+| Field           | Type                   | Meaning                                                                                              |
+| --------------- | ---------------------- | ---------------------------------------------------------------------------------------------------- |
+| `encryptionKey` | `string \| Uint8Array` | Required for the default PostgreSQL management provider. Base64-encoded 32 bytes or a 32-byte array. |
+| `management`    | `EndpointManagement`   | Optional existing provider. Its source supplies recipients and current endpoint state.               |
+
+Without `management`, the constructor creates standalone PostgreSQL management using `database`, `schema`, configured event names, `encryptionKey`, and `allowLocalhost`. With `management`, that provider keeps its own database, schema, encryption, and URL-validation configuration. Core options do not reconfigure it.
+
+The default provider has no `decryptionKeys` option through this constructor. A provider created with `createPostgresManagement` can supply old keys and then be passed as `management`.
+
+## Returned client
+
+The result exposes `publish`, `deliveries`, `deliverySettings`, and `worker` from the delivery engine, plus an endpoint client.
+
+| Member                                     | Behavior                                                                                         |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------ |
+| `endpoints.create(input)`                  | Creates an endpoint and returns `{ endpoint, secret }`.                                          |
+| `endpoints.list()`                         | Returns all nondeleted endpoints in application scope.                                           |
+| `endpoints.get(id)`                        | Returns one endpoint, including its deleted state.                                               |
+| `endpoints.update(id, patch)`              | Changes URL, description, or subscribed event names.                                             |
+| `endpoints.pause(id)`                      | Records paused state.                                                                            |
+| `endpoints.resume(id)`                     | Records active state after URL validation.                                                       |
+| `endpoints.remove(id)`                     | Records permanent deletion and clears stored signing secrets.                                    |
+| `endpoints.rotateSecret(id, { graceMs? })` | Returns a new signing secret and the endpoint.                                                   |
+| `check()`                                  | Checks the default management provider, if constructed here, then delivery schema compatibility. |
+| `forScope(scope)`                          | Returns the same publication, history, settings, and endpoint methods bound to one named scope.  |
+
+Endpoint methods use the [management contract and limits](/reference/management). `EndpointInput<E>` and `EndpointPatch<E>` restrict subscriptions to event names in `E`. `removeScope` and `reencrypt` are direct provider operations, not members of this convenience endpoint client.
+
+`forScope` snapshots its scope. It does not authorize a caller. It does not expose `worker` or `check`; those operate at installation level. When a provider is injected, `check()` does not call that provider's optional health checks. The host remains responsible for checking its management storage.
+
+## generateEncryptionKey
+
+```ts
+generateEncryptionKey(): string
+```
+
+Returns 32 cryptographically random bytes encoded as base64. The key encrypts standalone management signing secrets at rest. It is distinct from the endpoint's `whsec_` signing secret.
+
+## Other root exports
+
+`createDelivery` and `DeliveryEngine` match the [delivery entrypoint](/reference/delivery). `verifyWebhook` matches the [receiver entrypoint](/reference/verify). `parseWebhook` is available only from `good-webhooks/verify`.
+
+`WebhookError` and `WebhookErrorCode` describe [expected operation failures](/reference/errors).
+
+The root also exports these types.
+
+| Group       | Types                                                                                                                                   |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| Events      | `EventDefinitions`, `EventName`, `JsonValue`, `PublishInput`, `PublishOptions`, `PublishResult`                                         |
+| Database    | `SqlClient`, `DatabaseClient`, `Database`                                                                                               |
+| Endpoints   | `Endpoint`, `EndpointStatus`, `EndpointWithSecret`, `EndpointInput`, `EndpointPatch`                                                    |
+| Delivery    | `Delivery`, `DeliveryDetail`, `DeliveryStatus`, `DeliveryQuery`, `Attempt`, `Page`, `WorkerResult`, `DeliveryOptions`                   |
+| Composition | `WebhookOptions`, `Webhooks`, `WebhookClient`, `EndpointManagement`, `EndpointSource`, `EndpointResolution`, `ManagementScope`, `Scope` |

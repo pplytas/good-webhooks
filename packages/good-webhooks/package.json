@@ -1,0 +1,113 @@
+{
+  "name": "good-webhooks",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Build webhook delivery into your TypeScript application.",
+  "license": "MIT",
+  "author": "pplytas",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pplytas/good-webhooks.git",
+    "directory": "packages/good-webhooks"
+  },
+  "homepage": "https://github.com/pplytas/good-webhooks#readme",
+  "bugs": {
+    "url": "https://github.com/pplytas/good-webhooks/issues"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./verify": {
+      "types": "./dist/verify.d.ts",
+      "default": "./dist/verify.js"
+    },
+    "./migrations/001-initial.sql": "./migrations/001-initial.sql",
+    "./delivery": {
+      "types": "./dist/delivery.d.ts",
+      "default": "./dist/delivery.js"
+    },
+    "./management": {
+      "types": "./dist/management/index.d.ts",
+      "default": "./dist/management/index.js"
+    },
+    "./management/postgres": {
+      "types": "./dist/management/postgres.d.ts",
+      "default": "./dist/management/postgres.js"
+    },
+    "./better-auth": {
+      "types": "./dist/better-auth/index.d.ts",
+      "default": "./dist/better-auth/index.js"
+    },
+    "./better-auth/client": {
+      "types": "./dist/better-auth/client.d.ts",
+      "default": "./dist/better-auth/client.js"
+    },
+    "./migrations/management.sql": "./migrations/management.sql",
+    "./migrations/delivery.sql": "./migrations/delivery.sql",
+    "./migrations": {
+      "types": "./dist/migrations.d.ts",
+      "default": "./dist/migrations.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "migrations",
+    "examples",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "check": "pnpm run build && tsc --noEmit",
+    "test": "pnpm run build && vitest run",
+    "test:unit": "pnpm run build && vitest run test/crypto.test.ts test/transport.test.ts test/config.test.ts test/verify.test.ts test/receiver-example.test.ts",
+    "prepack": "pnpm run build",
+    "example": "pnpm run build && node examples/basic/demo.ts",
+    "test:package": "node scripts/check-package.mjs",
+    "test:adapters": "pnpm run build && node scripts/better-auth-storage-matrix.mjs",
+    "migrations:generate": "pnpm run build && node scripts/generate-migrations.mjs"
+  },
+  "dependencies": {
+    "@better-fetch/fetch": "^1.3.2",
+    "@standard-schema/spec": "^1.1.0",
+    "ipaddr.js": "^2.5.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@libsql/client": "^0.18.0",
+    "@libsql/kysely-libsql": "^0.4.1",
+    "@prisma/adapter-pg": "^7.10.0",
+    "@prisma/client": "^7.10.0",
+    "@types/node": "^24.0.0",
+    "@types/pg": "^8.23.1",
+    "auth": "^1.7.7",
+    "better-auth": "1.7.7",
+    "drizzle-kit": "^0.31.11",
+    "drizzle-orm": "^0.45.3",
+    "kysely": "^0.29.6",
+    "miniflare": "^5.20261006.0-alpha",
+    "mongodb": "^7.7.0",
+    "mysql2": "^3.24.5",
+    "pg": "^8.23.1",
+    "prisma": "^7.10.0",
+    "tarn": "^3.1.2",
+    "tedious": "^20.3.3",
+    "typescript": "~7.0.2",
+    "vitest": "^5.0.3"
+  },
+  "peerDependencies": {
+    "better-auth": ">=1.7.7 <1.8.0"
+  },
+  "peerDependenciesMeta": {
+    "better-auth": {
+      "optional": true
+    }
+  }
+}
