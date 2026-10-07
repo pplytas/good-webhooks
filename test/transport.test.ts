@@ -10,7 +10,8 @@ import https from 'node:https'
 import { PassThrough, Writable } from 'node:stream'
 import type { DetailedPeerCertificate } from 'node:tls'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { assertSafeUrl, sendWebhook } from '../src/transport.js'
+import { sendWebhook } from '../src/transport.js'
+import { validateResolvedUrl } from '../src/management/node-url.js'
 
 vi.mock('node:dns/promises', () => ({ lookup: vi.fn() }))
 
@@ -99,13 +100,74 @@ describe('URL and DNS validation', () => {
     'https://[2002:0808:0808::1]',
     'https://[3fff::1]',
   ])('rejects unsafe URL %s', async (url) => {
-    await expect(assertSafeUrl(url, false)).rejects.toMatchObject({ code: 'UNSAFE_URL' })
+    await expect(validateResolvedUrl(url, false)).rejects.toMatchObject({ code: 'UNSAFE_URL' })
+  })
+
+  it('keeps registration and transport URL length limits distinct', async () => {
+    const registrationUrl = 'https://8.8.8.8/'.padEnd(2048, 'a')
+    await expect(validateResolvedUrl(registrationUrl, false)).resolves.toBeUndefined()
+    await expect(validateResolvedUrl(`${registrationUrl}a`, false)).rejects.toMatchObject({
+      code: 'UNSAFE_URL',
+    })
+    let received = 0
+    const base = await receiver((request, response) => {
+      received++
+      request.resume()
+      response.end('ok')
+    })
+    const deliveryUrl = `${base}/`.padEnd(8192, 'a')
+    await expect(validateResolvedUrl(deliveryUrl, true)).rejects.toMatchObject({
+      code: 'UNSAFE_URL',
+    })
+    expect(await sendWebhook({ ...defaultInput, url: deliveryUrl })).toMatchObject({
+      status: 200,
+      error: null,
+    })
+    expect(await sendWebhook({ ...defaultInput, url: `${deliveryUrl}a` })).toMatchObject({
+      error: 'unsafe_url',
+    })
+    expect(received).toBe(1)
+  })
+
+  it.each([
+    { addresses: [] },
+    { addresses: [{ address: '8.8.8.8', family: 6 }] },
+    { addresses: [{ address: 'not-an-ip-address', family: 4 }] },
+  ])(
+    'rejects empty or malformed DNS answers during registration and sending: %j',
+    async ({ addresses }) => {
+      lookupAll.mockResolvedValue(addresses)
+      await expect(validateResolvedUrl('https://receiver.example', false)).rejects.toMatchObject({
+        code: 'UNSAFE_URL',
+      })
+      expect(
+        await sendWebhook({
+          ...defaultInput,
+          url: 'https://receiver.example',
+          allowLocalhost: false,
+        }),
+      ).toMatchObject({ error: 'unsafe_url' })
+    },
+  )
+
+  it('bounds registration DNS lookup with its own deadline', async () => {
+    vi.useFakeTimers()
+    try {
+      lookupAll.mockImplementation(() => new Promise(() => {}))
+      const rejected = expect(
+        validateResolvedUrl('https://receiver.example', false),
+      ).rejects.toMatchObject({ code: 'UNSAFE_URL' })
+      await vi.advanceTimersByTimeAsync(10_000)
+      await rejected
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('accepts public IPv4 and IPv6 literals without DNS', async () => {
-    await expect(assertSafeUrl('https://8.8.8.8/hook', false)).resolves.toBeUndefined()
+    await expect(validateResolvedUrl('https://8.8.8.8/hook', false)).resolves.toBeUndefined()
     await expect(
-      assertSafeUrl('https://[2606:4700:4700::1111]/hook', false),
+      validateResolvedUrl('https://[2606:4700:4700::1111]/hook', false),
     ).resolves.toBeUndefined()
     expect(lookup).not.toHaveBeenCalled()
   })
@@ -115,44 +177,46 @@ describe('URL and DNS validation', () => {
       { address: '8.8.8.8', family: 4 },
       { address: '10.0.0.1', family: 4 },
     ])
-    await expect(assertSafeUrl('https://receiver.example/hook', false)).rejects.toMatchObject({
-      code: 'UNSAFE_URL',
-    })
+    await expect(validateResolvedUrl('https://receiver.example/hook', false)).rejects.toMatchObject(
+      {
+        code: 'UNSAFE_URL',
+      },
+    )
     expect(lookup).toHaveBeenCalledWith('receiver.example', { all: true, verbatim: true })
   })
 
   it('allows only literal loopback and localhost with the development option', async () => {
-    await expect(assertSafeUrl('http://127.0.0.1:1234/hook', true)).resolves.toBeUndefined()
-    await expect(assertSafeUrl('http://[::1]:1234/hook', true)).resolves.toBeUndefined()
+    await expect(validateResolvedUrl('http://127.0.0.1:1234/hook', true)).resolves.toBeUndefined()
+    await expect(validateResolvedUrl('http://[::1]:1234/hook', true)).resolves.toBeUndefined()
     lookupAll.mockResolvedValueOnce([
       { address: '127.0.0.1', family: 4 },
       { address: '::1', family: 6 },
     ])
-    await expect(assertSafeUrl('http://localhost:1234/hook', true)).resolves.toBeUndefined()
+    await expect(validateResolvedUrl('http://localhost:1234/hook', true)).resolves.toBeUndefined()
     for (const url of [
       'http://8.8.8.8',
       'http://10.0.0.1',
       'https://10.0.0.1',
       'http://[::ffff:127.0.0.1]',
     ]) {
-      await expect(assertSafeUrl(url, true)).rejects.toMatchObject({ code: 'UNSAFE_URL' })
+      await expect(validateResolvedUrl(url, true)).rejects.toMatchObject({ code: 'UNSAFE_URL' })
     }
     lookupAll.mockResolvedValueOnce([{ address: '127.0.0.1', family: 4 }])
-    await expect(assertSafeUrl('https://attacker.example', true)).rejects.toMatchObject({
+    await expect(validateResolvedUrl('https://attacker.example', true)).rejects.toMatchObject({
       code: 'UNSAFE_URL',
     })
   })
 
   it('does not trust localhost when DNS returns a non-loopback answer', async () => {
     lookupAll.mockResolvedValueOnce([{ address: '8.8.8.8', family: 4 }])
-    await expect(assertSafeUrl('http://localhost', true)).rejects.toMatchObject({
+    await expect(validateResolvedUrl('http://localhost', true)).rejects.toMatchObject({
       code: 'UNSAFE_URL',
     })
   })
 
   it('re-resolves and rechecks DNS after registration', async () => {
     lookupAll.mockResolvedValueOnce([{ address: '8.8.8.8', family: 4 }])
-    await assertSafeUrl('https://receiver.example', false)
+    await validateResolvedUrl('https://receiver.example', false)
     lookupAll.mockResolvedValueOnce([{ address: '169.254.169.254', family: 4 }])
     const request = vi.spyOn(https, 'request')
     const result = await sendWebhook({

@@ -28,3 +28,20 @@ export function scopeKey(scope: Scope): string {
   }
   return JSON.stringify(['named', type, id])
 }
+
+/** Decode persisted scope keys for the management provider. Reject malformed storage. */
+export function scopeFromKey(key: string): Scope | null {
+  if (key === APPLICATION_SCOPE) return null
+  let parts: unknown
+  try {
+    parts = JSON.parse(key)
+  } catch {
+    throw new WebhookError('INVALID_STATE', 'Invalid persisted scope key.')
+  }
+  if (!Array.isArray(parts) || parts.length !== 3 || parts[0] !== 'named')
+    throw new WebhookError('INVALID_STATE', 'Invalid persisted scope key.')
+  const scope = { type: parts[1] as string, id: parts[2] as string }
+  if (scopeKey(scope) !== key)
+    throw new WebhookError('INVALID_STATE', 'Invalid persisted scope key.')
+  return Object.freeze(scope)
+}

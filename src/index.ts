@@ -1,16 +1,12 @@
-import { resolveConfig } from './config.js'
+import { createDelivery } from './delivery.js'
+import { createPostgresManagement } from './management/postgres.js'
 import { WebhookError } from './errors.js'
-import { toJson } from './json.js'
-import { createStore } from './store.js'
-import { APPLICATION_SCOPE, scopeKey } from './scope.js'
-import { createWorker } from './worker.js'
+import { scopeKey } from './scope.js'
+import type { ManagementScope } from './management/types.js'
 import type {
   CreateEndpointInput,
-  DeliveryQuery,
   EventDefinitions,
   EventName,
-  PublishInput,
-  PublishOptions,
   Scope,
   UpdateEndpointInput,
   WebhookOptions,
@@ -49,87 +45,61 @@ export type EndpointPatch<E extends EventDefinitions> = Omit<UpdateEndpointInput
   eventTypes?: readonly EventName<E>[]
 }
 
-/** Configure the library without connecting, changing the schema, or starting a background loop. */
+export { createDelivery } from './delivery.js'
+export type { DeliveryEngine } from './delivery.js'
+export type { DeliveryOptions } from './types.js'
+export type {
+  EndpointManagement,
+  EndpointSource,
+  EndpointResolution,
+  ManagementScope,
+} from './management/types.js'
+
+/** Compose management and delivery without opening connections or starting workers. */
 export function createWebhooks<const E extends EventDefinitions>(options: WebhookOptions<E>) {
-  const config = resolveConfig(options)
-  const definitions = Object.fromEntries(Object.entries(options.events)) as E
-  const store = createStore(config)
-  const worker = createWorker(config)
+  if (!options || !options.events || typeof options.events !== 'object')
+    throw new WebhookError('INVALID_CONFIG', 'Define events with Standard Schema validators.')
+  const standalone = options.management
+    ? undefined
+    : createPostgresManagement({
+        database: options.database,
+        eventTypes: Object.keys(options.events),
+        encryptionKey: options.encryptionKey!,
+        ...(options.schema === undefined ? {} : { schema: options.schema }),
+        ...(options.allowLocalhost === undefined ? {} : { allowLocalhost: options.allowLocalhost }),
+      })
+  const management = options.management ?? standalone!
+  const delivery = createDelivery({ ...options, source: management.source })
 
-  function eventTypes(types: readonly string[] | undefined, required = false): void {
-    if (types === undefined && !required) return
-    if (
-      !Array.isArray(types) ||
-      types.length === 0 ||
-      types.some((type) => !Object.hasOwn(definitions, type))
-    ) {
-      throw new WebhookError(
-        'INVALID_INPUT',
-        'eventTypes must be a non-empty list of configured event names.',
-      )
-    }
-  }
-
-  function bind(key: string) {
+  function endpoints(scope: ManagementScope) {
     return {
-      endpoints: {
-        create: async (input: EndpointInput<E>) => {
-          eventTypes(input?.eventTypes, true)
-          return store.createEndpoint(key, input)
-        },
-        list: () => store.listEndpoints(key),
-        get: (id: string) => store.getEndpoint(key, id),
-        update: async (id: string, patch: EndpointPatch<E>) => {
-          if (!patch || typeof patch !== 'object')
-            throw new WebhookError('INVALID_INPUT', 'An endpoint patch is required.')
-          eventTypes(patch.eventTypes)
-          return store.updateEndpoint(key, id, patch)
-        },
-        pause: (id: string) => store.pauseEndpoint(key, id),
-        resume: (id: string) => store.resumeEndpoint(key, id),
-        remove: (id: string) => store.removeEndpoint(key, id),
-        rotateSecret: (id: string, rotation?: { graceMs?: number }) =>
-          store.rotateSecret(key, id, rotation),
-      },
-      async publish(input: PublishInput<E>, publication?: PublishOptions) {
-        if (!input || !Object.hasOwn(definitions, input.type))
-          throw new WebhookError('INVALID_INPUT', 'Unknown event type.')
-        const { type, data, idempotencyKey } = input
-        const transaction = publication?.transaction
-        const result = await definitions[type]!['~standard'].validate(data)
-        if (result.issues) {
-          // Validators can echo sensitive payloads in issue messages. Keep the public error bounded and generic.
-          throw new WebhookError('INVALID_INPUT', `Payload does not match event type ${type}.`)
-        }
-        return store.publish(
-          key,
-          {
-            type,
-            data: toJson(result.value),
-            ...(idempotencyKey === undefined ? {} : { idempotencyKey }),
-          },
-          transaction === undefined ? undefined : { transaction },
-        )
-      },
-      deliveries: {
-        list: (query?: DeliveryQuery) => store.listDeliveries(key, query),
-        get: (id: string) => store.getDelivery(key, id),
-        replay: (id: string) => store.replay(key, id),
-      },
+      create: (input: EndpointInput<E>) => management.create(scope, input),
+      list: () => management.list(scope),
+      get: (id: string) => management.get(scope, id),
+      update: (id: string, patch: EndpointPatch<E>) => management.update(scope, id, patch),
+      pause: (id: string) => management.pause(scope, id),
+      resume: (id: string) => management.resume(scope, id),
+      remove: (id: string) => management.remove(scope, id),
+      rotateSecret: (id: string, options?: { graceMs?: number }) =>
+        management.rotateSecret(scope, id, options),
     }
   }
-
   return {
-    ...bind(APPLICATION_SCOPE),
-    /** Check schema compatibility after applying migrations. Does not apply DDL. */
-    check: () => store.checkSchema(),
-    /** Worker execution and pruning cover all scopes in the configured database. */
-    worker,
-    /** Select an isolated scope after the host has authenticated and authorized the caller. */
-    forScope: (scope: Scope) => bind(scopeKey(scope)),
+    ...delivery,
+    endpoints: endpoints(null),
+    async check() {
+      await standalone?.check()
+      await delivery.check()
+    },
+    forScope(scope: Scope) {
+      const snapshot = { type: scope?.type, id: scope?.id }
+      scopeKey(snapshot)
+      Object.freeze(snapshot)
+      return { ...delivery.forScope(snapshot), endpoints: endpoints(snapshot) }
+    },
   }
 }
 
 export type Webhooks<E extends EventDefinitions> = ReturnType<typeof createWebhooks<E>>
-/** Operations bound to one scope, suitable for passing into application request handlers. */
+/** Operations bound to one scope. The host must authorize access before providing this client. */
 export type WebhookClient<E extends EventDefinitions> = ReturnType<Webhooks<E>['forScope']>

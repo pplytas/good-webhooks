@@ -4,9 +4,18 @@ Build webhook delivery into your TypeScript application.
 
 [![CI](https://github.com/pplytas/good-webhooks/actions/workflows/ci.yml/badge.svg)](https://github.com/pplytas/good-webhooks/actions/workflows/ci.yml)
 
-An embedded TypeScript package for outbound webhooks. Your application publishes typed events to PostgreSQL. An explicit worker delivers signed HTTP requests, records attempts, and retries failures.
+An embedded TypeScript package for outbound webhooks. Use the Better Auth plugin for authenticated endpoint management with your existing database, bring your own sender, or add our PostgreSQL publisher and worker.
 
-This is an unpublished v0 package. It requires Node.js 24 or later and PostgreSQL 16 or later.
+| Setup                                  | Entry points                                                    | Storage                                              |
+| -------------------------------------- | --------------------------------------------------------------- | ---------------------------------------------------- |
+| Better Auth management with any sender | `good-webhooks/better-auth`, `good-webhooks/better-auth/client` | One management model through BA's adapter            |
+| Better Auth management with our sender | Above plus `good-webhooks/delivery`                             | BA database plus explicit PostgreSQL delivery tables |
+| Standalone management and delivery     | `good-webhooks`                                                 | PostgreSQL management and delivery tables            |
+| Standalone management with any sender  | `good-webhooks/management/postgres`                             | PostgreSQL management tables only                    |
+
+See the [Better Auth guide](docs/better-auth.md), [management contract](docs/management.md), and [database compatibility checks](docs/better-auth-database-compatibility.md). The standalone walkthrough follows.
+
+This is an unpublished v0 package. Our delivery engine and standalone PostgreSQL provider require Node.js 24 or later and PostgreSQL 16 or later. The Better Auth plugin uses the host adapter and does not require our delivery engine or PostgreSQL.
 
 The package ships ESM. On Node.js 24+, both `import` and CommonJS `require()` load the same build.
 
@@ -64,7 +73,7 @@ Generate an encryption key once, then store it in your secret manager:
 node --input-type=module -e 'import { generateEncryptionKey } from "good-webhooks"; console.log(generateEncryptionKey())'
 ```
 
-Keep the same key across application and worker instances. Replacing it makes existing endpoint secrets unreadable. Automated encryption-key rotation is outside v0.
+Keep compatible keys across application and worker instances. For storage-key rotation, construct a standalone management provider with retained `decryptionKeys`, run `reencrypt(scope)` for every scope, then retire the old keys. See [key rotation](docs/management.md).
 
 Keep event schemas in a module that both the producer and receiver can import:
 
@@ -98,20 +107,44 @@ export const webhooks = createWebhooks({
 await webhooks.check()
 ```
 
-Construction starts no background work and applies no DDL. `check()` checks the schema version. Your migration runner owns schema changes.
+Construction starts no background work and applies no DDL. `check()` verifies the management schema and delivery schema version. Your migration runner owns schema changes. PostgreSQL tables use the `webhook_` prefix in `public` by default.
 
-For an installed package, resolve its SQL migration through the exported path:
+Generate the initial SQL from an installed package, then apply it through your migration runner:
 
 ```sh
-node --input-type=module -e 'import { readFile } from "node:fs/promises"; process.stdout.write(await readFile(new URL(import.meta.resolve("good-webhooks/migrations/001-initial.sql")), "utf8"))' > 001-webhooks.sql
+node --input-type=module -e 'import { getPostgresMigration } from "good-webhooks/migrations"; process.stdout.write(getPostgresMigration())' > 001-webhooks.sql
 psql "$DATABASE_URL" --single-transaction -v ON_ERROR_STOP=1 -f 001-webhooks.sql
 ```
 
-Review and apply the migration once before calling `check()`. It creates the `webhooks` schema in the database you supply.
+Review and apply the migration once before calling `check()`. It creates `public.webhook_endpoints` for standalone management and `public.webhook_endpoint_state`, `public.webhook_events`, `public.webhook_deliveries`, `public.webhook_attempts`, and `public.webhook_schema_version` for delivery.
 
-The SQL contains no `BEGIN` or `COMMIT`. Your migration runner must execute it and its migration bookkeeping in one transaction on the same connection. For standalone setup, the `psql` command above supplies that transaction and rolls back on failure. The application's migration ledger tracks execution order; `webhooks.schema_version` records schema compatibility.
+`getPostgresMigration({ component: 'management' })` or `{ component: 'delivery' }` returns only that component's SQL. The default is `component: 'all'`. The shipped `001-initial.sql`, `management.sql`, and `delivery.sql` files contain the same SQL for `public`. BA management uses BA's schema workflow instead of the standalone management migration. Do not apply the combined and separate migrations to the same installation.
 
-This unpublished revision uses schema version 2. The earlier tenant-based prototype used version 1 and is incompatible. This migration initializes a fresh database; it does not upgrade existing prototype data. `check()` rejects that older schema. No schema or data changes happen automatically.
+For a custom PostgreSQL schema, share one constant between your migration configuration and runtime:
+
+```ts
+import { getPostgresMigration } from 'good-webhooks/migrations'
+
+// webhook-schema.ts
+export const webhookSchema = 'notifications'
+
+// Migration configuration: save this SQL or pass it to your migration runner.
+const sql = getPostgresMigration({ schema: webhookSchema })
+
+// Application and worker configuration:
+const webhooks = createWebhooks({
+  database: pool,
+  schema: webhookSchema,
+  encryptionKey: process.env.WEBHOOK_ENCRYPTION_KEY!,
+  events,
+})
+```
+
+`getPostgresMigration` only returns SQL. `createWebhooks({ schema })` uses that schema for its built-in management provider and delivery tables. To separate them, inject a management provider configured with its own schema or database; see the [management guide](docs/management.md#separate-postgresql-schemas).
+
+The SQL contains no `BEGIN` or `COMMIT`. Your migration runner must execute it and its migration bookkeeping in one transaction on the same connection. For standalone setup, the `psql` command above supplies that transaction and rolls back on failure. The application's migration ledger tracks execution order; `webhook_schema_version` in the selected schema records delivery compatibility.
+
+This unpublished revision uses delivery schema version 3. Earlier prototype schemas are incompatible. This migration initializes a fresh database; it does not upgrade existing prototype data. `check()` rejects that older schema. No schema or data changes happen automatically.
 
 ## Register a receiver and publish
 
@@ -135,7 +168,7 @@ const publication = await webhooks.publish({
 
 The event map infers event names and input payloads. Each publication also validates its data at runtime. Validated output must contain JSON values, fit within 256 KiB, and have a maximum depth of 64.
 
-`publish()` accepts the event durably and creates deliveries for matching, nondeleted endpoints. A paused endpoint still receives queued deliveries. `deliveryCount` can be zero. Acceptance does not mean that a receiver has accepted a request.
+`publish()` obtains a complete recipient list through the configured provider, then atomically stores the event and its deliveries in PostgreSQL. Concurrent endpoint edits can produce a mixed view; unchanged matching endpoints remain included. Accepted idempotent publications retain their original recipients. A paused endpoint still receives queued deliveries. `deliveryCount` can be zero. Acceptance does not mean that a receiver has accepted a request.
 
 The same scope, idempotency key, event type, and validated payload return the existing event with `duplicate: true`. Reusing the key with different content throws `IDEMPOTENCY_CONFLICT`. Keys remain reserved while their events remain in the database.
 
@@ -163,7 +196,7 @@ try {
 }
 ```
 
-The client must use the configured database and schema. Do not run concurrent operations on that client. The caller owns commit and rollback. Until commit, the returned publication is provisional and invisible to workers.
+The client must use the configured delivery database and schema. Endpoint lookup through the management provider remains outside that transaction; this does not create a distributed transaction. Do not run concurrent operations on that client. The caller owns commit and rollback. Until commit, the returned publication is provisional and invisible to workers.
 
 ## Isolate endpoints for different owners
 
@@ -190,9 +223,9 @@ await personal.endpoints.list()
 
 Root operations select only the application scope. They never list or publish across named scopes. Named publications never fall back to application endpoints, even if they have no matching endpoints of their own. The application scope belongs to the configured database and schema, so separate factory instances using that schema share it.
 
-`forScope()` validates and snapshots the selection immediately. It creates no identity record, starts no I/O, and never changes another client's scope. Invalid or missing selections throw `INVALID_INPUT`; they cannot select the application scope. A bound client exposes only `endpoints`, `publish`, and `deliveries`.
+`forScope()` validates and snapshots the selection immediately. It creates no identity record, starts no I/O, and never changes another client's scope. Invalid or missing selections throw `INVALID_INPUT`; they cannot select the application scope. A bound client exposes `endpoints`, `publish`, `deliveries`, and `deliverySettings`.
 
-Choose and authorize scopes in your application, then pass bound clients into request handlers. Do not pass unchecked request-body identifiers to `forScope()`. The library does not manage users, organizations, membership, or permissions. Management results and signed event envelopes contain no internal scope keys.
+Choose and authorize scopes in your application, then pass bound clients into request handlers. Do not pass unchecked request-body identifiers to `forScope()`. Standalone management does not manage users, organizations, membership, or permissions. The optional Better Auth plugin supplies session authentication and ownership checks. Management results and signed event envelopes contain no internal scope keys.
 
 ## Run deliveries and retain history
 
@@ -207,7 +240,7 @@ await webhooks.worker.run({ signal: stop.signal, pollIntervalMs: 1000 })
 
 Use the [runnable worker and cleanup entry points](docs/operations.md) for complete process setup, signal handling, database timeouts, failure reporting, pool closure, and cleanup scheduling.
 
-Workers and pruning operate across every scope in the configured database. These maintenance operations are available only on the root instance. Each worker claims work through PostgreSQL leases. Multiple processes can share the database. A worker holds no database transaction open during HTTP requests. Shutdown aborts active requests, whose receiver outcomes may be unknown.
+Workers and pruning operate across every scope in the configured delivery database and schema. These maintenance operations are available only on the root instance. Each worker claims work through PostgreSQL leases. Multiple processes can share the database. A worker holds no database transaction open during HTTP requests. Shutdown aborts active requests, whose receiver outcomes may be unknown.
 
 Without `onError`, an unexpected worker error rejects `run()`. With `onError`, the worker reports the error and continues polling. Receiver failures appear in delivery records.
 
@@ -241,7 +274,7 @@ These operations use the application scope. A client returned by `forScope()` ex
 ```ts
 await webhooks.endpoints.list()
 await webhooks.endpoints.get(endpoint.id)
-await webhooks.endpoints.update(endpoint.id, { maxInFlight: 4 })
+await webhooks.deliverySettings.set(endpoint.id, { maxInFlight: 4 })
 await webhooks.endpoints.pause(endpoint.id)
 await webhooks.endpoints.resume(endpoint.id)
 
@@ -261,7 +294,7 @@ if (delivery) {
 await webhooks.endpoints.remove(endpoint.id)
 ```
 
-Pausing stops new claims. It does not recall an HTTP request already in flight. Deletion cancels outstanding deliveries but cannot undo a request a receiver has already received.
+Pausing stops preparation of new requests while retaining existing and newly published work within normal expiry limits. Deletion makes an endpoint ineligible immediately; our worker cancels pending work when it observes that state. A request already prepared can still arrive. Management never waits for the sender to clean up its queue. Provider failures defer sending without consuming a receiver attempt and are reported to the worker host. Endpoint lookups have half the configured worker lease as their time budget. Paused or unavailable endpoints are deferred for one second.
 
 Signing-secret rotation accepts an overlap of zero to 24 hours and defaults to 24 hours. During overlap, new requests include signatures for both keys. Another overlapping rotation is rejected until the previous overlap expires.
 
@@ -299,13 +332,13 @@ The [receiver guide](docs/receiving.md) covers request limits, durable deduplica
 
 ## Scope and security
 
-The package provides server operations, PostgreSQL persistence, signing, delivery, retries, and replay. Authentication, permissions, HTTP management routes, dashboards, and worker hosting belong to your application. v0 includes no framework plugin, browser client, or alternative database adapter.
+The optional Better Auth plugin supplies authenticated management routes, client integration, user ownership, organization permissions, and custom-scope policies. Delivery settings, history, and replay remain trusted server operations. Dashboards and worker hosting belong to your application.
 
-Endpoint URLs must use HTTPS and resolve to public addresses. Registration and every delivery validate the destination. Connections use the validated IP address and preserve TLS hostname checks. Private destinations, embedded credentials, and redirects are blocked. `allowLocalhost: true` permits loopback HTTP for development, not arbitrary private networks.
+Endpoint URLs must use HTTPS and resolve to public addresses. Portable management checks URL syntax and literal IP addresses; standalone PostgreSQL management also checks DNS at registration. Our worker resolves and validates DNS before every delivery. Connections use the validated IP address and preserve TLS hostname checks. Private destinations, embedded credentials, and redirects are blocked. `allowLocalhost: true` permits loopback HTTP for development, not arbitrary private networks.
 
-Endpoint secrets use AES-256-GCM encryption at rest. Store the encryption key outside PostgreSQL. Access to the database still exposes event payloads and response history.
+Standalone endpoint secrets use AES-256-GCM encryption at rest; BA management uses BA encryption helpers and its configured secrets. Keep encryption keys outside the database. Access to the database still exposes event payloads and response history.
 
-The [Better Auth integration sketch](docs/better-auth-integration.md) describes a possible later adapter. The delivery core requires no auth instance or Better Auth identity types.
+The [design record](docs/better-auth-integration.md) explains the management and delivery boundary. The delivery core requires no auth instance or Better Auth identity types.
 
 ## Contribute
 

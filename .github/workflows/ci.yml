@@ -54,17 +54,8 @@ jobs:
           psql "$DATABASE_URL" --single-transaction -v ON_ERROR_STOP=1 -f examples/basic/receiver.sql
       - name: Run the delivery and replay demo
         run: npm run example
-      - name: Build and install the package archive
-        shell: bash
-        run: |
-          npm pack
-          archive="$PWD/$(node -p 'require("./package.json").name + "-" + require("./package.json").version + ".tgz"')"
-          consumer_dir="$(mktemp -d)"
-          cd "$consumer_dir"
-          npm init -y
-          npm install --ignore-scripts --no-audit --no-fund "$archive"
-          node --input-type=module -e 'import { createWebhooks } from "good-webhooks"; import { parseWebhook } from "good-webhooks/verify"; import { readFile } from "node:fs/promises"; if (typeof createWebhooks !== "function" || typeof parseWebhook !== "function") throw new Error("Missing ESM exports"); const sql = await readFile(new URL(import.meta.resolve("good-webhooks/migrations/001-initial.sql")), "utf8"); if (!sql.includes("CREATE SCHEMA")) throw new Error("Missing migration");'
-          node -e 'const { createWebhooks } = require("good-webhooks"); const { parseWebhook } = require("good-webhooks/verify"); if (typeof createWebhooks !== "function" || typeof parseWebhook !== "function") throw new Error("Missing CommonJS exports");'
+      - name: Verify standalone and Better Auth package consumers
+        run: npm run test:package
       - name: Save the package archive
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -72,3 +63,55 @@ jobs:
           path: good-webhooks-*.tgz
           if-no-files-found: error
           retention-days: 7
+
+  adapters:
+    name: Better Auth storage adapters
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: webhooks_dev_only
+        ports:
+          - 55439:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: webhooks_local_proof
+        ports:
+          - 55440:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -pwebhooks_local_proof"
+          --health-interval 5s --health-timeout 5s --health-retries 24
+      mongodb:
+        image: mongo:8
+        ports:
+          - 55441:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.adminCommand({ping:1})'"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+      mssql:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: Y
+          MSSQL_SA_PASSWORD: Local-Proof-Only-Pass123
+          MSSQL_MEMORY_LIMIT_MB: 2048
+        ports:
+          - 55442:1433
+        options: >-
+          --health-cmd "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P Local-Proof-Only-Pass123 -C -Q 'SELECT 1'"
+          --health-interval 5s --health-timeout 5s --health-retries 24
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run test:adapters

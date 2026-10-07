@@ -1,6 +1,12 @@
 import { Pool } from 'pg'
 import { z } from 'zod'
-import { createWebhooks, type WebhookClient, type Scope } from '../src/index.js'
+import {
+  createWebhooks,
+  createDelivery,
+  type EndpointSource,
+  type WebhookClient,
+  type Scope,
+} from '../src/index.js'
 import { parseWebhook, verifyWebhook, type ParsedWebhook } from '../src/verify.js'
 import type { IncomingMessage } from 'node:http'
 
@@ -20,6 +26,28 @@ function consumerTypes(request: IncomingMessage) {
   const scoped: WebhookClient<typeof appEvents> = app.forScope(owner)
   app.publish({ type: 'order.created', data: { id: 'o1', total: 1 } })
   app.endpoints.create({ url: 'https://example.com/hook', eventTypes: ['order.created'] })
+  app.deliverySettings.set('opaque-endpoint-id', { maxInFlight: 4 })
+  scoped.deliverySettings.get('opaque-endpoint-id')
+  app.endpoints.create({
+    url: 'https://example.com/hook',
+    eventTypes: ['order.created'],
+    // @ts-expect-error delivery capacity does not belong to endpoint management
+    maxInFlight: 3,
+  })
+  const source: EndpointSource = {
+    async matchRecipients() {
+      return ['opaque-endpoint-id']
+    },
+    async resolveEndpoint() {
+      return { status: 'deleted' }
+    },
+  }
+  const delivery = createDelivery({ database: new Pool(), source, events: appEvents })
+  delivery.publish({ type: 'user.created', data: { email: 'receiver@example.com' } })
+  // @ts-expect-error a sender receives no management CRUD capability
+  delivery.endpoints.create({ url: 'https://example.com/hook', eventTypes: ['user.created'] })
+  // @ts-expect-error delivery-only construction still infers event payloads
+  delivery.publish({ type: 'order.created', data: { id: 1 } })
   // @ts-expect-error root inputs retain event inference
   app.publish({ type: 'order.created', data: { id: 1, total: 1 } })
   // @ts-expect-error root subscriptions retain event inference

@@ -1,4 +1,5 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
+import type { EndpointManagement, EndpointSource } from './management/types.js'
 
 export type JsonValue =
   null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue }
@@ -35,10 +36,12 @@ export interface PublishOptions {
   transaction?: SqlClient
 }
 
-export interface WebhookOptions<E extends EventDefinitions> {
+export interface DeliveryOptions<E extends EventDefinitions> {
   database: Database
+  /** PostgreSQL schema containing the webhook-prefixed delivery tables. Defaults to public. */
+  schema?: string
   events: E
-  encryptionKey: string | Uint8Array
+  source: EndpointSource
   retry?: { delaysMs?: readonly number[]; maxAgeMs?: number }
   delivery?: {
     timeoutMs?: number
@@ -50,9 +53,19 @@ export interface WebhookOptions<E extends EventDefinitions> {
   /** Development only: permits HTTP and loopback addresses. Other private addresses remain forbidden. */
   allowLocalhost?: boolean
 }
+export interface WebhookOptions<E extends EventDefinitions> extends Omit<
+  DeliveryOptions<E>,
+  'source'
+> {
+  /** Required when using the built-in PostgreSQL management provider. */
+  encryptionKey?: string | Uint8Array
+  /** Share an existing management provider, including Better Auth management. */
+  management?: EndpointManagement
+}
 export interface ResolvedConfig {
   database: Database
-  encryptionKey: Uint8Array
+  schema: string
+  source: EndpointSource
   retryDelaysMs: readonly number[]
   maxAgeMs: number
   timeoutMs: number
@@ -70,7 +83,6 @@ export interface Endpoint {
   description: string | null
   eventTypes: string[]
   status: EndpointStatus
-  maxInFlight: number
   createdAt: Date
   updatedAt: Date
 }
@@ -78,13 +90,11 @@ export interface CreateEndpointInput {
   url: string
   description?: string
   eventTypes: readonly string[]
-  maxInFlight?: number
 }
 export interface UpdateEndpointInput {
   url?: string
   description?: string | null
   eventTypes?: readonly string[]
-  maxInFlight?: number
 }
 export interface EndpointWithSecret {
   endpoint: Endpoint
@@ -142,13 +152,13 @@ export interface WorkerResult {
 /** Persisted claim. Internal to the worker, never part of a customer's management DTO. */
 export interface ClaimedDelivery {
   id: string
+  scopeKey: string
   endpointId: string
   eventId: string
   token: string
   body: string
   url: string
-  secret: string
-  previousSecret: string | null
+  secrets: readonly string[]
   attemptCount: number
   createdAt: Date
   eventCreatedAt: Date

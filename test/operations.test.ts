@@ -5,9 +5,16 @@ import { createServer as createTcpServer, type Server, type Socket } from 'node:
 import { fileURLToPath } from 'node:url'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { createStore } from '../src/store.js'
 import { createWorkerStore } from '../src/worker-store.js'
-import { closeDatabase, pool, resetDatabase, testConfig } from './db.js'
+import {
+  dropWebhookTables,
+  closeDatabase,
+  pool,
+  resetDatabase,
+  testConfig,
+  testStore as createStore,
+  testScopeKey,
+} from './db.js'
 
 const cwd = fileURLToPath(new URL('..', import.meta.url))
 const databaseUrl =
@@ -147,10 +154,10 @@ async function queued(url = 'http://127.0.0.1:19001/hooks') {
 
 async function expired(count: number): Promise<void> {
   await pool.query(
-    `INSERT INTO webhooks.events(id,scope_key,type,body,fingerprint,created_at)
-    SELECT gen_random_uuid(),'operations','invoice.paid','{}','fixture',now()-interval '8 days'
+    `INSERT INTO public.webhook_events(id,scope_key,type,body,fingerprint,created_at)
+    SELECT gen_random_uuid(),$2,'invoice.paid','{}','fixture',now()-interval '8 days'
     FROM generate_series(1,$1::integer)`,
-    [count],
+    [count, testScopeKey('operations')],
   )
 }
 
@@ -209,7 +216,7 @@ describe('worker process lifecycle', () => {
   it.each(['worker', 'cleanup'] as const)(
     'closes the pool when %s startup finds no schema',
     async (entry) => {
-      await pool.query('DROP SCHEMA webhooks CASCADE')
+      await dropWebhookTables(pool)
       const running = example(entry)
       expect(await running.result).toEqual({ code: 1, signal: null })
       expect(records(running.stderr)).toContainEqual(
@@ -227,11 +234,11 @@ describe('worker process lifecycle', () => {
     expect(await running.result).toEqual({ code: 1, signal: null })
     expect(running.stdout).toContain('webhooks.worker.started')
     expect(records(running.stderr)).toContainEqual(
-      expect.objectContaining({ code: 'INVALID_CONFIG', phase: 'run' }),
+      expect.objectContaining({ name: 'AggregateError', phase: 'run' }),
     )
     expect(
       (
-        await pool.query('SELECT status,attempt_count FROM webhooks.deliveries WHERE id=$1', [
+        await pool.query('SELECT status,attempt_count FROM public.webhook_deliveries WHERE id=$1', [
           delivery.id,
         ])
       ).rows[0],
@@ -266,7 +273,7 @@ describe('worker process lifecycle', () => {
     const lock = await pool.connect()
     try {
       await lock.query('BEGIN')
-      await lock.query('LOCK TABLE webhooks.schema_version IN ACCESS EXCLUSIVE MODE')
+      await lock.query('LOCK TABLE public.webhook_schema_version IN ACCESS EXCLUSIVE MODE')
       const running = example('worker', { WEBHOOK_DB_STATEMENT_TIMEOUT_MS: '150' })
       const started = Date.now()
       expect(await running.result).toEqual({ code: 1, signal: null })
@@ -285,7 +292,7 @@ describe('worker process lifecycle', () => {
     const lock = await pool.connect()
     try {
       await lock.query('BEGIN')
-      await lock.query('LOCK TABLE webhooks.endpoints IN ACCESS EXCLUSIVE MODE')
+      await lock.query('LOCK TABLE public.webhook_endpoint_state IN ACCESS EXCLUSIVE MODE')
       const running = example('worker', { WEBHOOK_DB_STATEMENT_TIMEOUT_MS: '5000' })
       await ready(running)
       let pid: number | undefined
@@ -348,7 +355,7 @@ describe('worker process lifecycle', () => {
     expect(running.stderr).toBe('')
     expect(
       (
-        await pool.query('SELECT status,last_error FROM webhooks.deliveries WHERE id=$1', [
+        await pool.query('SELECT status,last_error FROM public.webhook_deliveries WHERE id=$1', [
           delivery.id,
         ])
       ).rows[0],
@@ -358,7 +365,7 @@ describe('worker process lifecycle', () => {
     })
     expect(
       (
-        await pool.query('SELECT outcome FROM webhooks.attempts WHERE delivery_id=$1', [
+        await pool.query('SELECT outcome FROM public.webhook_attempts WHERE delivery_id=$1', [
           delivery.id,
         ])
       ).rows,
@@ -379,7 +386,7 @@ describe('bounded cleanup process', () => {
       reason: 'no_progress',
     })
     expect(running.stderr).toBe('')
-    expect((await pool.query('SELECT id FROM webhooks.events')).rows).toEqual([])
+    expect((await pool.query('SELECT id FROM public.webhook_events')).rows).toEqual([])
     await assertClosed('cleanup')
   })
 
@@ -400,7 +407,8 @@ describe('bounded cleanup process', () => {
       reason: 'batch_budget',
     })
     expect(
-      (await pool.query('SELECT count(*)::integer AS count FROM webhooks.events')).rows[0].count,
+      (await pool.query('SELECT count(*)::integer AS count FROM public.webhook_events')).rows[0]
+        .count,
     ).toBe(105)
   })
 
@@ -409,7 +417,7 @@ describe('bounded cleanup process', () => {
     const lock = await pool.connect()
     try {
       await lock.query('BEGIN')
-      await lock.query('LOCK TABLE webhooks.events IN ACCESS EXCLUSIVE MODE')
+      await lock.query('LOCK TABLE public.webhook_events IN ACCESS EXCLUSIVE MODE')
       const running = example('cleanup', {
         WEBHOOK_CLEANUP_MAX_DURATION_MS: '100',
         WEBHOOK_DB_STATEMENT_TIMEOUT_MS: '5000',
@@ -436,7 +444,8 @@ describe('bounded cleanup process', () => {
         reason: 'time_budget',
       })
       expect(
-        (await pool.query('SELECT count(*)::integer AS count FROM webhooks.events')).rows[0].count,
+        (await pool.query('SELECT count(*)::integer AS count FROM public.webhook_events')).rows[0]
+          .count,
       ).toBe(105)
       await assertClosed('cleanup')
     } finally {
@@ -450,7 +459,7 @@ describe('bounded cleanup process', () => {
     const lock = await pool.connect()
     try {
       await lock.query('BEGIN')
-      await lock.query('LOCK TABLE webhooks.events IN ACCESS EXCLUSIVE MODE')
+      await lock.query('LOCK TABLE public.webhook_events IN ACCESS EXCLUSIVE MODE')
       const running = example('cleanup', { WEBHOOK_DB_STATEMENT_TIMEOUT_MS: '5000' })
       await waitUntil(async () => {
         const result = await pool.query(`SELECT pid FROM pg_stat_activity
@@ -469,7 +478,8 @@ describe('bounded cleanup process', () => {
       })
       expect(running.stderr).toBe('')
       expect(
-        (await pool.query('SELECT count(*)::integer AS count FROM webhooks.events')).rows[0].count,
+        (await pool.query('SELECT count(*)::integer AS count FROM public.webhook_events')).rows[0]
+          .count,
       ).toBe(105)
       await assertClosed('cleanup')
     } finally {
@@ -481,32 +491,37 @@ describe('bounded cleanup process', () => {
   it('defers active leases and removes their history on a later run after lease expiry', async () => {
     const { event } = await queued()
     await createWorkerStore(testConfig()).claim()
-    await pool.query("UPDATE webhooks.events SET created_at=now()-interval '8 days'")
+    await pool.query("UPDATE public.webhook_events SET created_at=now()-interval '8 days'")
     await expired(101)
     const first = example('cleanup')
     expect(await first.result).toEqual({ code: 0, signal: null })
     expect(records(first.stdout)).toContainEqual(
       expect.objectContaining({ deleted: 101, reason: 'no_progress' }),
     )
-    expect((await pool.query('SELECT id FROM webhooks.events')).rows).toEqual([
+    expect((await pool.query('SELECT id FROM public.webhook_events')).rows).toEqual([
       { id: event.eventId },
     ])
-    await pool.query("UPDATE webhooks.deliveries SET lease_expires_at=now()-interval '1 second'")
+    await pool.query(
+      "UPDATE public.webhook_deliveries SET lease_expires_at=now()-interval '1 second'",
+    )
     const later = example('cleanup')
     expect(await later.result).toEqual({ code: 0, signal: null })
     expect(records(later.stdout)).toContainEqual(
       expect.objectContaining({ deleted: 1, reason: 'no_progress' }),
     )
-    expect((await pool.query('SELECT id FROM webhooks.events')).rows).toEqual([])
+    expect((await pool.query('SELECT id FROM public.webhook_events')).rows).toEqual([])
   })
 
   it('reports zero progress under endpoint contention while expired history still exists', async () => {
     const { endpoint, event } = await queued()
-    await pool.query("UPDATE webhooks.events SET created_at=now()-interval '8 days'")
+    await pool.query("UPDATE public.webhook_events SET created_at=now()-interval '8 days'")
     const lock = await pool.connect()
     try {
       await lock.query('BEGIN')
-      await lock.query('SELECT id FROM webhooks.endpoints WHERE id=$1 FOR UPDATE', [endpoint.id])
+      await lock.query(
+        'SELECT endpoint_id FROM public.webhook_endpoint_state WHERE endpoint_id=$1 FOR UPDATE',
+        [endpoint.id],
+      )
       const running = example('cleanup')
       expect(await running.result).toEqual({ code: 0, signal: null })
       expect(records(running.stdout)).toContainEqual({
@@ -515,7 +530,7 @@ describe('bounded cleanup process', () => {
         deleted: 0,
         reason: 'no_progress',
       })
-      expect((await pool.query('SELECT id FROM webhooks.events')).rows).toEqual([
+      expect((await pool.query('SELECT id FROM public.webhook_events')).rows).toEqual([
         { id: event.eventId },
       ])
     } finally {

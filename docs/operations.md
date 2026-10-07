@@ -10,7 +10,7 @@ Use Node.js 24 or later and PostgreSQL 16 or later. From a checkout with depende
 npm run build
 ```
 
-Set `DATABASE_URL` to the database that holds the application's webhook tables. Set `WEBHOOK_ENCRYPTION_KEY` to the same persistent key used by every producer and worker. These examples require both values and never generate a temporary key or choose a default database.
+Set `DATABASE_URL` to the database that holds the application's webhook tables. Set `WEBHOOK_ENCRYPTION_KEY` to the same persistent key used by every producer and worker. These examples require both values and never generate a temporary key or choose a default database. `WEBHOOK_SCHEMA` defaults to `public`; set it consistently for every producer, worker, cleanup process, and migration targeting this installation.
 
 Apply the package's SQL migration once through your migration runner. For a fresh database in a checkout:
 
@@ -18,7 +18,15 @@ Apply the package's SQL migration once through your migration runner. For a fres
 psql "$DATABASE_URL" --single-transaction -v ON_ERROR_STOP=1 -f migrations/001-initial.sql
 ```
 
-The host owns the migration transaction and ledger. Neither example applies DDL. Both call `check()` before work starts.
+The shipped migration creates tables prefixed with `webhook_` in `public`. For a custom schema, generate SQL using the same `WEBHOOK_SCHEMA` value:
+
+```sh
+export WEBHOOK_SCHEMA='notifications'
+node --input-type=module -e 'import { getPostgresMigration } from "good-webhooks/migrations"; process.stdout.write(getPostgresMigration({ schema: process.env.WEBHOOK_SCHEMA }))' > 001-webhooks.sql
+psql "$DATABASE_URL" --single-transaction -v ON_ERROR_STOP=1 -f 001-webhooks.sql
+```
+
+Choose the default migration or the custom one, then apply it once. `getPostgresMigration` only returns SQL. The host owns the migration transaction and ledger. Neither example applies DDL. Both call `check()` before work starts.
 
 The [configuration module](../examples/operations/config.ts) is inert on import. It reads environment variables only when an entry point calls `readOperationsConfig()`. Its event map comes from the [shared example schemas](../examples/basic/events.ts). Replace that map with your application's event definitions.
 
@@ -77,11 +85,11 @@ At 20 batches every minute, the theoretical capacity is 2,000 expired events per
 
 The default retention window is seven days. Retention determines when history becomes eligible for deletion, not a guaranteed deletion deadline. Pruning removes replay data and releases the deleted events' publication idempotency keys. Keep your business idempotency policy independent if keys must remain reserved longer than webhook history.
 
-Cleanup covers every scope in the configured database and remains separate from worker execution. `run()` never calls `prune()`.
+Cleanup covers every scope in the configured delivery database and schema and remains separate from worker execution. `run()` never calls `prune()`.
 
 ## Verify process behavior
 
-The operational integration tests spawn the actual Node.js entry points. They use a dedicated disposable database, reset the webhook schema, and terminate only connections with the examples' application names.
+The operational integration tests spawn the actual Node.js entry points. They use a dedicated disposable database, reset webhook tables and test schemas, and terminate only connections with the examples' application names.
 
 ```sh
 npm run build
@@ -89,4 +97,4 @@ TEST_DATABASE_URL='postgres://postgres:password@127.0.0.1:5432/disposable_webhoo
 	npm exec vitest run test/operations.test.ts
 ```
 
-Never point `TEST_DATABASE_URL` at application data. These tests deliberately remove the schema, hold locks, and terminate database connections to exercise process failure and recovery paths.
+Never point `TEST_DATABASE_URL` at application data. These tests deliberately remove tables and test schemas, hold locks, and terminate database connections to exercise process failure and recovery paths.

@@ -24,9 +24,29 @@ _Avoid_: Job, delivery, attempt
 A destination for webhook requests that belongs to one scope.
 _Avoid_: Receiver, subscription
 
+**Endpoint management**:
+The registration and maintenance of webhook destinations, their ownership, and their subscriptions.
+_Avoid_: Publication, delivery
+
+**Paused endpoint**:
+An endpoint temporarily ineligible for new sending attempts. Its subscriptions remain in effect.
+_Avoid_: Disabled endpoint, deleted endpoint
+
+**Deleted endpoint**:
+An endpoint permanently ineligible for new sending attempts.
+_Avoid_: Paused endpoint
+
 **Subscription**:
 An endpoint's selection of event types to receive.
 _Avoid_: Endpoint, filter
+
+**Signing secret**:
+A secret shared by a sender and receiver to authenticate webhook messages.
+_Avoid_: API key, encryption key
+
+**Storage encryption key**:
+A key that protects stored signing secrets and lets authorized services recover them.
+_Avoid_: Signing secret, API key
 
 **Delivery**:
 The effort to send one event to one endpoint. A delivery can require multiple attempts.

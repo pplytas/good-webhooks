@@ -2,24 +2,29 @@ import { describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import { resolveConfig } from '../src/config.js'
 import { toJson } from '../src/json.js'
+import type { EndpointSource } from '../src/management/types.js'
 import type { Database } from '../src/types.js'
 
 const database = { query: vi.fn(), connect: vi.fn() } as unknown as Database
+const source: EndpointSource = {
+  matchRecipients: vi.fn(async () => []),
+  resolveEndpoint: vi.fn(async () => ({ status: 'deleted' as const })),
+}
 const options = {
   database,
-  encryptionKey: new Uint8Array(32).fill(1),
+  source,
   events: { 'order.created': z.object({ id: z.string() }) },
 }
 
 describe('configuration', () => {
   it('does not connect and copies mutable configuration', () => {
     const delays = [50, 100]
-    const key = new Uint8Array(32).fill(7)
-    const resolved = resolveConfig({ ...options, encryptionKey: key, retry: { delaysMs: delays } })
+    const resolved = resolveConfig({ ...options, retry: { delaysMs: delays } })
     delays[0] = 999
-    key[0] = 0
     expect(resolved.retryDelaysMs).toEqual([50, 100])
-    expect(resolved.encryptionKey[0]).toBe(7)
+    expect(resolved.source).toBe(source)
+    expect(source.matchRecipients).not.toHaveBeenCalled()
+    expect(source.resolveEndpoint).not.toHaveBeenCalled()
     expect(database.connect).not.toHaveBeenCalled()
   })
   it('rejects invalid concurrency, retry values, and leases', () => {
@@ -28,6 +33,7 @@ describe('configuration', () => {
     expect(() => resolveConfig({ ...options, delivery: { leaseMs: 1000 } })).toThrow(/leaseMs/)
     expect(() => resolveConfig({ ...options, retentionMs: 1000 })).toThrow(/retentionMs/)
     expect(() => resolveConfig({ ...options, events: {} })).toThrow(/event/)
+    expect(() => resolveConfig({ ...options, source: {} as EndpointSource })).toThrow(/source/)
   })
 })
 

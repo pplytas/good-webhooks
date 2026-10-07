@@ -1,5 +1,8 @@
 import { randomInt, randomUUID } from 'node:crypto'
-import { decryptSecret } from './crypto.js'
+import { signWebhook } from './crypto.js'
+import { scopeFromKey } from './scope.js'
+import { postgresTables } from './postgres-schema.js'
+import type { EndpointResolution } from './management/types.js'
 import type { ClaimedDelivery, DatabaseClient, ResolvedConfig } from './types.js'
 
 export interface DeliveryOutcome {
@@ -13,6 +16,7 @@ export type Completion = 'succeeded' | 'retried' | 'failed' | 'stale'
 
 type DeliveryRow = {
   id: string
+  scope_key: string
   endpoint_id: string
   event_id: string
   attempt_count: number
@@ -20,18 +24,15 @@ type DeliveryRow = {
   body: string
   event_created_at: Date
 }
-type EndpointRow = {
-  id: string
-  url: string
-  secret: string
-  previous_secret: string | null
-  previous_secret_expires_at: Date | null
-  max_in_flight: number
-  status: string
-}
+type EndpointState = { scope_key: string; endpoint_id: string; max_in_flight: number }
+type Reservation = DeliveryRow & { token: string }
+type Resolution = { reservation: Reservation } & (
+  { endpoint: EndpointResolution; error?: never } | { error: unknown; endpoint?: never }
+)
 
-/** All mutations lock endpoint, then delivery. Never retain a transaction across HTTP. */
+/** Lock delivery-owned endpoint state before deliveries. Never hold a transaction during provider or HTTP calls. */
 export function createWorkerStore(config: ResolvedConfig) {
+  const tables = postgresTables(config.schema)
   async function transaction<T>(operation: (client: DatabaseClient) => Promise<T>): Promise<T> {
     const client = await config.database.connect()
     try {
@@ -56,151 +57,269 @@ export function createWorkerStore(config: ResolvedConfig) {
     return next.getTime() <= createdAt.getTime() + config.maxAgeMs ? next : null
   }
 
+  function exhausted(
+    delivery: Pick<DeliveryRow, 'attempt_count' | 'created_at'>,
+    now: Date,
+  ): boolean {
+    return (
+      delivery.attempt_count >= config.retryDelaysMs.length + 1 ||
+      now.getTime() - delivery.created_at.getTime() >= config.maxAgeMs
+    )
+  }
+
   async function recoverExpired(): Promise<void> {
     await transaction(async (client) => {
-      const endpoints = await client.query<Pick<EndpointRow, 'id' | 'status'>>(`
-        SELECT e.id, e.status FROM webhooks.endpoints e
-        WHERE EXISTS (SELECT 1 FROM webhooks.deliveries d
-          WHERE d.endpoint_id=e.id AND d.status='in_flight' AND d.lease_expires_at <= now())
-        ORDER BY e.id LIMIT 100 FOR UPDATE OF e SKIP LOCKED`)
+      const endpoints = await client.query<EndpointState>(`
+        SELECT s.scope_key,s.endpoint_id,s.max_in_flight FROM ${tables.endpointState} s
+        WHERE EXISTS (SELECT 1 FROM ${tables.deliveries} d
+          WHERE d.scope_key=s.scope_key AND d.endpoint_id=s.endpoint_id
+          AND d.status='in_flight' AND d.lease_expires_at <= now())
+        ORDER BY s.scope_key,s.endpoint_id LIMIT 100 FOR NO KEY UPDATE OF s SKIP LOCKED`)
       for (const endpoint of endpoints.rows) {
         const expired = await client.query<
-          Pick<DeliveryRow, 'id' | 'attempt_count' | 'created_at'> & { now: Date }
+          Pick<DeliveryRow, 'id' | 'attempt_count' | 'created_at'> & {
+            now: Date
+            preparing: boolean
+          }
         >(
-          `
-          SELECT id, attempt_count, created_at, clock_timestamp() AS now FROM webhooks.deliveries
-          WHERE endpoint_id=$1 AND status='in_flight' AND lease_expires_at <= now()
+          `SELECT id::text,attempt_count,created_at,preparing,clock_timestamp() AS now
+          FROM ${tables.deliveries} WHERE scope_key=$1 AND endpoint_id=$2
+          AND status='in_flight' AND lease_expires_at <= now()
           ORDER BY id FOR UPDATE SKIP LOCKED`,
-          [endpoint.id],
+          [endpoint.scope_key, endpoint.endpoint_id],
         )
         for (const delivery of expired.rows) {
-          const next = retryAt(delivery.attempt_count, delivery.created_at, delivery.now)
-          const status = endpoint.status === 'deleted' ? 'cancelled' : next ? 'pending' : 'failed'
+          // Provider lookup reservations have not sent anything or consumed an attempt.
+          const next = delivery.preparing
+            ? exhausted(delivery, delivery.now)
+              ? null
+              : delivery.now
+            : retryAt(delivery.attempt_count, delivery.created_at, delivery.now)
+          const error = delivery.preparing
+            ? 'Endpoint lookup lease expired before sending'
+            : 'Worker lease expired; receiver outcome is unknown'
+          if (!delivery.preparing) {
+            await client.query(
+              `UPDATE ${tables.attempts} SET outcome='abandoned',finished_at=clock_timestamp(),error=$3
+              WHERE delivery_id=$1 AND number=$2 AND outcome='started'`,
+              [delivery.id, delivery.attempt_count, error],
+            )
+          }
           await client.query(
-            `UPDATE webhooks.attempts SET outcome='abandoned', finished_at=clock_timestamp(),
-            error='Worker lease expired; receiver outcome is unknown'
-            WHERE delivery_id=$1 AND number=$2 AND outcome='started'`,
-            [delivery.id, delivery.attempt_count],
-          )
-          await client.query(
-            `UPDATE webhooks.deliveries SET status=$2, claim_token=NULL, lease_expires_at=NULL,
-            next_attempt_at=COALESCE($3, next_attempt_at), last_status=NULL, last_error='Worker lease expired; receiver outcome is unknown'
-            WHERE id=$1`,
-            [delivery.id, status, next],
+            `UPDATE ${tables.deliveries} SET status=$2,preparing=false,claim_token=NULL,lease_expires_at=NULL,
+            next_attempt_at=COALESCE($3,next_attempt_at),last_status=NULL,last_error=$4 WHERE id=$1`,
+            [delivery.id, next ? 'pending' : 'failed', next, error],
           )
         }
       }
     })
   }
 
-  async function claim(signal?: AbortSignal): Promise<ClaimedDelivery[]> {
-    if (signal?.aborted) return []
+  async function reserve(signal?: AbortSignal): Promise<Reservation[]> {
     return transaction(async (client) => {
-      const endpoints = await client.query<EndpointRow>(
-        `
-        SELECT e.id, e.url, e.secret, e.previous_secret, e.previous_secret_expires_at, e.max_in_flight, e.status
-        FROM webhooks.endpoints e
-        JOIN LATERAL (SELECT min(d.next_attempt_at) AS due FROM webhooks.deliveries d
-          WHERE d.endpoint_id=e.id AND d.status='pending' AND d.next_attempt_at <= now()) pending ON pending.due IS NOT NULL
-        WHERE e.status='active' AND (SELECT count(*) FROM webhooks.deliveries active
-          WHERE active.endpoint_id=e.id AND active.status='in_flight') < e.max_in_flight
-        ORDER BY pending.due,e.id LIMIT $1 FOR UPDATE OF e SKIP LOCKED`,
+      const endpoints = await client.query<EndpointState>(
+        `SELECT s.scope_key,s.endpoint_id,s.max_in_flight FROM ${tables.endpointState} s
+        JOIN LATERAL (SELECT min(d.next_attempt_at) AS due FROM ${tables.deliveries} d
+          WHERE d.scope_key=s.scope_key AND d.endpoint_id=s.endpoint_id
+          AND d.status='pending' AND d.next_attempt_at <= now()) pending ON pending.due IS NOT NULL
+        WHERE (SELECT count(*) FROM ${tables.deliveries} active
+          WHERE active.scope_key=s.scope_key AND active.endpoint_id=s.endpoint_id
+          AND active.status='in_flight') < s.max_in_flight
+        ORDER BY pending.due,s.scope_key,s.endpoint_id LIMIT $1 FOR NO KEY UPDATE OF s SKIP LOCKED`,
         [config.concurrency],
       )
-      const claims: ClaimedDelivery[] = []
-      // SKIP LOCKED never waits for another endpoint lock and lets LIMIT count available rows.
+      const reservations: Reservation[] = []
       for (const endpoint of endpoints.rows) {
-        if (signal?.aborted || claims.length >= config.concurrency) break
+        if (signal?.aborted || reservations.length >= config.concurrency) break
         const count = await client.query<{ count: number }>(
-          `SELECT count(*)::int AS count FROM webhooks.deliveries
-          WHERE endpoint_id=$1 AND status='in_flight'`,
-          [endpoint.id],
+          `SELECT count(*)::int AS count FROM ${tables.deliveries}
+          WHERE scope_key=$1 AND endpoint_id=$2 AND status='in_flight'`,
+          [endpoint.scope_key, endpoint.endpoint_id],
         )
         const capacity = Math.min(
           endpoint.max_in_flight - count.rows[0]!.count,
-          config.concurrency - claims.length,
+          config.concurrency - reservations.length,
         )
         if (capacity <= 0) continue
         const deliveries = await client.query<DeliveryRow & { now: Date }>(
-          `
-          SELECT d.id::text, d.endpoint_id, d.event_id, d.attempt_count, d.created_at,
-            e.body, e.created_at AS event_created_at, clock_timestamp() AS now
-          FROM webhooks.deliveries d JOIN webhooks.events e ON e.id=d.event_id
-          WHERE d.endpoint_id=$1 AND d.status='pending' AND d.next_attempt_at <= now()
-          ORDER BY d.next_attempt_at, d.id LIMIT $2 FOR UPDATE OF d SKIP LOCKED`,
-          [endpoint.id, capacity],
+          `SELECT d.id::text,d.scope_key,d.endpoint_id,d.event_id,d.attempt_count,d.created_at,
+            e.body,e.created_at AS event_created_at,clock_timestamp() AS now
+          FROM ${tables.deliveries} d JOIN ${tables.events} e ON e.id=d.event_id
+          WHERE d.scope_key=$1 AND d.endpoint_id=$2 AND d.status='pending' AND d.next_attempt_at <= now()
+          ORDER BY d.next_attempt_at,d.id LIMIT $3 FOR UPDATE OF d SKIP LOCKED`,
+          [endpoint.scope_key, endpoint.endpoint_id, capacity],
         )
-        let secrets: { secret: string; previousSecret: string | null } | undefined
         for (const delivery of deliveries.rows) {
           if (signal?.aborted) break
-          if (
-            delivery.attempt_count >= config.retryDelaysMs.length + 1 ||
-            delivery.now.getTime() - delivery.created_at.getTime() >= config.maxAgeMs
-          ) {
+          if (exhausted(delivery, delivery.now)) {
             await client.query(
-              `UPDATE webhooks.deliveries SET status='failed', last_error='Delivery retry budget expired'
-              WHERE id=$1`,
+              `UPDATE ${tables.deliveries} SET status='failed',last_error='Delivery retry budget expired' WHERE id=$1`,
               [delivery.id],
             )
-            continue
+          } else {
+            reservations.push({ ...delivery, token: randomUUID() })
           }
-          // Validate before consuming an attempt. Misconfigured encryption rolls back the whole claim batch.
-          secrets ??= {
-            secret: decryptSecret(endpoint.secret, config.encryptionKey),
-            previousSecret:
-              endpoint.previous_secret &&
-              endpoint.previous_secret_expires_at &&
-              endpoint.previous_secret_expires_at > delivery.now
-                ? decryptSecret(endpoint.previous_secret, config.encryptionKey)
-                : null,
-          }
-          const token = randomUUID()
-          const attemptCount = delivery.attempt_count + 1
-          claims.push({
-            id: delivery.id,
-            endpointId: delivery.endpoint_id,
-            eventId: delivery.event_id,
-            token,
-            body: delivery.body,
-            url: endpoint.url,
-            ...secrets,
-            attemptCount,
-            createdAt: delivery.created_at,
-            eventCreatedAt: delivery.event_created_at,
-          })
         }
       }
-      if (claims.length) {
-        // Persist attempts and start every lease together after selection and secret decryption.
-        // Endpoint and delivery locks remain held through this final statement and commit.
+      if (reservations.length) {
         await client.query(
-          `WITH claimed AS (
-            UPDATE webhooks.deliveries d SET status='in_flight',attempt_count=d.attempt_count+1,
-              claim_token=input.token,lease_expires_at=statement_timestamp()+($3 * interval '1 millisecond')
-            FROM unnest($1::bigint[],$2::uuid[]) AS input(id,token)
-            WHERE d.id=input.id RETURNING d.id,d.attempt_count
-          )
-          INSERT INTO webhooks.attempts(delivery_id,number,started_at)
-          SELECT id,attempt_count,statement_timestamp() FROM claimed`,
-          [
-            claims.map((delivery) => delivery.id),
-            claims.map((delivery) => delivery.token),
-            config.leaseMs,
-          ],
+          `UPDATE ${tables.deliveries} d SET status='in_flight',preparing=true,
+          claim_token=input.token,lease_expires_at=statement_timestamp()+($3 * interval '1 millisecond')
+          FROM unnest($1::bigint[],$2::uuid[]) AS input(id,token) WHERE d.id=input.id`,
+          [reservations.map((row) => row.id), reservations.map((row) => row.token), config.leaseMs],
         )
       }
-      return claims
+      return reservations
     })
+  }
+
+  async function resolve(reservation: Reservation, signal?: AbortSignal): Promise<Resolution> {
+    if (signal?.aborted) return { reservation, endpoint: { status: 'paused' } }
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let abort: (() => void) | undefined
+    try {
+      // Use half the reservation lease for provider reads, leaving time to prepare
+      // healthy siblings even when another read stalls. Late results are ignored.
+      const endpoint = await Promise.race([
+        config.source.resolveEndpoint(scopeFromKey(reservation.scope_key), reservation.endpoint_id),
+        new Promise<EndpointResolution>((resolve, reject) => {
+          timer = setTimeout(
+            () => reject(new Error('Endpoint lookup exceeded its time budget; delivery deferred.')),
+            Math.max(1, Math.floor(config.leaseMs / 2)),
+          )
+          abort = () => resolve({ status: 'paused' })
+          if (signal?.aborted) abort()
+          else signal?.addEventListener('abort', abort, { once: true })
+        }),
+      ])
+      if (!endpoint || !['active', 'paused', 'deleted'].includes(endpoint.status))
+        throw new Error('Endpoint source returned an invalid endpoint state.')
+      if (endpoint.status === 'active') {
+        if (typeof endpoint.url !== 'string' || !endpoint.url)
+          throw new Error('Endpoint source returned an invalid endpoint URL.')
+        // Validate provider signing material before consuming a receiver attempt.
+        signWebhook({ id: reservation.event_id, timestamp: 0, body: '', secrets: endpoint.secrets })
+        return {
+          reservation,
+          endpoint: { status: 'active', url: endpoint.url, secrets: [...endpoint.secrets] },
+        }
+      }
+      return { reservation, endpoint }
+    } catch (error) {
+      return { reservation, error }
+    } finally {
+      clearTimeout(timer)
+      if (abort) signal?.removeEventListener('abort', abort)
+    }
+  }
+
+  async function claim(
+    signal?: AbortSignal,
+  ): Promise<{ claims: ClaimedDelivery[]; errors: unknown[] }> {
+    if (signal?.aborted) return { claims: [], errors: [] }
+    const reservations = await reserve(signal)
+    const resolutions = await Promise.all(
+      reservations.map((reservation) => resolve(reservation, signal)),
+    )
+    const claims = await transaction(async (client) => {
+      const prepared: ClaimedDelivery[] = []
+      // State keys are immutable. NO KEY UPDATE serializes capacity decisions while
+      // allowing publication's foreign-key checks to proceed. Use database ordering
+      // for every batch, including scope/endpoint IDs with non-ASCII characters.
+      await client.query(
+        `SELECT s.scope_key,s.endpoint_id FROM ${tables.endpointState} s
+        WHERE (s.scope_key,s.endpoint_id) IN (SELECT * FROM unnest($1::text[],$2::text[]))
+        ORDER BY s.scope_key,s.endpoint_id FOR NO KEY UPDATE OF s`,
+        [
+          resolutions.map(({ reservation }) => reservation.scope_key),
+          resolutions.map(({ reservation }) => reservation.endpoint_id),
+        ],
+      )
+      for (const resolution of resolutions) {
+        const { reservation } = resolution
+        if (resolution.endpoint?.status === 'deleted') {
+          // An attempt already prepared may finish. Pending and unresolved work cannot start.
+          await client.query(
+            `UPDATE ${tables.deliveries} SET status='cancelled',preparing=false,claim_token=NULL,
+              lease_expires_at=NULL,last_error='Endpoint deleted'
+            WHERE scope_key=$1 AND endpoint_id=$2 AND (status='pending' OR (status='in_flight' AND preparing))`,
+            [reservation.scope_key, reservation.endpoint_id],
+          )
+          continue
+        }
+        if (!resolution.endpoint || resolution.endpoint.status !== 'active' || signal?.aborted) {
+          await client.query(
+            `UPDATE ${tables.deliveries} SET status='pending',preparing=false,claim_token=NULL,lease_expires_at=NULL,
+              next_attempt_at=clock_timestamp()+interval '1 second',last_error=COALESCE($3,last_error)
+            WHERE id=$1 AND claim_token=$2 AND status='in_flight' AND preparing`,
+            [
+              reservation.id,
+              reservation.token,
+              !resolution.endpoint ? 'Endpoint lookup failed; delivery deferred' : null,
+            ],
+          )
+          continue
+        }
+        const current = await client.query<{ now: Date }>(
+          `SELECT clock_timestamp() AS now FROM ${tables.deliveries} WHERE id=$1 AND claim_token=$2
+          AND status='in_flight' AND preparing AND lease_expires_at>clock_timestamp() FOR UPDATE`,
+          [reservation.id, reservation.token],
+        )
+        if (!current.rows[0]) continue
+        if (exhausted(reservation, current.rows[0].now)) {
+          await client.query(
+            `UPDATE ${tables.deliveries} SET status='failed',preparing=false,claim_token=NULL,lease_expires_at=NULL,
+            last_error='Delivery retry budget expired' WHERE id=$1 AND claim_token=$2`,
+            [reservation.id, reservation.token],
+          )
+          continue
+        }
+        prepared.push({
+          id: reservation.id,
+          scopeKey: reservation.scope_key,
+          endpointId: reservation.endpoint_id,
+          eventId: reservation.event_id,
+          token: reservation.token,
+          body: reservation.body,
+          url: resolution.endpoint.url,
+          secrets: resolution.endpoint.secrets,
+          attemptCount: reservation.attempt_count + 1,
+          createdAt: reservation.created_at,
+          eventCreatedAt: reservation.event_created_at,
+        })
+      }
+      if (prepared.length) {
+        // All real attempts begin together, after provider reads, with a fresh send lease.
+        const started = await client.query<{ id: string }>(
+          `WITH claimed AS (
+            UPDATE ${tables.deliveries} d SET preparing=false,attempt_count=d.attempt_count+1,
+              lease_expires_at=statement_timestamp()+($3 * interval '1 millisecond')
+            FROM unnest($1::bigint[],$2::uuid[]) AS input(id,token)
+            WHERE d.id=input.id AND d.claim_token=input.token AND d.status='in_flight' AND d.preparing
+              AND d.lease_expires_at>clock_timestamp() RETURNING d.id,d.attempt_count
+          ), attempts AS (
+            INSERT INTO ${tables.attempts}(delivery_id,number,started_at)
+            SELECT id,attempt_count,statement_timestamp() FROM claimed RETURNING delivery_id
+          ) SELECT delivery_id::text AS id FROM attempts`,
+          [prepared.map((row) => row.id), prepared.map((row) => row.token), config.leaseMs],
+        )
+        const startedIds = new Set(started.rows.map((row) => row.id))
+        return prepared.filter((row) => startedIds.has(row.id))
+      }
+      return prepared
+    })
+    return { claims, errors: resolutions.flatMap((row) => (row.endpoint ? [] : [row.error])) }
   }
 
   async function complete(claim: ClaimedDelivery, outcome: DeliveryOutcome): Promise<Completion> {
     return transaction(async (client) => {
-      await client.query('SELECT id FROM webhooks.endpoints WHERE id=$1 FOR UPDATE', [
-        claim.endpointId,
-      ])
+      await client.query(
+        `SELECT endpoint_id FROM ${tables.endpointState} WHERE scope_key=$1 AND endpoint_id=$2 FOR NO KEY UPDATE`,
+        [claim.scopeKey, claim.endpointId],
+      )
       const current = await client.query<{ now: Date }>(
-        `SELECT clock_timestamp() AS now FROM webhooks.deliveries
-        WHERE id=$1 AND status='in_flight' AND claim_token=$2 AND lease_expires_at > clock_timestamp()
+        `SELECT clock_timestamp() AS now FROM ${tables.deliveries}
+        WHERE id=$1 AND status='in_flight' AND NOT preparing AND claim_token=$2 AND lease_expires_at > clock_timestamp()
         FOR UPDATE`,
         [claim.id, claim.token],
       )
@@ -224,8 +343,8 @@ export function createWorkerStore(config: ResolvedConfig) {
             ? 'retry'
             : 'failed'
       await client.query(
-        `UPDATE webhooks.attempts SET outcome=$3, finished_at=clock_timestamp(), response_status=$4,
-        response_body=$5, error=$6 WHERE delivery_id=$1 AND number=$2 AND outcome='started'`,
+        `UPDATE ${tables.attempts} SET outcome=$3,finished_at=clock_timestamp(),response_status=$4,
+        response_body=$5,error=$6 WHERE delivery_id=$1 AND number=$2 AND outcome='started'`,
         [
           claim.id,
           claim.attemptCount,
@@ -236,8 +355,8 @@ export function createWorkerStore(config: ResolvedConfig) {
         ],
       )
       await client.query(
-        `UPDATE webhooks.deliveries SET status=$3, claim_token=NULL, lease_expires_at=NULL,
-        next_attempt_at=COALESCE($4,next_attempt_at), last_status=$5, last_error=$6 WHERE id=$1 AND claim_token=$2`,
+        `UPDATE ${tables.deliveries} SET status=$3,claim_token=NULL,lease_expires_at=NULL,
+        next_attempt_at=COALESCE($4,next_attempt_at),last_status=$5,last_error=$6 WHERE id=$1 AND claim_token=$2`,
         [
           claim.id,
           claim.token,
@@ -255,31 +374,33 @@ export function createWorkerStore(config: ResolvedConfig) {
   async function prune(): Promise<number> {
     return transaction(async (client) => {
       const candidates = await client.query<{ id: string }>(
-        `SELECT id FROM webhooks.events
-        WHERE created_at < now()-($1 * interval '1 millisecond')
-        AND NOT EXISTS (SELECT 1 FROM webhooks.deliveries d WHERE d.event_id=webhooks.events.id
+        `SELECT e.id FROM ${tables.events} e
+        WHERE e.created_at < now()-($1 * interval '1 millisecond')
+        AND NOT EXISTS (SELECT 1 FROM ${tables.deliveries} d WHERE d.event_id=e.id
           AND d.status='in_flight' AND d.lease_expires_at>clock_timestamp())
-        ORDER BY created_at,id LIMIT 100`,
+        ORDER BY e.created_at,e.id LIMIT 100`,
         [config.retentionMs],
       )
       if (!candidates.rows.length) return 0
       const ids = candidates.rows.map((row) => row.id)
-      // Cascading delivery deletion uses the same endpoint-first ordering as every other mutation.
-      const locked = await client.query<{ id: string }>(
-        `SELECT e.id FROM webhooks.endpoints e
-        WHERE EXISTS (SELECT 1 FROM webhooks.deliveries d WHERE d.endpoint_id=e.id AND d.event_id=ANY($1::uuid[]))
-        ORDER BY e.id FOR UPDATE OF e SKIP LOCKED`,
+      const locked = await client.query<{ scope_key: string; endpoint_id: string }>(
+        `SELECT s.scope_key,s.endpoint_id FROM ${tables.endpointState} s
+        WHERE EXISTS (SELECT 1 FROM ${tables.deliveries} d WHERE d.scope_key=s.scope_key
+          AND d.endpoint_id=s.endpoint_id AND d.event_id=ANY($1::uuid[]))
+        ORDER BY s.scope_key,s.endpoint_id FOR NO KEY UPDATE OF s SKIP LOCKED`,
         [ids],
       )
       const eligible = await client.query<{ id: string }>(
-        `SELECT e.id FROM webhooks.events e WHERE e.id=ANY($1::uuid[])
-        AND NOT EXISTS (SELECT 1 FROM webhooks.deliveries d WHERE d.event_id=e.id
-          AND ((d.status='in_flight' AND d.lease_expires_at>clock_timestamp()) OR NOT(d.endpoint_id=ANY($2::uuid[]))))
+        `SELECT e.id FROM ${tables.events} e WHERE e.id=ANY($1::uuid[])
+        AND NOT EXISTS (SELECT 1 FROM ${tables.deliveries} d WHERE d.event_id=e.id
+          AND ((d.status='in_flight' AND d.lease_expires_at>clock_timestamp())
+            OR NOT EXISTS (SELECT 1 FROM unnest($2::text[],$3::text[]) AS locked(scope_key,endpoint_id)
+              WHERE locked.scope_key=d.scope_key AND locked.endpoint_id=d.endpoint_id)))
         ORDER BY e.id FOR UPDATE OF e SKIP LOCKED`,
-        [ids, locked.rows.map((row) => row.id)],
+        [ids, locked.rows.map((row) => row.scope_key), locked.rows.map((row) => row.endpoint_id)],
       )
       if (!eligible.rows.length) return 0
-      const deleted = await client.query('DELETE FROM webhooks.events WHERE id=ANY($1::uuid[])', [
+      const deleted = await client.query(`DELETE FROM ${tables.events} WHERE id=ANY($1::uuid[])`, [
         eligible.rows.map((row) => row.id),
       ])
       return deleted.rowCount ?? 0

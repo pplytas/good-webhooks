@@ -1,0 +1,3 @@
+# Allow endpoint management without Good Webhooks delivery
+
+The Better Auth plugin will provide authenticated endpoint management and declare only its management tables through Better Auth's schema tooling. Management must work with either Good Webhooks delivery or an application-supplied sender, so installing the plugin must not require our publisher, worker, or delivery tables. This replaces the earlier full-core integration proposal; [ADR 0005](0005-better-auth-management-storage.md) selects Better Auth's storage conventions, and [ADR 0007](0007-shared-management-provider.md) establishes the shared management provider boundary.

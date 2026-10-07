@@ -1,11 +1,17 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
-import { randomUUID } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { decryptSecret } from '../src/crypto.js'
-import { createStore } from '../src/store.js'
 import { createWorkerStore } from '../src/worker-store.js'
 import type { Database } from '../src/types.js'
-import { closeDatabase, pool, resetDatabase, testConfig } from './db.js'
+import {
+  dropWebhookTables,
+  closeDatabase,
+  pool,
+  resetDatabase,
+  testConfig,
+  testStore as createStore,
+  TEST_ENCRYPTION_KEY,
+} from './db.js'
 
 const config = testConfig()
 const store = createStore(config)
@@ -30,29 +36,30 @@ describe('schema setup and endpoint management', () => {
     )
     const client = await pool.connect()
     try {
-      await client.query('DROP SCHEMA webhooks CASCADE')
+      await dropWebhookTables(client)
       await client.query('CREATE TEMP TABLE migration_ledger (version integer PRIMARY KEY)')
       await client.query('BEGIN')
-      await client.query('INSERT INTO migration_ledger VALUES (2)')
+      await client.query('INSERT INTO migration_ledger VALUES (3)')
       await client.query(migration)
       // A failed ledger write must not leave either the schema or earlier bookkeeping committed.
-      await expect(client.query('INSERT INTO migration_ledger VALUES (2)')).rejects.toMatchObject({
+      await expect(client.query('INSERT INTO migration_ledger VALUES (3)')).rejects.toMatchObject({
         code: '23505',
       })
       await client.query('ROLLBACK')
       expect((await client.query('SELECT version FROM migration_ledger')).rows).toEqual([])
       expect(
-        (await client.query("SELECT to_regnamespace('webhooks') AS schema")).rows[0].schema,
+        (await client.query("SELECT to_regclass('public.webhook_schema_version') AS schema"))
+          .rows[0].schema,
       ).toBeNull()
 
       // A runner can retry the same migration after the rollback.
       await client.query('BEGIN')
       await client.query(migration)
-      await client.query('INSERT INTO migration_ledger VALUES (2)')
+      await client.query('INSERT INTO migration_ledger VALUES (3)')
       await client.query('COMMIT')
       await store.checkSchema()
       expect((await client.query('SELECT version FROM migration_ledger')).rows).toEqual([
-        { version: 2 },
+        { version: 3 },
       ])
     } finally {
       await client.query('ROLLBACK')
@@ -63,9 +70,9 @@ describe('schema setup and endpoint management', () => {
 
   it('checks explicit schema version and reports missing or incompatible migrations', async () => {
     await store.checkSchema()
-    await pool.query('UPDATE webhooks.schema_version SET version=1')
+    await pool.query('UPDATE public.webhook_schema_version SET version=1')
     await expect(store.checkSchema()).rejects.toMatchObject({ code: 'SCHEMA_MISMATCH' })
-    await pool.query('DROP SCHEMA webhooks CASCADE')
+    await dropWebhookTables(pool)
     await expect(store.checkSchema()).rejects.toMatchObject({ code: 'SCHEMA_MISMATCH' })
   })
 
@@ -80,11 +87,10 @@ describe('schema setup and endpoint management', () => {
       description: 'Orders',
       eventTypes: ['order.created'],
       status: 'active',
-      maxInFlight: 2,
     })
-    const row = (await pool.query('SELECT secret FROM webhooks.endpoints')).rows[0]!
+    const row = (await pool.query('SELECT secret FROM public.webhook_endpoints')).rows[0]!
     expect(row.secret).not.toBe(created.secret)
-    expect(decryptSecret(row.secret, config.encryptionKey)).toBe(created.secret)
+    expect(decryptSecret(row.secret, TEST_ENCRYPTION_KEY)).toBe(created.secret)
     const fetched = await store.getEndpoint('scope-a', created.endpoint.id)
     expect(fetched).toEqual(created.endpoint)
     expect(fetched).not.toHaveProperty('secret')
@@ -94,7 +100,9 @@ describe('schema setup and endpoint management', () => {
 
   it('enforces scope ownership inside every management and history operation', async () => {
     const { endpoint, delivery } = await queued()
-    await pool.query("UPDATE webhooks.deliveries SET status='succeeded' WHERE id=$1", [delivery.id])
+    await pool.query("UPDATE public.webhook_deliveries SET status='succeeded' WHERE id=$1", [
+      delivery.id,
+    ])
     const foreignOperations = [
       () => store.getEndpoint('scope-b', endpoint.id),
       () => store.updateEndpoint('scope-b', endpoint.id, { description: 'foreign' }),
@@ -118,13 +126,11 @@ describe('schema setup and endpoint management', () => {
       url: 'http://127.0.0.1:19001/events',
       eventTypes: ['order.updated'],
       description: 'new',
-      maxInFlight: 3,
     })
     expect(changed).toMatchObject({
       url: 'http://127.0.0.1:19001/events',
       eventTypes: ['order.updated'],
       description: 'new',
-      maxInFlight: 3,
     })
     expect(
       (await store.updateEndpoint('scope-a', endpoint.id, { description: null })).description,
@@ -144,17 +150,39 @@ describe('schema setup and endpoint management', () => {
     })
   })
 
+  it('stores endpoint concurrency only in delivery settings and enforces its bounds and scope', async () => {
+    const { endpoint } = await store.createEndpoint('scope-a', input)
+    expect(endpoint).not.toHaveProperty('maxInFlight')
+    expect(await store.getEndpointDeliveryOptions('scope-a', endpoint.id)).toEqual({
+      maxInFlight: 2,
+    })
+    expect(
+      await store.setEndpointDeliveryOptions('scope-a', endpoint.id, { maxInFlight: 3 }),
+    ).toEqual({ maxInFlight: 3 })
+    expect(await store.getEndpointDeliveryOptions('scope-a', endpoint.id)).toEqual({
+      maxInFlight: 3,
+    })
+    for (const maxInFlight of [0, 51, 1.5, NaN]) {
+      await expect(
+        store.setEndpointDeliveryOptions('scope-a', endpoint.id, { maxInFlight }),
+      ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+    }
+    await expect(
+      store.setEndpointDeliveryOptions('scope-b', endpoint.id, { maxInFlight: 1 }),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND' })
+  })
+
   it('retains one old signing secret during overlap and requires an explicit immediate second rotation', async () => {
     const created = await store.createEndpoint('scope-a', input)
     const rotated = await store.rotateSecret('scope-a', created.endpoint.id, { graceMs: 60_000 })
     expect(rotated.secret).not.toBe(created.secret)
     let row = (
       await pool.query(
-        'SELECT secret,previous_secret,previous_secret_expires_at FROM webhooks.endpoints',
+        'SELECT secret,previous_secret,previous_secret_expires_at FROM public.webhook_endpoints',
       )
     ).rows[0]!
-    expect(decryptSecret(row.secret, config.encryptionKey)).toBe(rotated.secret)
-    expect(decryptSecret(row.previous_secret, config.encryptionKey)).toBe(created.secret)
+    expect(decryptSecret(row.secret, TEST_ENCRYPTION_KEY)).toBe(rotated.secret)
+    expect(decryptSecret(row.previous_secret, TEST_ENCRYPTION_KEY)).toBe(created.secret)
     expect(row.previous_secret_expires_at.getTime()).toBeGreaterThan(Date.now())
     await expect(store.rotateSecret('scope-a', created.endpoint.id)).rejects.toMatchObject({
       code: 'INVALID_STATE',
@@ -162,10 +190,10 @@ describe('schema setup and endpoint management', () => {
     const immediate = await store.rotateSecret('scope-a', created.endpoint.id, { graceMs: 0 })
     row = (
       await pool.query(
-        'SELECT secret,previous_secret,previous_secret_expires_at FROM webhooks.endpoints',
+        'SELECT secret,previous_secret,previous_secret_expires_at FROM public.webhook_endpoints',
       )
     ).rows[0]!
-    expect(decryptSecret(row.secret, config.encryptionKey)).toBe(immediate.secret)
+    expect(decryptSecret(row.secret, TEST_ENCRYPTION_KEY)).toBe(immediate.secret)
     expect(row.previous_secret).toBeNull()
     expect(row.previous_secret_expires_at).toBeNull()
   })
@@ -176,16 +204,13 @@ describe('schema setup and endpoint management', () => {
       store.createEndpoint('scope-a', { ...input, eventTypes: [] }),
     ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
     await expect(
-      store.createEndpoint('scope-a', { ...input, maxInFlight: 51 }),
-    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
-    await expect(
       store.createEndpoint('scope-a', { ...input, description: 'x'.repeat(2001) }),
     ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
     await expect(
       store.createEndpoint('scope-a', { ...input, url: 'http://10.0.0.1/hooks' }),
     ).rejects.toMatchObject({ code: 'UNSAFE_URL' })
     await expect(store.getEndpoint('scope-a', "x' OR true")).rejects.toMatchObject({
-      code: 'INVALID_INPUT',
+      code: 'NOT_FOUND',
     })
     expect(await store.listEndpoints('scope-a')).toEqual([])
   })
@@ -193,8 +218,8 @@ describe('schema setup and endpoint management', () => {
   it('bounds endpoint listing through a 1000-endpoint scope cap', async () => {
     const { endpoint } = await store.createEndpoint('scope-a', input)
     await pool.query(
-      `INSERT INTO webhooks.endpoints(id,scope_key,url,event_types,secret)
-      SELECT gen_random_uuid(),'scope-a',url,event_types,secret FROM webhooks.endpoints CROSS JOIN generate_series(1,999) WHERE id=$1`,
+      `INSERT INTO public.webhook_endpoints(id,scope_key,url,event_types,secret)
+      SELECT gen_random_uuid()::text,scope_key,url,event_types,secret FROM public.webhook_endpoints CROSS JOIN generate_series(1,999) WHERE id=$1`,
       [endpoint.id],
     )
     expect((await store.listEndpoints('scope-a')).length).toBe(1000)
@@ -220,7 +245,7 @@ describe('atomic publication', () => {
       await client.query('ROLLBACK')
       client.release()
     }
-    const claims = await createWorkerStore(testConfig({ maxAgeMs: 1000 })).claim()
+    const { claims } = await createWorkerStore(testConfig({ maxAgeMs: 1000 })).claim()
     expect(claims).toHaveLength(1)
     expect(claims[0]!.createdAt.getTime()).toBeGreaterThanOrEqual(
       claims[0]!.eventCreatedAt.getTime(),
@@ -240,7 +265,9 @@ describe('atomic publication', () => {
     expect((await store.listDeliveries('scope-a')).items).toHaveLength(2)
     expect((await store.listDeliveries('scope-b')).items).toHaveLength(0)
     const row = (
-      await pool.query('SELECT body,created_at FROM webhooks.events WHERE id=$1', [result.eventId])
+      await pool.query('SELECT body,created_at FROM public.webhook_events WHERE id=$1', [
+        result.eventId,
+      ])
     ).rows[0]!
     expect(JSON.parse(row.body)).toEqual({
       id: result.eventId,
@@ -287,12 +314,12 @@ describe('atomic publication', () => {
       await client.query("INSERT INTO producer_events VALUES ('business-event-1')")
       const result = await store.publish('scope-a', event, { transaction: client })
       expect(result.deliveryCount).toBe(1)
-      expect((await client.query('SELECT * FROM webhooks.events')).rows).toHaveLength(1)
-      expect((await pool.query('SELECT * FROM webhooks.events')).rows).toHaveLength(0)
+      expect((await client.query('SELECT * FROM public.webhook_events')).rows).toHaveLength(1)
+      expect((await pool.query('SELECT * FROM public.webhook_events')).rows).toHaveLength(0)
       await client.query('ROLLBACK')
       expect((await client.query('SELECT * FROM producer_events')).rows).toHaveLength(0)
-      expect((await pool.query('SELECT * FROM webhooks.events')).rows).toHaveLength(0)
-      expect((await pool.query('SELECT * FROM webhooks.deliveries')).rows).toHaveLength(0)
+      expect((await pool.query('SELECT * FROM public.webhook_events')).rows).toHaveLength(0)
+      expect((await pool.query('SELECT * FROM public.webhook_deliveries')).rows).toHaveLength(0)
     } finally {
       client.release()
     }
@@ -315,9 +342,9 @@ describe('atomic publication', () => {
         { ...event, idempotencyKey: 'second' },
         { transaction: client },
       )
-      expect((await pool.query('SELECT * FROM webhooks.events')).rows).toHaveLength(0)
+      expect((await pool.query('SELECT * FROM public.webhook_events')).rows).toHaveLength(0)
       await client.query('COMMIT')
-      expect((await pool.query('SELECT * FROM webhooks.events')).rows).toHaveLength(2)
+      expect((await pool.query('SELECT * FROM public.webhook_events')).rows).toHaveLength(2)
     } finally {
       await client.query('ROLLBACK')
       client.release()
@@ -330,7 +357,7 @@ describe('atomic publication', () => {
       await expect(store.publish('scope-a', event, { transaction: client })).rejects.toMatchObject({
         code: 'TRANSACTION_REQUIRED',
       })
-      expect((await client.query('SELECT * FROM webhooks.events')).rows).toHaveLength(0)
+      expect((await client.query('SELECT * FROM public.webhook_events')).rows).toHaveLength(0)
     } finally {
       client.release()
     }
@@ -339,17 +366,17 @@ describe('atomic publication', () => {
   it('rolls back the event when fanout fails and restores a supplied transaction to its savepoint', async () => {
     await store.createEndpoint('scope-a', input)
     await pool.query(
-      'ALTER TABLE webhooks.deliveries ADD CONSTRAINT test_fanout_failure CHECK (false)',
+      'ALTER TABLE public.webhook_deliveries ADD CONSTRAINT test_fanout_failure CHECK (false)',
     )
     await expect(store.publish('scope-a', event)).rejects.toMatchObject({ code: '23514' })
-    expect((await pool.query('SELECT * FROM webhooks.events')).rows).toHaveLength(0)
+    expect((await pool.query('SELECT * FROM public.webhook_events')).rows).toHaveLength(0)
     const client = await pool.connect()
     try {
       await client.query('BEGIN')
       await expect(store.publish('scope-a', event, { transaction: client })).rejects.toMatchObject({
         code: '23514',
       })
-      expect((await client.query('SELECT * FROM webhooks.events')).rows).toHaveLength(0)
+      expect((await client.query('SELECT * FROM public.webhook_events')).rows).toHaveLength(0)
       // A PostgreSQL constraint failure normally aborts the transaction. The savepoint keeps it usable.
       expect((await client.query('SELECT 42 AS answer')).rows[0]!.answer).toBe(42)
       await client.query('COMMIT')
@@ -359,17 +386,16 @@ describe('atomic publication', () => {
     }
   })
 
-  it('serializes endpoint subscription changes behind uncommitted publication', async () => {
+  it('keeps selected recipients while management changes before publication commits', async () => {
     const { endpoint } = await store.createEndpoint('scope-a', input)
     const client = await pool.connect()
     try {
       await client.query('BEGIN')
       expect((await store.publish('scope-a', event, { transaction: client })).deliveryCount).toBe(1)
-      const change = store.updateEndpoint('scope-a', endpoint.id, {
+      await store.updateEndpoint('scope-a', endpoint.id, {
         eventTypes: ['order.updated'],
       })
       await client.query('COMMIT')
-      await change
       expect((await store.publish('scope-a', event)).deliveryCount).toBe(0)
       expect((await store.listDeliveries('scope-a')).items).toHaveLength(1)
     } finally {
@@ -408,7 +434,7 @@ describe('history, deletion and replay', () => {
   it('returns persisted attempt history in attempt-number order', async () => {
     const { delivery } = await queued()
     await pool.query(
-      `INSERT INTO webhooks.attempts(delivery_id,number,outcome,response_status,response_body,error,finished_at) VALUES
+      `INSERT INTO public.webhook_attempts(delivery_id,number,outcome,response_status,response_body,error,finished_at) VALUES
       ($1,2,'succeeded',204,'',NULL,clock_timestamp()),($1,1,'retry',503,'temporarily unavailable','HTTP 503',clock_timestamp())`,
       [delivery.id],
     )
@@ -430,9 +456,11 @@ describe('history, deletion and replay', () => {
       connect: () => pool.connect(),
       async query(text, values) {
         const result = await pool.query(text, values)
-        if (!advanced && text.includes('FROM webhooks.deliveries')) {
+        if (!advanced && text.includes('FROM "public"."webhook_deliveries"')) {
           advanced = true
-          const [claim] = await workerStore.claim()
+          const {
+            claims: [claim],
+          } = await workerStore.claim()
           await workerStore.complete(claim!, {
             status: 200,
             responseBody: 'accepted',
@@ -456,45 +484,44 @@ describe('history, deletion and replay', () => {
     expect(completed.attempts[0]!.finishedAt).toBeInstanceOf(Date)
   })
 
-  it('cancels pending and inflight delivery, closes attempts, and fences stale worker writes on deletion', async () => {
-    const { endpoint, delivery } = await queued()
+  it('cancels queued work when the sender observes deletion, while prepared attempts can finish', async () => {
+    const { endpoint } = await queued()
     await store.publish('scope-a', event)
-    const token = randomUUID()
-    await pool.query(
-      "UPDATE webhooks.deliveries SET status='in_flight',attempt_count=1,claim_token=$2,lease_expires_at=clock_timestamp()+interval '1 minute' WHERE id=$1",
-      [delivery.id, token],
-    )
-    await pool.query('INSERT INTO webhooks.attempts(delivery_id,number) VALUES ($1,1)', [
-      delivery.id,
-    ])
+    const worker = createWorkerStore(testConfig({ concurrency: 1 }))
+    const {
+      claims: [prepared],
+    } = await worker.claim()
     await store.removeEndpoint('scope-a', endpoint.id)
-    expect((await store.listDeliveries('scope-a')).items.map((item) => item.status)).toEqual([
-      'cancelled',
-      'cancelled',
-    ])
-    const row = (
-      await pool.query('SELECT claim_token,lease_expires_at FROM webhooks.deliveries WHERE id=$1', [
-        delivery.id,
-      ])
-    ).rows[0]!
-    expect(row.claim_token).toBeNull()
-    expect(row.lease_expires_at).toBeNull()
-    expect((await store.getDelivery('scope-a', delivery.id)).attempts[0]).toMatchObject({
-      outcome: 'abandoned',
-      error: 'Endpoint deleted',
-    })
-    const stale = await pool.query(
-      "UPDATE webhooks.deliveries SET status='succeeded' WHERE id=$1 AND claim_token=$2",
-      [delivery.id, token],
+    // Management deletion changes eligibility without modifying delivery storage.
+    expect((await store.listDeliveries('scope-a')).items.map((item) => item.status).sort()).toEqual(
+      ['in_flight', 'pending'],
     )
-    expect(stale.rowCount).toBe(0)
+    expect(
+      await worker.complete(prepared!, {
+        status: 200,
+        responseBody: 'accepted',
+        error: null,
+        retryable: false,
+      }),
+    ).toBe('succeeded')
+    const observed = await worker.claim()
+    expect(observed.claims).toEqual([])
+    expect(observed.errors).toEqual([])
+    expect((await store.listDeliveries('scope-a')).items.map((item) => item.status).sort()).toEqual(
+      ['cancelled', 'succeeded'],
+    )
+    await expect(store.replay('scope-a', prepared!.id)).rejects.toMatchObject({
+      code: 'INVALID_STATE',
+    })
   })
 
   it('replays an immutable event once concurrently, forbids replay chains, and permits another replay after completion', async () => {
     const { published, delivery } = await queued()
-    await pool.query("UPDATE webhooks.deliveries SET status='failed' WHERE id=$1", [delivery.id])
+    await pool.query("UPDATE public.webhook_deliveries SET status='failed' WHERE id=$1", [
+      delivery.id,
+    ])
     const bodyBefore = (
-      await pool.query('SELECT body FROM webhooks.events WHERE id=$1', [published.eventId])
+      await pool.query('SELECT body FROM public.webhook_events WHERE id=$1', [published.eventId])
     ).rows[0]!.body
     const outcomes = await Promise.allSettled([
       store.replay('scope-a', delivery.id),
@@ -513,7 +540,7 @@ describe('history, deletion and replay', () => {
       status: 'pending',
       attemptCount: 0,
     })
-    await pool.query("UPDATE webhooks.deliveries SET status='succeeded' WHERE id=$1", [
+    await pool.query("UPDATE public.webhook_deliveries SET status='succeeded' WHERE id=$1", [
       succeeded.value.id,
     ])
     await expect(store.replay('scope-a', succeeded.value.id)).rejects.toMatchObject({
@@ -521,7 +548,7 @@ describe('history, deletion and replay', () => {
     })
     expect((await store.replay('scope-a', delivery.id)).id).not.toBe(succeeded.value.id)
     expect(
-      (await pool.query('SELECT body FROM webhooks.events WHERE id=$1', [published.eventId]))
+      (await pool.query('SELECT body FROM public.webhook_events WHERE id=$1', [published.eventId]))
         .rows[0]!.body,
     ).toBe(bodyBefore)
   })
@@ -531,13 +558,17 @@ describe('history, deletion and replay', () => {
     await expect(store.replay('scope-a', delivery.id)).rejects.toMatchObject({
       code: 'INVALID_STATE',
     })
-    await pool.query("UPDATE webhooks.deliveries SET status='succeeded' WHERE id=$1", [delivery.id])
+    await pool.query("UPDATE public.webhook_deliveries SET status='succeeded' WHERE id=$1", [
+      delivery.id,
+    ])
     await store.pauseEndpoint('scope-a', endpoint.id)
     await expect(store.replay('scope-a', delivery.id)).rejects.toMatchObject({
       code: 'INVALID_STATE',
     })
     await store.resumeEndpoint('scope-a', endpoint.id)
-    await pool.query("UPDATE webhooks.events SET created_at=clock_timestamp()-interval '2 days'")
+    await pool.query(
+      "UPDATE public.webhook_events SET created_at=clock_timestamp()-interval '2 days'",
+    )
     await expect(store.replay('scope-a', delivery.id)).rejects.toMatchObject({
       code: 'INVALID_STATE',
     })

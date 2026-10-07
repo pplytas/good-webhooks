@@ -1,11 +1,11 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import { createWebhooks } from '../src/index.js'
-import { signWebhook } from '../src/crypto.js'
+import { decryptSecret, signWebhook } from '../src/crypto.js'
 import { parseWebhook } from '../src/verify.js'
 import { events } from '../examples/basic/events.js'
 import type { Database } from '../src/types.js'
-import { pool, resetDatabase, closeDatabase } from './db.js'
+import { dropWebhookTables, pool, resetDatabase, closeDatabase } from './db.js'
 
 const options = {
   database: pool,
@@ -30,7 +30,9 @@ describe('public server API', () => {
     ] as const) {
       const publication = await app.publish(input)
       const body: string = (
-        await pool.query('SELECT body FROM webhooks.events WHERE id=$1', [publication.eventId])
+        await pool.query('SELECT body FROM public.webhook_events WHERE id=$1', [
+          publication.eventId,
+        ])
       ).rows[0].body
       const headers = signWebhook({
         id: publication.eventId,
@@ -99,8 +101,29 @@ describe('public server API', () => {
     expect(database.query).not.toHaveBeenCalled()
   })
 
+  it('copies the standalone management encryption key before later caller mutation', async () => {
+    const key = new Uint8Array(32).fill(7)
+    const app = createWebhooks({ ...options, encryptionKey: key })
+    key.fill(0)
+    const created = await app.endpoints.create({
+      url: 'http://127.0.0.1:12345',
+      eventTypes: ['order.created'],
+    })
+    const row = (
+      await pool.query('SELECT secret FROM public.webhook_endpoints WHERE id=$1', [
+        created.endpoint.id,
+      ])
+    ).rows[0]!
+    expect(decryptSecret(row.secret, new Uint8Array(32).fill(7))).toBe(created.secret)
+    expect(created.endpoint).not.toHaveProperty('maxInFlight')
+    expect(await app.deliverySettings.get(created.endpoint.id)).toEqual({ maxInFlight: 2 })
+    expect(await app.deliverySettings.set(created.endpoint.id, { maxInFlight: 4 })).toEqual({
+      maxInFlight: 4,
+    })
+  })
+
   it('reports missing schema with an actionable code', async () => {
-    await pool.query('DROP SCHEMA webhooks CASCADE')
+    await dropWebhookTables(pool)
     await expect(createWebhooks(options).check()).rejects.toMatchObject({ code: 'SCHEMA_MISMATCH' })
   })
 
@@ -112,7 +135,7 @@ describe('public server API', () => {
       scope.publish({ type: 'order.created', data: { id: 7, total: 1 } } as never),
     ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
     const result = await scope.publish({ type: 'order.created', data: { id: 'o1', total: 1 } })
-    const event = await pool.query('SELECT scope_key,body FROM webhooks.events WHERE id=$1', [
+    const event = await pool.query('SELECT scope_key,body FROM public.webhook_events WHERE id=$1', [
       result.eventId,
     ])
     expect(JSON.parse(event.rows[0].scope_key)).toEqual(['named', 'account', 'scope-a'])
@@ -129,7 +152,7 @@ describe('public server API', () => {
     })
     const scope = webhooks.forScope({ type: 'account', id: 'scope-a' })
     const accepted = await scope.publish({ type: 'transformed', data: 'o1' })
-    const event = await pool.query('SELECT body FROM webhooks.events WHERE id=$1', [
+    const event = await pool.query('SELECT body FROM public.webhook_events WHERE id=$1', [
       accepted.eventId,
     ])
     expect(JSON.parse(event.rows[0].body).data).toEqual({ id: 'o1' })
@@ -157,7 +180,7 @@ describe('public server API', () => {
     release()
     const accepted = await pending
     const row = (
-      await pool.query('SELECT type,idempotency_key FROM webhooks.events WHERE id=$1', [
+      await pool.query('SELECT type,idempotency_key FROM public.webhook_events WHERE id=$1', [
         accepted.eventId,
       ])
     ).rows[0]
@@ -168,10 +191,10 @@ describe('public server API', () => {
     const scope = createWebhooks(options).forScope({ type: 'account', id: 'scope-a' })
     await expect(
       scope.endpoints.create({ url: 'http://localhost:12345', eventTypes: ['missing'] } as never),
-    ).rejects.toThrow(/eventTypes/)
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
     await expect(scope.publish({ type: 'missing', data: {} } as never)).rejects.toMatchObject({
       code: 'INVALID_INPUT',
     })
-    expect((await pool.query('SELECT id FROM webhooks.events')).rows).toHaveLength(0)
+    expect((await pool.query('SELECT id FROM public.webhook_events')).rows).toHaveLength(0)
   })
 })

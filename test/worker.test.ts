@@ -3,12 +3,20 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { once } from 'node:events'
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { encryptSecret, generateSecret, signWebhook, verifyWebhook } from '../src/crypto.js'
-import { createStore } from '../src/store.js'
 import { sendWebhook } from '../src/transport.js'
 import { createWorker } from '../src/worker.js'
 import { createWorkerStore } from '../src/worker-store.js'
 import type { ClaimedDelivery, Database } from '../src/types.js'
-import { closeDatabase, pool, resetDatabase, testConfig } from './db.js'
+import {
+  closeDatabase,
+  pool,
+  resetDatabase,
+  testConfig,
+  testStore as createStore,
+  testManagement,
+  testScopeKey,
+  TEST_ENCRYPTION_KEY,
+} from './db.js'
 
 const servers: Server[] = []
 function deferred<T = void>() {
@@ -30,26 +38,25 @@ async function receiver(
   return `http://127.0.0.1:${address.port}/webhook`
 }
 async function fixture(url: string, count = 1, maxInFlight = 2) {
-  const endpointId = randomUUID()
-  const secret = generateSecret()
-  await pool.query(
-    `INSERT INTO webhooks.endpoints(id,scope_key,url,event_types,secret,max_in_flight)
-    VALUES($1,'scope-a',$2,ARRAY['test.sent'],$3,$4)`,
-    [endpointId, url, encryptSecret(secret, testConfig().encryptionKey), maxInFlight],
-  )
+  const { endpoint, secret } = await createStore().createEndpoint('scope-a', {
+    url,
+    eventTypes: ['test.sent'],
+  })
+  const endpointId = endpoint.id
+  await createStore().setEndpointDeliveryOptions('scope-a', endpointId, { maxInFlight })
   const deliveries: { id: string; eventId: string; body: string }[] = []
   for (let n = 0; n < count; n++) {
     const eventId = randomUUID()
     const body = JSON.stringify({ id: eventId, type: 'test.sent', data: { n } })
     await pool.query(
-      `INSERT INTO webhooks.events(id,scope_key,type,body,fingerprint)
-      VALUES($1,'scope-a','test.sent',$2,'fixture')`,
-      [eventId, body],
+      `INSERT INTO public.webhook_events(id,scope_key,type,body,fingerprint)
+      VALUES($1,$3,'test.sent',$2,'fixture')`,
+      [eventId, body, testScopeKey('scope-a')],
     )
     const result = await pool.query<{ id: string }>(
-      `INSERT INTO webhooks.deliveries(scope_key,endpoint_id,event_id)
-      VALUES('scope-a',$1,$2) RETURNING id::text`,
-      [endpointId, eventId],
+      `INSERT INTO public.webhook_deliveries(scope_key,endpoint_id,event_id)
+      VALUES($3,$1,$2) RETURNING id::text`,
+      [endpointId, eventId, testScopeKey('scope-a')],
     )
     deliveries.push({ id: result.rows[0]!.id, eventId, body })
   }
@@ -57,20 +64,22 @@ async function fixture(url: string, count = 1, maxInFlight = 2) {
 }
 async function due() {
   await pool.query(
-    "UPDATE webhooks.deliveries SET next_attempt_at=now()-interval '1 second' WHERE status='pending'",
+    "UPDATE public.webhook_deliveries SET next_attempt_at=now()-interval '1 second' WHERE status='pending'",
   )
 }
 async function expire(claim: ClaimedDelivery) {
   await pool.query(
-    "UPDATE webhooks.deliveries SET lease_expires_at=now()-interval '1 second' WHERE id=$1",
+    "UPDATE public.webhook_deliveries SET lease_expires_at=now()-interval '1 second' WHERE id=$1",
     [claim.id],
   )
 }
 async function state(id: string) {
-  const delivery = (await pool.query('SELECT * FROM webhooks.deliveries WHERE id=$1', [id]))
+  const delivery = (await pool.query('SELECT * FROM public.webhook_deliveries WHERE id=$1', [id]))
     .rows[0]!
   const attempts = (
-    await pool.query('SELECT * FROM webhooks.attempts WHERE delivery_id=$1 ORDER BY number', [id])
+    await pool.query('SELECT * FROM public.webhook_attempts WHERE delivery_id=$1 ORDER BY number', [
+      id,
+    ])
   ).rows
   return { delivery, attempts }
 }
@@ -90,7 +99,7 @@ afterEach(async () => {
 afterAll(closeDatabase)
 
 describe('worker delivery durability', () => {
-  it('skips an endpoint locked by publication and delivers another scope in the same tick', async () => {
+  it('skips locked delivery coordination and delivers another scope in the same tick', async () => {
     const received: string[] = []
     const url = await receiver((request, response) => {
       received.push(request.url!)
@@ -103,12 +112,16 @@ describe('worker delivery durability', () => {
       await store.publish(id, { type: 'test.sent', data: {} })
     }
     await pool.query(
-      "UPDATE webhooks.deliveries SET next_attempt_at=now()-interval '1 minute' WHERE scope_key='scope-a'",
+      "UPDATE public.webhook_deliveries SET next_attempt_at=now()-interval '1 minute' WHERE scope_key=$1",
+      [testScopeKey('scope-a')],
     )
     const client = await pool.connect()
     try {
       await client.query('BEGIN')
-      await store.publish('scope-a', { type: 'test.sent', data: {} }, { transaction: client })
+      await client.query(
+        'SELECT endpoint_id FROM public.webhook_endpoint_state WHERE scope_key=$1 FOR UPDATE',
+        [testScopeKey('scope-a')],
+      )
       const result = await createWorker(testConfig({ concurrency: 1 })).tick()
       expect(result).toMatchObject({ claimed: 1, succeeded: 1 })
       expect(received).toEqual(['/webhook/scope-b'])
@@ -173,13 +186,14 @@ describe('worker delivery durability', () => {
     await fixture(url, 6, 2)
     const worker = createWorker(testConfig({ concurrency: 5 }))
     const a = worker.tick()
+    // Check overlap before either competing worker can finish without claiming work.
+    await expect(worker.tick()).rejects.toMatchObject({ code: 'INVALID_STATE' })
     const b = createWorker(testConfig({ concurrency: 5 })).tick()
     await full.promise
-    await expect(worker.tick()).rejects.toMatchObject({ code: 'INVALID_STATE' })
     expect(
       (
         await pool.query(
-          "SELECT count(*)::int AS count FROM webhooks.deliveries WHERE status='in_flight'",
+          "SELECT count(*)::int AS count FROM public.webhook_deliveries WHERE status='in_flight'",
         )
       ).rows[0].count,
     ).toBe(2)
@@ -196,7 +210,7 @@ describe('worker delivery durability', () => {
     const second = await fixture(url)
     const [lower, higher] = [first, second].sort((a, b) => a.endpointId.localeCompare(b.endpointId))
     await pool.query(
-      "UPDATE webhooks.deliveries SET next_attempt_at=now()-interval '1 hour' WHERE endpoint_id=$1",
+      "UPDATE public.webhook_deliveries SET next_attempt_at=now()-interval '1 hour' WHERE endpoint_id=$1",
       [higher!.endpointId],
     )
     const worker = createWorker(testConfig({ concurrency: 1 }))
@@ -211,7 +225,7 @@ describe('worker delivery durability', () => {
     const second = await fixture(url, 3, 2)
     const [lower, higher] = [first, second].sort((a, b) => a.endpointId.localeCompare(b.endpointId))
     await pool.query(
-      "UPDATE webhooks.deliveries SET next_attempt_at=now()-interval '1 hour' WHERE id=$1",
+      "UPDATE public.webhook_deliveries SET next_attempt_at=now()-interval '1 hour' WHERE id=$1",
       [higher!.deliveries[0]!.id],
     )
     const worker = createWorker(testConfig({ concurrency: 2 }))
@@ -231,7 +245,9 @@ describe('worker delivery durability', () => {
     } = await fixture(url)
     const config = testConfig()
     const storage = createWorkerStore(config)
-    const [claim] = await storage.claim()
+    const {
+      claims: [claim],
+    } = await storage.claim()
     const accepted = await sendWebhook({
       url,
       body: claim!.body,
@@ -239,7 +255,7 @@ describe('worker delivery durability', () => {
         id: claim!.eventId,
         timestamp: Math.floor(Date.now() / 1000),
         body: claim!.body,
-        secrets: [claim!.secret],
+        secrets: claim!.secrets,
       }),
       timeoutMs: 1000,
       maxResponseBytes: 100,
@@ -262,13 +278,17 @@ describe('worker delivery durability', () => {
   it('fences an expired token before and after a replacement claim', async () => {
     await fixture('http://127.0.0.1:12345')
     const storage = createWorkerStore(testConfig())
-    const [old] = await storage.claim()
+    const {
+      claims: [old],
+    } = await storage.claim()
     await expire(old!)
     const success = { status: 200, responseBody: 'ok', error: null, retryable: false }
     expect(await storage.complete(old!, success)).toBe('stale')
     await storage.recoverExpired()
     await due()
-    const [fresh] = await storage.claim()
+    const {
+      claims: [fresh],
+    } = await storage.claim()
     expect(fresh!.token).not.toBe(old!.token)
     expect(await storage.complete(old!, success)).toBe('stale')
     expect(await storage.complete(fresh!, success)).toBe('succeeded')
@@ -426,15 +446,15 @@ describe('worker delivery durability', () => {
     const storage = createWorkerStore(
       testConfig({ database, concurrency: 3, timeoutMs: 40, leaseMs: 100 }),
     )
-    const claims = await storage.claim()
+    const { claims } = await storage.claim()
     expect(delayedSelections).toBe(1)
     expect(claims).toHaveLength(3)
     const leases = await pool.query<{ live: boolean; lease_expires_at: Date }>(
-      'SELECT lease_expires_at>clock_timestamp() AS live,lease_expires_at FROM webhooks.deliveries',
+      'SELECT lease_expires_at>clock_timestamp() AS live,lease_expires_at FROM public.webhook_deliveries',
     )
     expect(leases.rows.every((row) => row.live)).toBe(true)
     expect(new Set(leases.rows.map((row) => row.lease_expires_at.getTime())).size).toBe(1)
-    const attempts = await pool.query('SELECT * FROM webhooks.attempts')
+    const attempts = await pool.query('SELECT * FROM public.webhook_attempts')
     expect(attempts.rows).toHaveLength(3)
     expect(attempts.rows.every((row) => row.outcome === 'started')).toBe(true)
     const outcomes = await Promise.all(
@@ -458,8 +478,10 @@ describe('worker delivery durability', () => {
     })
     const { deliveries } = await fixture(url, 2)
     const storage = createWorkerStore(testConfig({ concurrency: 1 }))
-    const [claim] = await storage.claim()
-    await pool.query("UPDATE webhooks.deliveries SET created_at=now()-interval '2 minutes'")
+    const {
+      claims: [claim],
+    } = await storage.claim()
+    await pool.query("UPDATE public.webhook_deliveries SET created_at=now()-interval '2 minutes'")
     await expire(claim!)
     expect((await createWorker(testConfig()).tick()).claimed).toBe(0)
     expect(requests).toBe(0)
@@ -484,10 +506,11 @@ describe('worker delivery durability', () => {
     expect((await first).succeeded).toBe(1)
     expect((await worker.tick()).claimed).toBe(0)
     await createStore(testConfig()).resumeEndpoint('scope-a', endpointId)
+    await due()
     expect((await worker.tick()).succeeded).toBe(1)
   })
 
-  it('fences completion after endpoint deletion and cancels queued work', async () => {
+  it('allows a prepared request to finish and cancels queued work after observing deletion', async () => {
     const received = deferred()
     const finish = deferred()
     const url = await receiver((_request, response) => {
@@ -500,11 +523,11 @@ describe('worker delivery durability', () => {
     await received.promise
     await createStore(testConfig()).removeEndpoint('scope-a', endpointId)
     finish.resolve()
-    expect((await first).stale).toBe(1)
+    expect((await first).succeeded).toBe(1)
     expect((await worker.tick()).claimed).toBe(0)
-    for (const delivery of deliveries)
-      expect((await state(delivery.id)).delivery.status).toBe('cancelled')
-    expect((await state(deliveries[0]!.id)).attempts[0].outcome).toBe('abandoned')
+    expect((await state(deliveries[0]!.id)).delivery.status).toBe('succeeded')
+    expect((await state(deliveries[1]!.id)).delivery.status).toBe('cancelled')
+    expect((await state(deliveries[0]!.id)).attempts[0].outcome).toBe('succeeded')
   })
 
   it('does not consume an attempt when encryption configuration is wrong', async () => {
@@ -512,8 +535,12 @@ describe('worker delivery durability', () => {
       deliveries: [delivery],
     } = await fixture('http://127.0.0.1:12345')
     await expect(
-      createWorker(testConfig({ encryptionKey: new Uint8Array(32).fill(2) })).tick(),
-    ).rejects.toMatchObject({ code: 'INVALID_CONFIG' })
+      createWorker(
+        testConfig({
+          source: testManagement({ encryptionKey: new Uint8Array(32).fill(2) }).source,
+        }),
+      ).tick(),
+    ).rejects.toMatchObject({ errors: [expect.objectContaining({ code: 'INVALID_CONFIG' })] })
     const current = await state(delivery!.id)
     expect(current.delivery).toMatchObject({
       status: 'pending',
@@ -523,21 +550,28 @@ describe('worker delivery durability', () => {
     expect(current.attempts).toEqual([])
   })
 
-  it('rolls back the entire batch if any endpoint secret cannot be decrypted', async () => {
-    const first = await fixture('http://127.0.0.1:12345')
-    const second = await fixture('http://127.0.0.1:12345')
-    const later = [first.endpointId, second.endpointId].sort()[1]!
-    await pool.query('UPDATE webhooks.endpoints SET secret=$2 WHERE id=$1', [later, 'corrupted'])
+  it('defers an undecryptable endpoint without preventing a healthy sibling from sending', async () => {
+    const url = await receiver((_request, response) => response.end('accepted'))
+    const healthy = await fixture(url)
+    const corrupt = await fixture(url)
+    await pool.query('UPDATE public.webhook_endpoints SET secret=$2 WHERE id=$1', [
+      corrupt.endpointId,
+      'corrupted',
+    ])
     await expect(createWorker(testConfig()).tick()).rejects.toMatchObject({
-      code: 'INVALID_CONFIG',
+      errors: [expect.objectContaining({ code: 'INVALID_CONFIG' })],
     })
-    expect((await pool.query('SELECT status,attempt_count FROM webhooks.deliveries')).rows).toEqual(
-      [
-        { status: 'pending', attempt_count: 0 },
-        { status: 'pending', attempt_count: 0 },
-      ],
-    )
-    expect((await pool.query('SELECT * FROM webhooks.attempts')).rows).toEqual([])
+    expect((await state(healthy.deliveries[0]!.id)).delivery).toMatchObject({
+      status: 'succeeded',
+      attempt_count: 1,
+    })
+    const deferred = await state(corrupt.deliveries[0]!.id)
+    expect(deferred.delivery).toMatchObject({
+      status: 'pending',
+      attempt_count: 0,
+      claim_token: null,
+    })
+    expect(deferred.attempts).toEqual([])
   })
 
   it('fails an abandoned claim when no retry attempts remain', async () => {
@@ -545,7 +579,9 @@ describe('worker delivery durability', () => {
       deliveries: [delivery],
     } = await fixture('http://127.0.0.1:12345')
     const storage = createWorkerStore(testConfig({ retryDelaysMs: [] }))
-    const [claim] = await storage.claim()
+    const {
+      claims: [claim],
+    } = await storage.claim()
     await expire(claim!)
     await storage.recoverExpired()
     expect((await state(delivery!.id)).delivery).toMatchObject({
@@ -554,7 +590,7 @@ describe('worker delivery durability', () => {
       claim_token: null,
     })
     expect((await state(delivery!.id)).attempts[0].outcome).toBe('abandoned')
-    expect(await storage.claim()).toEqual([])
+    expect(await storage.claim()).toEqual({ claims: [], errors: [] })
   })
 
   it('includes an old signing secret only during its grace period', async () => {
@@ -566,14 +602,14 @@ describe('worker delivery durability', () => {
     })
     const { endpointId } = await fixture(url, 2, 1)
     await pool.query(
-      `UPDATE webhooks.endpoints SET previous_secret=$2,
+      `UPDATE public.webhook_endpoints SET previous_secret=$2,
       previous_secret_expires_at=now()+interval '1 hour' WHERE id=$1`,
-      [endpointId, encryptSecret(previous, testConfig().encryptionKey)],
+      [endpointId, encryptSecret(previous, TEST_ENCRYPTION_KEY)],
     )
     const worker = createWorker(testConfig())
     await worker.tick()
     await pool.query(
-      "UPDATE webhooks.endpoints SET previous_secret_expires_at=now()-interval '1 second' WHERE id=$1",
+      "UPDATE public.webhook_endpoints SET previous_secret_expires_at=now()-interval '1 second' WHERE id=$1",
       [endpointId],
     )
     await worker.tick()
@@ -585,15 +621,15 @@ describe('worker delivery durability', () => {
     const {
       deliveries: [delivery],
     } = await fixture(url)
-    await pool.query("UPDATE webhooks.events SET created_at=now()-interval '2 minutes'")
+    await pool.query("UPDATE public.webhook_events SET created_at=now()-interval '2 minutes'")
     await pool.query(
-      "UPDATE webhooks.deliveries SET status='failed', created_at=now()-interval '2 minutes'",
+      "UPDATE public.webhook_deliveries SET status='failed', created_at=now()-interval '2 minutes'",
     )
     const replay = await createStore(testConfig()).replay('scope-a', delivery!.id)
     expect((await createWorker(testConfig()).tick()).succeeded).toBe(1)
     expect((await state(replay.id)).delivery.status).toBe('succeeded')
     expect(await createWorker(testConfig({ retentionMs: 60_000 })).prune()).toBe(1)
-    expect((await pool.query('SELECT * FROM webhooks.deliveries')).rows).toEqual([])
+    expect((await pool.query('SELECT * FROM public.webhook_deliveries')).rows).toEqual([])
   })
 
   it('prunes expired history with an expired lease and fences its stale completion', async () => {
@@ -601,14 +637,17 @@ describe('worker delivery durability', () => {
       deliveries: [delivery],
     } = await fixture('http://127.0.0.1:12345')
     const storage = createWorkerStore(testConfig())
-    const [claim] = await storage.claim()
-    await pool.query("UPDATE webhooks.events SET created_at=now()-interval '2 days'")
+    const {
+      claims: [claim],
+    } = await storage.claim()
+    await pool.query("UPDATE public.webhook_events SET created_at=now()-interval '2 days'")
     await expire(claim!)
     expect(await createWorker(testConfig()).prune()).toBe(1)
     expect(
-      (await pool.query('SELECT id FROM webhooks.events WHERE id=$1', [delivery!.eventId])).rows,
+      (await pool.query('SELECT id FROM public.webhook_events WHERE id=$1', [delivery!.eventId]))
+        .rows,
     ).toEqual([])
-    expect((await pool.query('SELECT * FROM webhooks.attempts')).rows).toEqual([])
+    expect((await pool.query('SELECT * FROM public.webhook_attempts')).rows).toEqual([])
     expect(
       await storage.complete(claim!, {
         status: 200,
@@ -624,15 +663,18 @@ describe('worker delivery durability', () => {
       deliveries: [delivery],
     } = await fixture('http://127.0.0.1:12345')
     await createWorkerStore(testConfig()).claim()
-    await pool.query("UPDATE webhooks.events SET created_at=now()-interval '2 days'")
-    await pool.query(`INSERT INTO webhooks.events(id,scope_key,type,body,fingerprint,created_at)
-      SELECT gen_random_uuid(),'scope-a','test.sent','{}','fixture',now()-interval '2 days' FROM generate_series(1,101)`)
+    await pool.query("UPDATE public.webhook_events SET created_at=now()-interval '2 days'")
+    await pool.query(
+      `INSERT INTO public.webhook_events(id,scope_key,type,body,fingerprint,created_at)
+      SELECT gen_random_uuid(),$1,'test.sent','{}','fixture',now()-interval '2 days' FROM generate_series(1,101)`,
+      [testScopeKey('scope-a')],
+    )
     const worker = createWorker(testConfig())
     const first = await worker.prune()
     expect(first).toBeGreaterThanOrEqual(99)
     expect(first).toBeLessThanOrEqual(100)
     expect(await worker.prune()).toBe(101 - first)
-    expect((await pool.query('SELECT id FROM webhooks.events')).rows).toEqual([
+    expect((await pool.query('SELECT id FROM public.webhook_events')).rows).toEqual([
       { id: delivery!.eventId },
     ])
   })
@@ -690,14 +732,18 @@ describe('explicit worker lifecycle', () => {
     } = await fixture('http://127.0.0.1:12345')
     const controller = new AbortController()
     const errors: unknown[] = []
-    await createWorker(testConfig({ encryptionKey: new Uint8Array(32).fill(2) })).run({
+    await createWorker(
+      testConfig({ source: testManagement({ encryptionKey: new Uint8Array(32).fill(2) }).source }),
+    ).run({
       signal: controller.signal,
       onError(error) {
         errors.push(error)
         controller.abort()
       },
     })
-    expect(errors).toMatchObject([{ code: 'INVALID_CONFIG' }])
+    expect(errors).toMatchObject([
+      { errors: [expect.objectContaining({ code: 'INVALID_CONFIG' })] },
+    ])
     expect((await state(delivery!.id)).delivery.attempt_count).toBe(0)
   })
 
@@ -705,7 +751,11 @@ describe('explicit worker lifecycle', () => {
     await fixture('http://127.0.0.1:12345')
     const controller = new AbortController()
     await expect(
-      createWorker(testConfig({ encryptionKey: new Uint8Array(32).fill(2) })).run({
+      createWorker(
+        testConfig({
+          source: testManagement({ encryptionKey: new Uint8Array(32).fill(2) }).source,
+        }),
+      ).run({
         signal: controller.signal,
         async onError() {
           throw new Error('stop worker')

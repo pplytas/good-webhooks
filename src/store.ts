@@ -1,45 +1,26 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { encryptSecret, generateSecret } from './crypto.js'
+import { scopeFromKey } from './scope.js'
+import { postgresTables, resolvePostgresSchema } from './postgres-schema.js'
 import { WebhookError } from './errors.js'
-import { assertSafeUrl } from './transport.js'
 import type {
   Attempt,
-  CreateEndpointInput,
   Delivery,
   DeliveryDetail,
   DeliveryQuery,
-  Endpoint,
-  EndpointWithSecret,
   JsonValue,
   Page,
   PublishOptions,
   PublishResult,
   ResolvedConfig,
   SqlClient,
-  UpdateEndpointInput,
 } from './types.js'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const MAX_BIGINT = 9223372036854775807n
-const ENDPOINT_LIMIT = 1000
-const MAX_ROTATION_GRACE_MS = 86_400_000
 const DELIVERY_STATUSES = new Set(['pending', 'in_flight', 'succeeded', 'failed', 'cancelled'])
-const ENDPOINT_FIELDS =
-  'id, scope_key, url, description, event_types, status, max_in_flight, created_at, updated_at'
 const DELIVERY_FIELDS =
   'id::text, scope_key, endpoint_id, event_id, status, attempt_count, next_attempt_at, created_at, replay_of::text, last_error, last_status'
 
-interface EndpointRow extends Record<string, unknown> {
-  id: string
-  scope_key: string
-  url: string
-  description: string | null
-  event_types: string[]
-  status: Endpoint['status']
-  max_in_flight: number
-  created_at: Date
-  updated_at: Date
-}
 interface DeliveryRow extends Record<string, unknown> {
   id: string
   scope_key: string
@@ -61,19 +42,6 @@ interface DeliveryHistoryRow extends DeliveryRow {
   response_status: number | null
   response_body: string | null
   error: string | null
-}
-
-function endpoint(row: EndpointRow): Endpoint {
-  return {
-    id: row.id,
-    url: row.url,
-    description: row.description,
-    eventTypes: row.event_types,
-    status: row.status,
-    maxInFlight: row.max_in_flight,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-  }
 }
 
 function delivery(row: DeliveryRow): Delivery {
@@ -103,34 +71,18 @@ function scope(key: string): void {
     invalid('Invalid internal scope key.')
 }
 function endpointId(id: string): void {
-  if (typeof id !== 'string' || !UUID.test(id)) invalid('Endpoint id must be a UUID.')
+  if (typeof id !== 'string' || !id.trim() || id.length > 2048 || id.includes('\0'))
+    invalid('Endpoint id must contain 1–2048 characters and no null bytes.')
 }
 function deliveryId(id: string): void {
   if (typeof id !== 'string' || !/^[1-9][0-9]{0,18}$/.test(id) || BigInt(id) > MAX_BIGINT)
     invalid('Delivery id must be a positive PostgreSQL bigint string.')
 }
-function eventTypes(types: readonly string[]): string[] {
-  if (
-    !Array.isArray(types) ||
-    types.length < 1 ||
-    types.length > 100 ||
-    types.some(
-      (type) =>
-        typeof type !== 'string' || !type.trim() || type.length > 120 || type.includes('\0'),
-    )
-  ) {
-    invalid('An endpoint must subscribe to 1–100 event names of 1–120 characters.')
-  }
-  return [...new Set(types)]
+function eventType(type: string): void {
+  if (typeof type !== 'string' || !type.trim() || type.length > 120 || type.includes('\0'))
+    invalid('An event name must contain 1–120 characters and no null bytes.')
 }
-function description(value: string | null | undefined): string | null {
-  if (value === undefined || value === null) return null
-  if (typeof value !== 'string' || value.length > 2000 || value.includes('\0'))
-    invalid('Description must contain at most 2000 characters and no null bytes.')
-  return value
-}
-function maxInFlight(value: number | undefined): number {
-  if (value === undefined) return 2
+function maxInFlight(value: number): number {
   if (!Number.isSafeInteger(value) || value < 1 || value > 50)
     invalid('maxInFlight must be an integer from 1 to 50.')
   return value
@@ -141,15 +93,17 @@ function postgresCode(error: unknown): string | undefined {
     : undefined
 }
 
-/** Endpoint mutations and event fanout serialize within each scope, including caller-owned transactions. */
-async function lockScope(client: SqlClient, scopeKey: string): Promise<void> {
-  // Keep this database lock namespace stable across package renames.
+/** Delivery acceptance serializes within each scope, including caller-owned transactions. */
+async function lockScope(client: SqlClient, schema: string, scopeKey: string): Promise<void> {
+  // Schema is part of the installation identity; tuples avoid ambiguous concatenation.
   await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
-    `@pplytas/webhooks:scope:${scopeKey}`,
+    `good-webhooks:delivery:${JSON.stringify([schema, scopeKey])}`,
   ])
 }
 
 export function createStore(config: ResolvedConfig) {
+  const schema = resolvePostgresSchema(config.schema)
+  const tables = postgresTables(schema)
   async function transaction<T>(
     run: (client: SqlClient) => Promise<T>,
     supplied?: SqlClient,
@@ -191,39 +145,15 @@ export function createStore(config: ResolvedConfig) {
     }
   }
 
-  async function safeUrl(url: string): Promise<void> {
-    if (typeof url !== 'string' || url.length < 1 || url.length > 2048)
-      invalid('Endpoint URL must contain 1–2048 characters.')
-    await assertSafeUrl(url, config.allowLocalhost)
-  }
-
-  async function lockedEndpoint(
-    client: SqlClient,
-    scopeKey: string,
-    id: string,
-  ): Promise<EndpointRow> {
-    const { rows } = await client.query<EndpointRow>(
-      `SELECT ${ENDPOINT_FIELDS} FROM webhooks.endpoints WHERE scope_key=$1 AND id=$2 FOR UPDATE`,
-      [scopeKey, id],
-    )
-    if (!rows[0]) throw new WebhookError('NOT_FOUND', 'Endpoint not found in this scope.')
-    return rows[0]
-  }
-
-  function editable(row: EndpointRow): void {
-    if (row.status === 'deleted')
-      throw new WebhookError('INVALID_STATE', 'Deleted endpoints cannot be modified.')
-  }
-
   async function checkSchema(): Promise<void> {
     try {
       const result = await config.database.query<{ version: number }>(
-        'SELECT version FROM webhooks.schema_version ORDER BY version',
+        `SELECT version FROM ${tables.schemaVersion} ORDER BY version`,
       )
-      if (result.rows.length !== 1 || result.rows[0]?.version !== 2) {
+      if (result.rows.length !== 1 || result.rows[0]?.version !== 3) {
         throw new WebhookError(
           'SCHEMA_MISMATCH',
-          'Expected webhook schema version 2. Older prototypes require an explicit upgrade or a fresh database; the initial migration does not upgrade existing data.',
+          'Expected webhook delivery schema version 3. Older prototypes require an explicit upgrade or a fresh database; the initial migration does not upgrade existing data.',
         )
       }
     } catch (error) {
@@ -231,178 +161,12 @@ export function createStore(config: ResolvedConfig) {
       if (['42P01', '3F000', '42703'].includes(postgresCode(error) ?? '')) {
         throw new WebhookError(
           'SCHEMA_MISMATCH',
-          'Webhook schema is missing or incompatible. Apply the package migrations before using the library.',
+          `Webhook delivery schema ${JSON.stringify(schema)} is missing or incompatible. Generate matching SQL with getPostgresMigration({ schema: ${JSON.stringify(schema)}, component: 'delivery' }).`,
           { cause: error },
         )
       }
       throw error
     }
-  }
-
-  async function createEndpoint(
-    scopeKey: string,
-    input: CreateEndpointInput,
-  ): Promise<EndpointWithSecret> {
-    scope(scopeKey)
-    object(input, 'Endpoint input')
-    const url = input.url
-    const types = eventTypes(input.eventTypes)
-    const desc = description(input.description)
-    const inFlight = maxInFlight(input.maxInFlight)
-    await safeUrl(url)
-    const secret = generateSecret()
-    return transaction(async (client) => {
-      await lockScope(client, scopeKey)
-      const count = await client.query<{ count: number }>(
-        "SELECT count(*)::integer AS count FROM webhooks.endpoints WHERE scope_key=$1 AND status<>'deleted'",
-        [scopeKey],
-      )
-      if ((count.rows[0]?.count ?? 0) >= ENDPOINT_LIMIT)
-        throw new WebhookError(
-          'INVALID_STATE',
-          `A scope may have at most ${ENDPOINT_LIMIT} nondeleted endpoints.`,
-        )
-      const result = await client.query<EndpointRow>(
-        `INSERT INTO webhooks.endpoints(id,scope_key,url,description,event_types,max_in_flight,secret) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING ${ENDPOINT_FIELDS}`,
-        [
-          randomUUID(),
-          scopeKey,
-          url,
-          desc,
-          types,
-          inFlight,
-          encryptSecret(secret, config.encryptionKey),
-        ],
-      )
-      return { endpoint: endpoint(result.rows[0]!), secret }
-    })
-  }
-
-  async function listEndpoints(scopeKey: string): Promise<Endpoint[]> {
-    scope(scopeKey)
-    const result = await config.database.query<EndpointRow>(
-      `SELECT ${ENDPOINT_FIELDS} FROM webhooks.endpoints WHERE scope_key=$1 AND status<>'deleted' ORDER BY created_at DESC,id DESC LIMIT ${ENDPOINT_LIMIT}`,
-      [scopeKey],
-    )
-    return result.rows.map(endpoint)
-  }
-
-  async function getEndpoint(scopeKey: string, id: string): Promise<Endpoint> {
-    scope(scopeKey)
-    endpointId(id)
-    const { rows } = await config.database.query<EndpointRow>(
-      `SELECT ${ENDPOINT_FIELDS} FROM webhooks.endpoints WHERE scope_key=$1 AND id=$2`,
-      [scopeKey, id],
-    )
-    if (!rows[0]) throw new WebhookError('NOT_FOUND', 'Endpoint not found in this scope.')
-    return endpoint(rows[0])
-  }
-
-  async function updateEndpoint(
-    scopeKey: string,
-    id: string,
-    patch: UpdateEndpointInput,
-  ): Promise<Endpoint> {
-    scope(scopeKey)
-    endpointId(id)
-    object(patch, 'Endpoint patch')
-    const url = patch.url
-    const types = patch.eventTypes === undefined ? undefined : eventTypes(patch.eventTypes)
-    const desc = patch.description === undefined ? undefined : description(patch.description)
-    const inFlight = patch.maxInFlight === undefined ? undefined : maxInFlight(patch.maxInFlight)
-    if (url !== undefined) await safeUrl(url)
-    return transaction(async (client) => {
-      await lockScope(client, scopeKey)
-      const current = await lockedEndpoint(client, scopeKey, id)
-      editable(current)
-      const { rows } = await client.query<EndpointRow>(
-        `UPDATE webhooks.endpoints SET url=$3,description=$4,event_types=$5,max_in_flight=$6,updated_at=clock_timestamp() WHERE scope_key=$1 AND id=$2 RETURNING ${ENDPOINT_FIELDS}`,
-        [
-          scopeKey,
-          id,
-          url ?? current.url,
-          desc === undefined ? current.description : desc,
-          types ?? current.event_types,
-          inFlight ?? current.max_in_flight,
-        ],
-      )
-      return endpoint(rows[0]!)
-    })
-  }
-
-  async function changeStatus(
-    scopeKey: string,
-    id: string,
-    status: 'active' | 'paused',
-  ): Promise<Endpoint> {
-    scope(scopeKey)
-    endpointId(id)
-    return transaction(async (client) => {
-      await lockScope(client, scopeKey)
-      const current = await lockedEndpoint(client, scopeKey, id)
-      editable(current)
-      if (status === 'active') await safeUrl(current.url)
-      const { rows } = await client.query<EndpointRow>(
-        `UPDATE webhooks.endpoints SET status=$3,updated_at=clock_timestamp() WHERE scope_key=$1 AND id=$2 RETURNING ${ENDPOINT_FIELDS}`,
-        [scopeKey, id, status],
-      )
-      return endpoint(rows[0]!)
-    })
-  }
-
-  async function removeEndpoint(scopeKey: string, id: string): Promise<Endpoint> {
-    scope(scopeKey)
-    endpointId(id)
-    return transaction(async (client) => {
-      await lockScope(client, scopeKey)
-      await lockedEndpoint(client, scopeKey, id)
-      const { rows } = await client.query<EndpointRow>(
-        `UPDATE webhooks.endpoints SET status='deleted',updated_at=clock_timestamp() WHERE scope_key=$1 AND id=$2 RETURNING ${ENDPOINT_FIELDS}`,
-        [scopeKey, id],
-      )
-      await client.query(
-        `WITH cancelled AS (
-        UPDATE webhooks.deliveries SET status='cancelled',claim_token=NULL,lease_expires_at=NULL,last_error='Endpoint deleted'
-        WHERE scope_key=$1 AND endpoint_id=$2 AND status IN ('pending','in_flight') RETURNING id
-      ) UPDATE webhooks.attempts SET outcome='abandoned',finished_at=clock_timestamp(),error='Endpoint deleted'
-        WHERE delivery_id IN (SELECT id FROM cancelled) AND outcome='started'`,
-        [scopeKey, id],
-      )
-      return endpoint(rows[0]!)
-    })
-  }
-
-  async function rotateSecret(
-    scopeKey: string,
-    id: string,
-    options: { graceMs?: number } = {},
-  ): Promise<EndpointWithSecret> {
-    scope(scopeKey)
-    endpointId(id)
-    object(options, 'Rotation options')
-    const graceMs = options.graceMs ?? MAX_ROTATION_GRACE_MS
-    if (!Number.isSafeInteger(graceMs) || graceMs < 0 || graceMs > MAX_ROTATION_GRACE_MS)
-      invalid('Secret rotation graceMs must be an integer from 0 to 86400000.')
-    return transaction(async (client) => {
-      await lockScope(client, scopeKey)
-      const current = await lockedEndpoint(client, scopeKey, id)
-      editable(current)
-      const overlap = await client.query<{ active: boolean }>(
-        'SELECT previous_secret IS NOT NULL AND previous_secret_expires_at>clock_timestamp() AS active FROM webhooks.endpoints WHERE scope_key=$1 AND id=$2',
-        [scopeKey, id],
-      )
-      if (graceMs > 0 && overlap.rows[0]?.active)
-        throw new WebhookError(
-          'INVALID_STATE',
-          'A signing-secret overlap is still active. Wait for it to expire or explicitly rotate with graceMs: 0.',
-        )
-      const secret = generateSecret()
-      const { rows } = await client.query<EndpointRow>(
-        `UPDATE webhooks.endpoints SET previous_secret=CASE WHEN $4::bigint>0 THEN secret ELSE NULL END,previous_secret_expires_at=CASE WHEN $4::bigint>0 THEN clock_timestamp()+$4::bigint*interval '1 millisecond' ELSE NULL END,secret=$3,updated_at=clock_timestamp() WHERE scope_key=$1 AND id=$2 RETURNING ${ENDPOINT_FIELDS}`,
-        [scopeKey, id, encryptSecret(secret, config.encryptionKey), graceMs],
-      )
-      return { endpoint: endpoint(rows[0]!), secret }
-    })
   }
 
   async function publish(
@@ -413,7 +177,7 @@ export function createStore(config: ResolvedConfig) {
     scope(scopeKey)
     object(input, 'Event input')
     object(options, 'Publication options')
-    eventTypes([input.type])
+    eventType(input.type)
     if (
       input.idempotencyKey !== undefined &&
       (typeof input.idempotencyKey !== 'string' ||
@@ -425,26 +189,41 @@ export function createStore(config: ResolvedConfig) {
     const fingerprint = createHash('sha256')
       .update(JSON.stringify([input.type, input.data]))
       .digest('hex')
-    return transaction(async (client) => {
-      await lockScope(client, scopeKey)
-      if (input.idempotencyKey !== undefined) {
-        const existing = await client.query<{ id: string; fingerprint: string; count: number }>(
-          `SELECT e.id,e.fingerprint,(SELECT count(*)::integer FROM webhooks.deliveries d WHERE d.event_id=e.id AND d.replay_of IS NULL) AS count FROM webhooks.events e WHERE e.scope_key=$1 AND e.idempotency_key=$2`,
-          [scopeKey, input.idempotencyKey],
+    async function existingPublication(client: SqlClient): Promise<PublishResult | null> {
+      if (input.idempotencyKey === undefined) return null
+      const existing = await client.query<{ id: string; fingerprint: string; count: number }>(
+        `SELECT e.id,e.fingerprint,(SELECT count(*)::integer FROM ${tables.deliveries} d
+          WHERE d.event_id=e.id AND d.replay_of IS NULL) AS count
+        FROM ${tables.events} e WHERE e.scope_key=$1 AND e.idempotency_key=$2`,
+        [scopeKey, input.idempotencyKey],
+      )
+      if (!existing.rows[0]) return null
+      if (existing.rows[0].fingerprint !== fingerprint)
+        throw new WebhookError(
+          'IDEMPOTENCY_CONFLICT',
+          'This idempotency key was already used for a different event type or payload.',
         )
-        if (existing.rows[0]) {
-          if (existing.rows[0].fingerprint !== fingerprint)
-            throw new WebhookError(
-              'IDEMPOTENCY_CONFLICT',
-              'This idempotency key was already used for a different event type or payload.',
-            )
-          return {
-            eventId: existing.rows[0].id,
-            deliveryCount: existing.rows[0].count,
-            duplicate: true,
-          }
-        }
+      return {
+        eventId: existing.rows[0].id,
+        deliveryCount: existing.rows[0].count,
+        duplicate: true,
       }
+    }
+
+    // Accepted repeats do not depend on management storage remaining available.
+    const existing = options.transaction
+      ? await transaction(existingPublication, options.transaction)
+      : await existingPublication(config.database)
+    if (existing) return existing
+    const matched = await config.source.matchRecipients(scopeFromKey(scopeKey), input.type)
+    if (!Array.isArray(matched)) invalid('Endpoint source must return a complete array of IDs.')
+    const recipients = [...new Set(matched)]
+    for (const id of recipients) endpointId(id)
+    return transaction(async (client) => {
+      await lockScope(client, schema, scopeKey)
+      // A concurrent publication may have committed while this caller resolved recipients.
+      const accepted = await existingPublication(client)
+      if (accepted) return accepted
       const eventId = randomUUID()
       const time = await client.query<{ now: Date }>('SELECT clock_timestamp() AS now')
       const occurredAt = time.rows[0]!.now
@@ -455,7 +234,7 @@ export function createStore(config: ResolvedConfig) {
         data: input.data,
       })
       await client.query(
-        'INSERT INTO webhooks.events(id,scope_key,type,body,fingerprint,idempotency_key,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7)',
+        `INSERT INTO ${tables.events}(id,scope_key,type,body,fingerprint,idempotency_key,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
         [
           eventId,
           scopeKey,
@@ -466,9 +245,16 @@ export function createStore(config: ResolvedConfig) {
           occurredAt,
         ],
       )
+      await client.query(
+        `INSERT INTO ${tables.endpointState}(scope_key,endpoint_id)
+        SELECT $1,id FROM unnest($2::text[]) AS input(id)
+        ON CONFLICT (scope_key,endpoint_id) DO NOTHING`,
+        [scopeKey, recipients],
+      )
       const result = await client.query(
-        "INSERT INTO webhooks.deliveries(scope_key,endpoint_id,event_id) SELECT scope_key,id,$2 FROM webhooks.endpoints WHERE scope_key=$1 AND status<>'deleted' AND $3=ANY(event_types)",
-        [scopeKey, eventId, input.type],
+        `INSERT INTO ${tables.deliveries}(scope_key,endpoint_id,event_id)
+        SELECT $1,id,$2 FROM unnest($3::text[]) AS input(id)`,
+        [scopeKey, eventId, recipients],
       )
       return { eventId, deliveryCount: result.rowCount ?? 0, duplicate: false }
     }, options.transaction)
@@ -493,7 +279,7 @@ export function createStore(config: ResolvedConfig) {
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100)
       invalid('Delivery list limit must be an integer from 1 to 100.')
     const { rows } = await config.database.query<DeliveryRow>(
-      `SELECT ${DELIVERY_FIELDS} FROM webhooks.deliveries WHERE scope_key=$1 AND ($2::uuid IS NULL OR endpoint_id=$2) AND ($3::text IS NULL OR status=$3) AND ($4::bigint IS NULL OR id<$4) AND ($6::uuid IS NULL OR event_id=$6) ORDER BY id DESC LIMIT $5`,
+      `SELECT ${DELIVERY_FIELDS} FROM ${tables.deliveries} WHERE scope_key=$1 AND ($2::text IS NULL OR endpoint_id=$2) AND ($3::text IS NULL OR status=$3) AND ($4::bigint IS NULL OR id<$4) AND ($6::uuid IS NULL OR event_id=$6) ORDER BY id DESC LIMIT $5`,
       [
         scopeKey,
         query.endpointId ?? null,
@@ -512,10 +298,10 @@ export function createStore(config: ResolvedConfig) {
     deliveryId(id)
     const { rows } = await config.database.query<DeliveryHistoryRow>(
       `WITH delivery AS (
-        SELECT ${DELIVERY_FIELDS} FROM webhooks.deliveries WHERE scope_key=$1 AND id=$2
+        SELECT ${DELIVERY_FIELDS} FROM ${tables.deliveries} WHERE scope_key=$1 AND id=$2
       )
       SELECT d.*,a.number,a.started_at,a.finished_at,a.outcome,a.response_status,a.response_body,a.error
-      FROM delivery d LEFT JOIN webhooks.attempts a ON a.delivery_id=d.id::bigint ORDER BY a.number`,
+      FROM delivery d LEFT JOIN ${tables.attempts} a ON a.delivery_id=d.id::bigint ORDER BY a.number`,
       [scopeKey, id],
     )
     if (!rows[0]) throw new WebhookError('NOT_FOUND', 'Delivery not found in this scope.')
@@ -542,18 +328,25 @@ export function createStore(config: ResolvedConfig) {
   async function replay(scopeKey: string, id: string): Promise<Delivery> {
     scope(scopeKey)
     deliveryId(id)
+    const found = await config.database.query<{ endpoint_id: string }>(
+      `SELECT endpoint_id FROM ${tables.deliveries} WHERE scope_key=$1 AND id=$2`,
+      [scopeKey, id],
+    )
+    if (!found.rows[0]) throw new WebhookError('NOT_FOUND', 'Delivery not found in this scope.')
+    const target = await config.source.resolveEndpoint(
+      scopeFromKey(scopeKey),
+      found.rows[0].endpoint_id,
+    )
+    if (target.status !== 'active')
+      throw new WebhookError('INVALID_STATE', 'Replay requires an active endpoint.')
     return transaction(async (client) => {
-      await lockScope(client, scopeKey)
-      const found = await client.query<{ endpoint_id: string }>(
-        'SELECT endpoint_id FROM webhooks.deliveries WHERE scope_key=$1 AND id=$2',
-        [scopeKey, id],
+      await lockScope(client, schema, scopeKey)
+      await client.query(
+        `SELECT endpoint_id FROM ${tables.endpointState} WHERE scope_key=$1 AND endpoint_id=$2 FOR NO KEY UPDATE`,
+        [scopeKey, found.rows[0]!.endpoint_id],
       )
-      if (!found.rows[0]) throw new WebhookError('NOT_FOUND', 'Delivery not found in this scope.')
-      const target = await lockedEndpoint(client, scopeKey, found.rows[0].endpoint_id)
-      if (target.status !== 'active')
-        throw new WebhookError('INVALID_STATE', 'Replay requires an active endpoint.')
       const original = await client.query<DeliveryRow>(
-        `SELECT ${DELIVERY_FIELDS} FROM webhooks.deliveries WHERE scope_key=$1 AND id=$2 FOR UPDATE`,
+        `SELECT ${DELIVERY_FIELDS} FROM ${tables.deliveries} WHERE scope_key=$1 AND id=$2 FOR UPDATE`,
         [scopeKey, id],
       )
       const row = original.rows[0]
@@ -564,13 +357,13 @@ export function createStore(config: ResolvedConfig) {
           'Only an original succeeded or failed delivery can be replayed.',
         )
       const retained = await client.query<{ valid: boolean }>(
-        "SELECT created_at>clock_timestamp()-$3::bigint*interval '1 millisecond' AS valid FROM webhooks.events WHERE scope_key=$1 AND id=$2",
+        `SELECT created_at>clock_timestamp()-$3::bigint*interval '1 millisecond' AS valid FROM ${tables.events} WHERE scope_key=$1 AND id=$2`,
         [scopeKey, row.event_id, config.retentionMs],
       )
       if (!retained.rows[0]?.valid)
         throw new WebhookError('INVALID_STATE', 'The event is outside the replay retention window.')
       const active = await client.query(
-        "SELECT id FROM webhooks.deliveries WHERE scope_key=$1 AND replay_of=$2 AND status IN ('pending','in_flight')",
+        `SELECT id FROM ${tables.deliveries} WHERE scope_key=$1 AND replay_of=$2 AND status IN ('pending','in_flight')`,
         [scopeKey, id],
       )
       if (active.rows.length)
@@ -579,26 +372,56 @@ export function createStore(config: ResolvedConfig) {
           'This delivery already has a pending or in-flight replay.',
         )
       const inserted = await client.query<DeliveryRow>(
-        `INSERT INTO webhooks.deliveries(scope_key,endpoint_id,event_id,replay_of) VALUES ($1,$2,$3,$4) RETURNING ${DELIVERY_FIELDS}`,
+        `INSERT INTO ${tables.deliveries}(scope_key,endpoint_id,event_id,replay_of) VALUES ($1,$2,$3,$4) RETURNING ${DELIVERY_FIELDS}`,
         [scopeKey, row.endpoint_id, row.event_id, id],
       )
       return delivery(inserted.rows[0]!)
     })
   }
 
+  async function getEndpointDeliveryOptions(
+    scopeKey: string,
+    id: string,
+  ): Promise<{ maxInFlight: number }> {
+    scope(scopeKey)
+    endpointId(id)
+    const resolved = await config.source.resolveEndpoint(scopeFromKey(scopeKey), id)
+    if (resolved.status === 'deleted')
+      throw new WebhookError('NOT_FOUND', 'Endpoint not found in this scope.')
+    const result = await config.database.query<{ max_in_flight: number }>(
+      `SELECT max_in_flight FROM ${tables.endpointState} WHERE scope_key=$1 AND endpoint_id=$2`,
+      [scopeKey, id],
+    )
+    return { maxInFlight: result.rows[0]?.max_in_flight ?? 2 }
+  }
+
+  async function setEndpointDeliveryOptions(
+    scopeKey: string,
+    id: string,
+    options: { maxInFlight: number },
+  ): Promise<{ maxInFlight: number }> {
+    scope(scopeKey)
+    endpointId(id)
+    object(options, 'Delivery options')
+    const value = maxInFlight(options.maxInFlight)
+    const resolved = await config.source.resolveEndpoint(scopeFromKey(scopeKey), id)
+    if (resolved.status === 'deleted')
+      throw new WebhookError('NOT_FOUND', 'Endpoint not found in this scope.')
+    await config.database.query(
+      `INSERT INTO ${tables.endpointState}(scope_key,endpoint_id,max_in_flight) VALUES ($1,$2,$3)
+      ON CONFLICT (scope_key,endpoint_id) DO UPDATE SET max_in_flight=EXCLUDED.max_in_flight`,
+      [scopeKey, id, value],
+    )
+    return { maxInFlight: value }
+  }
+
   return {
     checkSchema,
-    createEndpoint,
-    listEndpoints,
-    getEndpoint,
-    updateEndpoint,
-    removeEndpoint,
-    pauseEndpoint: (scopeKey: string, id: string) => changeStatus(scopeKey, id, 'paused'),
-    resumeEndpoint: (scopeKey: string, id: string) => changeStatus(scopeKey, id, 'active'),
-    rotateSecret,
     publish,
     listDeliveries,
     getDelivery,
     replay,
+    getEndpointDeliveryOptions,
+    setEndpointDeliveryOptions,
   }
 }

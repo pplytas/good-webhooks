@@ -50,7 +50,12 @@ export function readOperationsConfig(
       idle_in_transaction_session_timeout: statementTimeout,
       idleTimeoutMillis: 30_000,
     },
-    webhooks: { events, encryptionKey, allowLocalhost: localhost === 'true' },
+    webhooks: {
+      events,
+      encryptionKey,
+      schema: env.WEBHOOK_SCHEMA ?? 'public',
+      allowLocalhost: localhost === 'true',
+    },
     pollIntervalMs: integer(env, 'WEBHOOK_POLL_INTERVAL_MS', 1_000, 10, 60_000),
     cleanupMaxBatches: integer(env, 'WEBHOOK_CLEANUP_MAX_BATCHES', 20, 1, 1_000),
     cleanupMaxDurationMs: integer(env, 'WEBHOOK_CLEANUP_MAX_DURATION_MS', 30_000, 100, 3_600_000),
@@ -58,7 +63,20 @@ export function readOperationsConfig(
 }
 
 /** Log operational errors without dumping configuration, payloads, or signing material. */
-export function errorDetails(error: unknown): { name: string; message: string; code?: string } {
+interface ErrorDetails {
+  name: string
+  message: string
+  code?: string
+  causes?: ErrorDetails[]
+}
+export function errorDetails(error: unknown): ErrorDetails {
+  const details = singleErrorDetails(error)
+  if (error instanceof AggregateError)
+    details.causes = error.errors.slice(0, 10).map(singleErrorDetails)
+  return details
+}
+
+function singleErrorDetails(error: unknown): ErrorDetails {
   return {
     name: error instanceof Error ? error.name : 'Error',
     message: error instanceof Error ? error.message : 'Unexpected non-Error failure.',
