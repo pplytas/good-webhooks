@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "check": "fumadocs-mdx && next typegen && tsc --noEmit && tsc -p tsconfig.reference.json",
+    "check": "fumadocs-mdx && next typegen && tsc --noEmit && tsc -p tsconfig.reference.json && node scripts/check-type-tables.mjs",
     "check:links": "node scripts/check-links.mjs",
     "preview": "node scripts/preview.mjs",
     "check:browser": "node scripts/check-browser.mjs"

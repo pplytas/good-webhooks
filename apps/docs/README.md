@@ -32,7 +32,7 @@ Reference pages can generate a table from the public declaration wrappers in `co
 <auto-type-table path="../../reference-types.ts" name="VerifyOptions" />
 ```
 
-The generator runs during MDX compilation and closes its native TypeScript process after each table. It does not persist a table cache. Library builds must precede docs checks and builds so imported declarations are current.
+The generator runs during MDX compilation. It registers the wrapper and resolved declarations as bundler dependencies, then closes its native TypeScript process after each table. It does not persist a table cache. Library builds must precede docs checks and builds so imported declarations are current.
 
 Keep executable library imports out of app components. The site includes examples as text; `examples/typed-api.ts` separately compiles representative generic and Better Auth calls against public package exports. It never executes them.
 
@@ -47,4 +47,4 @@ pnpm --filter @good-webhooks/docs exec playwright install chromium
 pnpm --filter @good-webhooks/docs check:browser
 ```
 
-The checks compile the app and reference examples, export every page and the search index, and validate local links, assets, and fragment targets. The browser smoke check starts its own static preview on an available port. It verifies routes, a generated table, search navigation, the theme switch, and mobile navigation. Install Chromium once locally; CI installs it with system dependencies. Use the interactive preview for visual review and code copying.
+The checks compile the app and reference examples, verify that generated tables track their TypeScript inputs, export every page and the search index, and validate local links, assets, and fragment targets. The browser smoke check starts its own static preview on an available port. It verifies routes, a generated table, search navigation, the theme switch, and mobile navigation. Install Chromium once locally; CI installs it with system dependencies. Use the interactive preview for visual review and code copying.
