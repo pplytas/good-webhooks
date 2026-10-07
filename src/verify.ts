@@ -32,7 +32,7 @@ function isPublicationTime(value: unknown): value is string {
   return Number.isFinite(time.getTime()) && time.toISOString() === value
 }
 
-/** Authenticate a Webhook Dispatch envelope and decode its payload with a receiver schema.
+/** Authenticate a Good Webhooks envelope and decode its payload with a receiver schema.
  * Enforce HTTP upload limits before buffering. This function accepts at most 512 KiB.
  * Validators accept transmitted JSON and may return local values such as Date.
  */

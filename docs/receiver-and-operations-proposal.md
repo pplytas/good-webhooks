@@ -6,7 +6,7 @@ The v0 addition is one receiver parser and its result type. Database setup remai
 
 ## Receiver schemas describe the transmitted payload
 
-`parseWebhook()` takes the existing verifier inputs and a required event-schema map. It authenticates the raw body, checks the Webhook Dispatch envelope, validates its payload, and returns a typed result. It does not deduplicate events, choose an HTTP response, or execute business work.
+`parseWebhook()` takes the existing verifier inputs and a required event-schema map. It authenticates the raw body, checks the Good Webhooks envelope, validates its payload, and returns a typed result. It does not deduplicate events, choose an HTTP response, or execute business work.
 
 ```ts
 const event = await parseWebhook({

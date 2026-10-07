@@ -1,6 +1,6 @@
-# Webhook Dispatch v0
+# Good Webhooks v0
 
-Status: accepted, 6 October 2026. Approved name: Webhook Dispatch. Package and repository slug: `webhook-dispatch`.
+Status: accepted, 6 October 2026. Name updated 7 October 2026. Approved name: Good Webhooks. Package and repository slug: `good-webhooks`.
 
 ## Product scope
 
@@ -8,7 +8,7 @@ Build a general-purpose embedded TypeScript server package for public OSS use. A
 
 V0 delivers a standalone package, explicit database setup, documentation, and a runnable example. It includes endpoint management, durable publication, HTTP delivery, signing, retries, attempt history, and replay. HTTP management routes, a browser client, a dashboard, and a Better Auth plugin remain outside v0.
 
-The GitHub repository is [pplytas/webhook-dispatch](https://github.com/pplytas/webhook-dispatch), under the user's personal account. npm publication remains a separate release action.
+The GitHub repository is [pplytas/good-webhooks](https://github.com/pplytas/good-webhooks), under the user's personal account. npm publication remains a separate release action.
 
 ## Interface and runtime
 

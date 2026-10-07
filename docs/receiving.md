@@ -1,6 +1,6 @@
 # Receive typed webhooks
 
-Use `parseWebhook()` from `webhook-dispatch/verify` to authenticate a Webhook Dispatch event and validate its payload. The receiver import loads no database, worker, or HTTP transport code.
+Use `parseWebhook()` from `good-webhooks/verify` to authenticate a Good Webhooks event and validate its payload. The receiver import loads no database, worker, or HTTP transport code.
 
 ## Share schemas for transmitted values
 
@@ -27,7 +27,7 @@ Receiver schemas may decode JSON into local values such as `Date`. The parser ca
 Enforce an upload limit before buffering the HTTP body. The [Node.js receiver helper](../examples/basic/receiver.ts) reads chunks up to 512 KiB and returns `413` when that limit is exceeded. Configure equivalent limits in your HTTP framework or proxy.
 
 ```ts
-import { parseWebhook, type ParsedWebhook } from 'webhook-dispatch/verify'
+import { parseWebhook, type ParsedWebhook } from 'good-webhooks/verify'
 import { events } from './events.js'
 
 // rawBody contains the original request bytes, read through a bounded HTTP reader.
@@ -105,10 +105,10 @@ This workaround belongs to application code. The package has no Zod dependency o
 
 ## Verify a different payload format
 
-`verifyWebhook()` remains available for Standard Webhooks messages with a different payload format. It returns normally on success and throws on failure. It authenticates the exact body and timestamp but does not parse, validate, or deduplicate it. Standard Webhooks signing does not require the Webhook Dispatch JSON envelope.
+`verifyWebhook()` remains available for Standard Webhooks messages with a different payload format. It returns normally on success and throws on failure. It authenticates the exact body and timestamp but does not parse, validate, or deduplicate it. Standard Webhooks signing does not require the Good Webhooks JSON envelope.
 
 ```ts
-import { verifyWebhook } from 'webhook-dispatch/verify'
+import { verifyWebhook } from 'good-webhooks/verify'
 
 verifyWebhook({ body: rawBody, headers: request.headers, secret: endpointSecret })
 // Parse and validate your chosen format only after verification succeeds.

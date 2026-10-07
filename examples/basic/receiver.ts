@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { WebhookError } from 'webhook-dispatch/verify'
+import { WebhookError } from 'good-webhooks/verify'
 
 class BodyTooLargeError extends Error {}
 

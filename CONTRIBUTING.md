@@ -1,4 +1,4 @@
-# Contribute to Webhook Dispatch
+# Contribute to Good Webhooks
 
 Use Node.js 24 or later and PostgreSQL 16 or later. Clone the repository, then run `npm ci`.
 
@@ -7,7 +7,7 @@ Use Node.js 24 or later and PostgreSQL 16 or later. Clone the repository, then r
 Create a dedicated disposable database. The integration tests reset the webhook schema, hold locks, and terminate their own database connections. Never use an application database for tests.
 
 ```sh
-docker run --name webhook-dispatch-tests \
+docker run --name good-webhooks-tests \
 	-e POSTGRES_PASSWORD=webhooks_dev_only \
 	-e POSTGRES_DB=webhooks \
 	-p 127.0.0.1:55439:5432 \
