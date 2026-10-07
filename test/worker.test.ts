@@ -184,9 +184,10 @@ describe('worker delivery durability', () => {
     await fixture(url, 6, 2)
     const worker = createWorker(testConfig({ concurrency: 5 }))
     const a = worker.tick()
+    // Check overlap before either competing worker can finish without claiming work.
+    await expect(worker.tick()).rejects.toMatchObject({ code: 'INVALID_STATE' })
     const b = createWorker(testConfig({ concurrency: 5 })).tick()
     await full.promise
-    await expect(worker.tick()).rejects.toMatchObject({ code: 'INVALID_STATE' })
     expect(
       (
         await pool.query(
