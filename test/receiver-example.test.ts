@@ -3,7 +3,7 @@ import { createServer, request as httpRequest } from 'node:http'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import { generateSecret, signWebhook } from '../src/crypto.js'
-import { parseWebhook, WebhookError } from 'webhook-dispatch/verify'
+import { parseWebhook, WebhookError } from 'good-webhooks/verify'
 import type { EventDefinitions } from '../src/types.js'
 import {
   readBody,

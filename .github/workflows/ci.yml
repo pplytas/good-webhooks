@@ -63,12 +63,12 @@ jobs:
           cd "$consumer_dir"
           npm init -y
           npm install --ignore-scripts --no-audit --no-fund "$archive"
-          node --input-type=module -e 'import { createWebhooks } from "webhook-dispatch"; import { parseWebhook } from "webhook-dispatch/verify"; import { readFile } from "node:fs/promises"; if (typeof createWebhooks !== "function" || typeof parseWebhook !== "function") throw new Error("Missing ESM exports"); const sql = await readFile(new URL(import.meta.resolve("webhook-dispatch/migrations/001-initial.sql")), "utf8"); if (!sql.includes("CREATE SCHEMA")) throw new Error("Missing migration");'
-          node -e 'const { createWebhooks } = require("webhook-dispatch"); const { parseWebhook } = require("webhook-dispatch/verify"); if (typeof createWebhooks !== "function" || typeof parseWebhook !== "function") throw new Error("Missing CommonJS exports");'
+          node --input-type=module -e 'import { createWebhooks } from "good-webhooks"; import { parseWebhook } from "good-webhooks/verify"; import { readFile } from "node:fs/promises"; if (typeof createWebhooks !== "function" || typeof parseWebhook !== "function") throw new Error("Missing ESM exports"); const sql = await readFile(new URL(import.meta.resolve("good-webhooks/migrations/001-initial.sql")), "utf8"); if (!sql.includes("CREATE SCHEMA")) throw new Error("Missing migration");'
+          node -e 'const { createWebhooks } = require("good-webhooks"); const { parseWebhook } = require("good-webhooks/verify"); if (typeof createWebhooks !== "function" || typeof parseWebhook !== "function") throw new Error("Missing CommonJS exports");'
       - name: Save the package archive
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: webhook-dispatch-pg${{ matrix.postgres }}
-          path: webhook-dispatch-*.tgz
+          name: good-webhooks-pg${{ matrix.postgres }}
+          path: good-webhooks-*.tgz
           if-no-files-found: error
           retention-days: 7

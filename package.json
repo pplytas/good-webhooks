@@ -1,5 +1,5 @@
 {
-  "name": "webhook-dispatch",
+  "name": "good-webhooks",
   "version": "0.0.0",
   "private": true,
   "description": "Build webhook delivery into your TypeScript application.",
@@ -7,11 +7,11 @@
   "author": "pplytas",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/pplytas/webhook-dispatch.git"
+    "url": "git+https://github.com/pplytas/good-webhooks.git"
   },
-  "homepage": "https://github.com/pplytas/webhook-dispatch#readme",
+  "homepage": "https://github.com/pplytas/good-webhooks#readme",
   "bugs": {
-    "url": "https://github.com/pplytas/webhook-dispatch/issues"
+    "url": "https://github.com/pplytas/good-webhooks/issues"
   },
   "type": "module",
   "engines": {

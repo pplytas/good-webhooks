@@ -1,4 +1,4 @@
-import { createWebhooks } from 'webhook-dispatch'
+import { createWebhooks } from 'good-webhooks'
 import { Pool } from 'pg'
 import { errorDetails, readOperationsConfig } from './config.ts'
 
