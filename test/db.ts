@@ -3,7 +3,7 @@ import { Pool } from 'pg'
 import { createPostgresManagement } from '../src/management/postgres.js'
 import { scopeKey } from '../src/scope.js'
 import { createStore } from '../src/store.js'
-import type { Database, ResolvedConfig } from '../src/types.js'
+import type { Database, ResolvedConfig, SqlClient } from '../src/types.js'
 
 export const pool = new Pool({
   connectionString:
@@ -16,6 +16,12 @@ export const TEST_ENCRYPTION_KEY = new Uint8Array(32).fill(7)
 export const testScopeKey = (id: string) => scopeKey({ type: 'test', id })
 
 /** Dedicated disposable test database only. Never set TEST_DATABASE_URL to a production database. */
+export async function dropWebhookTables(database: SqlClient = pool): Promise<void> {
+  await database.query(`DROP TABLE IF EXISTS public.webhook_attempts, public.webhook_deliveries,
+    public.webhook_events, public.webhook_endpoint_state, public.webhook_endpoints,
+    public.webhook_schema_version CASCADE`)
+}
+
 export async function resetDatabase(): Promise<void> {
   const migration = await readFile(
     new URL('../migrations/001-initial.sql', import.meta.url),
@@ -24,8 +30,7 @@ export async function resetDatabase(): Promise<void> {
   const client = await pool.connect()
   try {
     await client.query('BEGIN')
-    await client.query('DROP SCHEMA IF EXISTS webhooks CASCADE')
-    await client.query('DROP SCHEMA IF EXISTS webhooks_management CASCADE')
+    await dropWebhookTables(client)
     await client.query(migration)
     await client.query('COMMIT')
   } catch (error) {
@@ -52,6 +57,7 @@ export function testManagement(options: { database?: Database; encryptionKey?: U
 export function testConfig(overrides: Partial<ResolvedConfig> = {}): ResolvedConfig {
   return {
     database: pool,
+    schema: 'public',
     source: testManagement().source,
     retryDelaysMs: [10, 20],
     maxAgeMs: 60_000,

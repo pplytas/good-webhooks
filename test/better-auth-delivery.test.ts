@@ -11,13 +11,12 @@ import { z } from 'zod'
 import { goodWebhooks, createBetterAuthManagement } from '../src/better-auth/index.js'
 import { createDelivery } from '../src/delivery.js'
 import { verifyWebhook } from '../src/crypto.js'
-import { closeDatabase, pool } from './db.js'
+import { dropWebhookTables, closeDatabase, pool } from './db.js'
 
 afterAll(closeDatabase)
 
 it('delivers from a separate BA provider using SQLite management and only PostgreSQL delivery tables', async () => {
-  await pool.query('DROP SCHEMA IF EXISTS webhooks CASCADE')
-  await pool.query('DROP SCHEMA IF EXISTS webhooks_management CASCADE')
+  await dropWebhookTables(pool)
   await pool.query(await readFile(new URL('../migrations/delivery.sql', import.meta.url), 'utf8'))
   const directory = await mkdtemp(join(tmpdir(), 'good-webhooks-provider-'))
   const appDatabase = new DatabaseSync(join(directory, 'auth.sqlite'))
@@ -94,13 +93,15 @@ it('delivers from a separate BA provider using SQLite management and only Postgr
     })
     signingSecret = rotated.secret
     await appAuth.api.resumeWebhookEndpoint({ headers, body: { id: created.endpoint.id } })
-    await pool.query("UPDATE webhooks.deliveries SET next_attempt_at=now() WHERE status='pending'")
+    await pool.query(
+      "UPDATE public.webhook_deliveries SET next_attempt_at=now() WHERE status='pending'",
+    )
     expect((await engine.worker.tick()).succeeded).toBe(1)
     expect(JSON.parse(received[0]!).data).toEqual({ invoiceId: 'invoice-1' })
     const [delivery] = (await scoped.deliveries.list()).items
     expect((await scoped.deliveries.get(delivery!.id)).attempts).toHaveLength(1)
     expect(
-      (await pool.query("SELECT to_regnamespace('webhooks_management') AS schema")).rows[0].schema,
+      (await pool.query("SELECT to_regclass('public.webhook_endpoints') AS schema")).rows[0].schema,
     ).toBeNull()
     const tables = appDatabase
       .prepare("SELECT name FROM sqlite_master WHERE type='table'")

@@ -48,7 +48,11 @@
       "default": "./dist/better-auth/client.js"
     },
     "./migrations/management.sql": "./migrations/management.sql",
-    "./migrations/delivery.sql": "./migrations/delivery.sql"
+    "./migrations/delivery.sql": "./migrations/delivery.sql",
+    "./migrations": {
+      "types": "./dist/migrations.d.ts",
+      "default": "./dist/migrations.js"
+    }
   },
   "files": [
     "dist",
@@ -72,7 +76,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test:package": "npm run build && node scripts/check-package.mjs",
-    "test:adapters": "npm run build && node scripts/better-auth-storage-matrix.mjs"
+    "test:adapters": "npm run build && node scripts/better-auth-storage-matrix.mjs",
+    "migrations:generate": "npm run build && node scripts/generate-migrations.mjs"
   },
   "dependencies": {
     "@standard-schema/spec": "^1.1.0",

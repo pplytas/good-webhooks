@@ -5,7 +5,7 @@ import {
   createPostgresManagementRepository,
 } from '../src/management/postgres.js'
 import { APPLICATION_SCOPE } from '../src/scope.js'
-import { closeDatabase, pool } from './db.js'
+import { dropWebhookTables, closeDatabase, pool } from './db.js'
 
 const encryptionKey = new Uint8Array(32).fill(7)
 const create = (key = encryptionKey, decryptionKeys: Uint8Array[] = []) =>
@@ -19,7 +19,7 @@ const create = (key = encryptionKey, decryptionKeys: Uint8Array[] = []) =>
 const input = { url: 'http://127.0.0.1:9999/webhooks', eventTypes: ['order.created'] }
 
 beforeEach(async () => {
-  await pool.query('DROP SCHEMA IF EXISTS webhooks_management CASCADE')
+  await dropWebhookTables(pool)
   await pool.query(await readFile(new URL('../migrations/management.sql', import.meta.url), 'utf8'))
 })
 afterAll(closeDatabase)
@@ -47,9 +47,9 @@ describe('standalone PostgreSQL management', () => {
     const management = create()
     const first = await management.create(null, input)
     await pool.query(
-      `INSERT INTO webhooks_management.endpoints(id,scope_key,url,event_types,secret)
+      `INSERT INTO public.webhook_endpoints(id,scope_key,url,event_types,secret)
       SELECT gen_random_uuid()::text,scope_key,url,event_types,secret
-      FROM webhooks_management.endpoints CROSS JOIN generate_series(1,998) WHERE id=$1`,
+      FROM public.webhook_endpoints CROSS JOIN generate_series(1,998) WHERE id=$1`,
       [first.endpoint.id],
     )
     const repository = createPostgresManagementRepository(pool)
@@ -72,7 +72,7 @@ describe('standalone PostgreSQL management', () => {
     expect(await management.source.matchRecipients(null, 'order.created')).toHaveLength(1000)
     expect(
       (
-        await pool.query('SELECT secret FROM webhooks_management.endpoints WHERE id=$1', [
+        await pool.query('SELECT secret FROM public.webhook_endpoints WHERE id=$1', [
           first.endpoint.id,
         ])
       ).rows[0]?.secret,
@@ -122,9 +122,9 @@ describe('standalone PostgreSQL management', () => {
     const management = create()
     const first = await management.create(null, input)
     await pool.query(
-      `INSERT INTO webhooks_management.endpoints(id,scope_key,url,event_types,secret)
+      `INSERT INTO public.webhook_endpoints(id,scope_key,url,event_types,secret)
       SELECT gen_random_uuid()::text,scope_key,url,event_types,secret
-      FROM webhooks_management.endpoints CROSS JOIN generate_series(1,1000) WHERE id=$1`,
+      FROM public.webhook_endpoints CROSS JOIN generate_series(1,1000) WHERE id=$1`,
       [first.endpoint.id],
     )
     await expect(management.source.matchRecipients(null, 'order.created')).rejects.toMatchObject({
@@ -133,7 +133,7 @@ describe('standalone PostgreSQL management', () => {
     expect(
       (
         await pool.query(
-          'SELECT count(*)::int AS count FROM webhooks_management.endpoints WHERE scope_key=$1',
+          'SELECT count(*)::int AS count FROM public.webhook_endpoints WHERE scope_key=$1',
           [APPLICATION_SCOPE],
         )
       ).rows[0]?.count,

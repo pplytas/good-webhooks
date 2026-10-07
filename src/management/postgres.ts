@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { decryptSecret, encryptSecret, parseEncryptionKey } from '../crypto.js'
 import { WebhookError } from '../errors.js'
+import { postgresTables, resolvePostgresSchema } from '../postgres-schema.js'
 import { APPLICATION_SCOPE, scopeKey } from '../scope.js'
 import type { Database } from '../types.js'
 import { createManagement } from './index.js'
@@ -32,12 +33,17 @@ function validateDatabase(database: Database): void {
 }
 
 /** PostgreSQL storage for standalone management. Apply migrations/management.sql explicitly. */
-export function createPostgresManagementRepository(database: Database): ManagementRepository {
+export function createPostgresManagementRepository(
+  database: Database,
+  options: { schema?: string } = {},
+): ManagementRepository {
   validateDatabase(database)
+  const schema = resolvePostgresSchema(options.schema)
+  const table = postgresTables(schema).endpoints
   return {
     async list(scope) {
       const result = await database.query<StoredEndpoint & Record<string, unknown>>(
-        `SELECT ${FIELDS} FROM webhooks_management.endpoints WHERE scope_key=$1 AND status<>'deleted' ORDER BY created_at DESC,id DESC LIMIT 1001`,
+        `SELECT ${FIELDS} FROM ${table} WHERE scope_key=$1 AND status<>'deleted' ORDER BY created_at DESC,id DESC LIMIT 1001`,
         [key(scope)],
       )
       if (result.rows.length > ENDPOINT_LIMIT)
@@ -49,7 +55,7 @@ export function createPostgresManagementRepository(database: Database): Manageme
     },
     async get(scope, id) {
       const result = await database.query<StoredEndpoint & Record<string, unknown>>(
-        `SELECT ${FIELDS} FROM webhooks_management.endpoints WHERE scope_key=$1 AND id=$2`,
+        `SELECT ${FIELDS} FROM ${table} WHERE scope_key=$1 AND id=$2`,
         [key(scope), id],
       )
       return result.rows[0] ?? null
@@ -60,10 +66,10 @@ export function createPostgresManagementRepository(database: Database): Manageme
       try {
         await client.query('BEGIN')
         await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
-          `good-webhooks:management:${scopeId}`,
+          `good-webhooks:management:${JSON.stringify([schema, scopeId])}`,
         ])
         const count = await client.query<{ count: number }>(
-          "SELECT count(*)::integer AS count FROM webhooks_management.endpoints WHERE scope_key=$1 AND status<>'deleted'",
+          `SELECT count(*)::integer AS count FROM ${table} WHERE scope_key=$1 AND status<>'deleted'`,
           [scopeId],
         )
         if ((count.rows[0]?.count ?? 0) >= ENDPOINT_LIMIT)
@@ -72,7 +78,7 @@ export function createPostgresManagementRepository(database: Database): Manageme
             `A scope may have at most ${ENDPOINT_LIMIT} nondeleted endpoints.`,
           )
         const result = await client.query<StoredEndpoint & Record<string, unknown>>(
-          `INSERT INTO webhooks_management.endpoints(id,scope_key,url,description,event_types,status,secret,previous_secret,previous_secret_expires_at,revision,created_at,updated_at)
+          `INSERT INTO ${table}(id,scope_key,url,description,event_types,status,secret,previous_secret,previous_secret_expires_at,revision,created_at,updated_at)
            VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING ${FIELDS}`,
           [
             randomUUID(),
@@ -117,7 +123,7 @@ export function createPostgresManagementRepository(database: Database): Manageme
         setters.push(`${columns[name]}=$${values.length}`)
       }
       const result = await database.query<StoredEndpoint & Record<string, unknown>>(
-        `UPDATE webhooks_management.endpoints SET ${setters.join(',')}
+        `UPDATE ${table} SET ${setters.join(',')}
          WHERE scope_key=$1 AND id=$2 AND revision=$3 AND status<>'deleted' RETURNING ${FIELDS}`,
         values,
       )
@@ -128,6 +134,8 @@ export function createPostgresManagementRepository(database: Database): Manageme
 
 export interface PostgresManagementOptions {
   database: Database
+  /** PostgreSQL schema containing webhook_endpoints. Defaults to public. */
+  schema?: string
   eventTypes: readonly string[]
   encryptionKey: string | Uint8Array
   /** Old keys remain readable during reencrypt(). Remove only after all affected scopes finish. */
@@ -144,9 +152,11 @@ export function createPostgresManagement(options: PostgresManagementOptions): Po
   const encryptionKey = parseEncryptionKey(options?.encryptionKey)
   const decryptionKeys = [encryptionKey, ...(options.decryptionKeys ?? []).map(parseEncryptionKey)]
   const database = options.database
+  const schema = resolvePostgresSchema(options.schema)
+  const table = postgresTables(schema).endpoints
   const allowLocalhost = options.allowLocalhost ?? false
   const management = createManagement({
-    repository: createPostgresManagementRepository(database),
+    repository: createPostgresManagementRepository(database, { schema }),
     eventTypes: options.eventTypes,
     allowLocalhost,
     validateUrl: (url) => validateResolvedUrl(url, allowLocalhost),
@@ -171,14 +181,14 @@ export function createPostgresManagement(options: PostgresManagementOptions): Po
     ...management,
     async check() {
       try {
-        await database.query(`SELECT ${FIELDS} FROM webhooks_management.endpoints LIMIT 0`)
+        await database.query(`SELECT ${FIELDS} FROM ${table} LIMIT 0`)
       } catch (error) {
         const code =
           typeof error === 'object' && error !== null && 'code' in error ? error.code : undefined
         if (code === '42P01' || code === '3F000' || code === '42703')
           throw new WebhookError(
             'SCHEMA_MISMATCH',
-            'Management schema is missing or incompatible. Apply migrations/management.sql.',
+            `Management table ${table} is missing or incompatible. Generate matching SQL with getPostgresMigration({ schema: ${JSON.stringify(schema)}, component: 'management' }).`,
             { cause: error },
           )
         throw error

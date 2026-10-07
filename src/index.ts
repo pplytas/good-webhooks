@@ -65,6 +65,7 @@ export function createWebhooks<const E extends EventDefinitions>(options: Webhoo
         database: options.database,
         eventTypes: Object.keys(options.events),
         encryptionKey: options.encryptionKey!,
+        ...(options.schema === undefined ? {} : { schema: options.schema }),
         ...(options.allowLocalhost === undefined ? {} : { allowLocalhost: options.allowLocalhost }),
       })
   const management = options.management ?? standalone!

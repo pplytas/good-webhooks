@@ -23,7 +23,9 @@ export const auth = betterAuth({
 
 Use BA's normal [CLI schema workflow](https://better-auth.com/docs/concepts/cli) after adding the plugin. With its built-in adapter, `auth migrate --config ./src/auth.ts` applies the schema. For Prisma or Drizzle, `auth generate --config ./src/auth.ts` generates schema definitions; apply them using your ORM's migration tooling. Use a CLI version compatible with your installed BA version.
 
-The plugin declares the `webhookEndpoint` model, including a unique allocation index that enforces the per-scope endpoint limit. Preserve generated fields and indexes. You can customize physical names through `goodWebhooks({ eventTypes, schema: { modelName, fields } })`.
+The plugin declares the `webhookEndpoint` model, including a unique allocation index that enforces the per-scope endpoint limit. Preserve generated fields and indexes. You can customize model and field names through `goodWebhooks({ eventTypes, schema: { modelName, fields } })`. This option does not select a PostgreSQL namespace; do not pass a dotted name such as `notifications.webhookEndpoint` as `modelName`.
+
+BA's database or ORM configuration determines where the management model lives. With native PostgreSQL, an explicit Kysely configuration supports `schemaName`. Drizzle's runtime table definitions determine their PostgreSQL schema; its adapter's `schemaName` configures CLI generation. Prisma placement belongs to the Prisma configuration. Use the same configuration and generated schema for the app and worker.
 
 Do not apply `management.sql` to a BA database. That migration belongs to the separate standalone PostgreSQL provider. Good Webhooks never applies migrations during plugin initialization.
 
@@ -144,7 +146,30 @@ await delivery.forScope({ type: 'organization', id: organizationId }).publish({
 })
 ```
 
-Apply `good-webhooks/migrations/delivery.sql` only to the delivery database. Publication requires management storage for recipient lookup, while accepted events and pending deliveries are committed together inside PostgreSQL. A separate business database commit is not automatically atomic with publication.
+Delivery defaults to the `public` schema with tables prefixed by `webhook_`. Apply `good-webhooks/migrations/delivery.sql` only to the delivery database. Publication requires management storage for recipient lookup, while accepted events and pending deliveries are committed together inside PostgreSQL. A separate business database commit is not automatically atomic with publication.
+
+If BA and delivery use the same custom PostgreSQL schema, share an explicit constant between their configurations and migration generation:
+
+```ts
+import { getPostgresMigration } from 'good-webhooks/migrations'
+
+const webhookSchema = 'notifications'
+const auth = betterAuth({
+  database: { db: authKysely, type: 'postgres', schemaName: webhookSchema },
+  secret: process.env.BETTER_AUTH_SECRET!,
+  plugins: [goodWebhooks({ eventTypes })],
+})
+const management = await createBetterAuthManagement(auth)
+const delivery = createDelivery({
+  database: deliveryPostgresPool,
+  schema: webhookSchema,
+  source: management.source,
+  events,
+})
+const deliverySQL = getPostgresMigration({ schema: webhookSchema, component: 'delivery' })
+```
+
+Here `authKysely` is the host's PostgreSQL Kysely instance. BA's own migration workflow still creates its management model. Apply `deliverySQL` separately through your migration runner. The delivery `schema` option does not change BA configuration or infer its namespace. Different management and delivery schemas or databases are also supported.
 
 The [SQLite auth example](../examples/better-auth/auth.ts), [delivery setup](../examples/better-auth/delivery.ts), and [worker entry function](../examples/better-auth/worker.ts) are typechecked examples. They export functions and do not start workers on import.
 

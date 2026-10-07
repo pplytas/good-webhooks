@@ -1,4 +1,5 @@
 import { WebhookError } from './errors.js'
+import { resolvePostgresSchema } from './postgres-schema.js'
 import type { EventDefinitions, ResolvedConfig, DeliveryOptions } from './types.js'
 
 function integer(name: string, value: unknown, fallback: number, min: number, max: number): number {
@@ -83,6 +84,7 @@ export function resolveConfig<E extends EventDefinitions>(
     throw new WebhookError('INVALID_CONFIG', 'retentionMs must be at least retry.maxAgeMs.')
   return Object.freeze({
     database: options.database,
+    schema: resolvePostgresSchema(options.schema),
     source: options.source,
     retryDelaysMs: Object.freeze([...delays]),
     maxAgeMs,

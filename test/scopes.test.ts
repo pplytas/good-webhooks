@@ -48,7 +48,7 @@ describe('optional scope isolation', () => {
       }),
     )
     expect(new Set(fixtures.map(({ published }) => published.eventId)).size).toBe(views.length)
-    await pool.query("UPDATE webhooks.deliveries SET status='succeeded'")
+    await pool.query("UPDATE public.webhook_deliveries SET status='succeeded'")
     for (const [i, client] of views.entries()) {
       const own = fixtures[i]!
       expect((await client.endpoints.list()).map(({ id }) => id)).toEqual([own.endpoint.id])
@@ -192,7 +192,7 @@ describe('optional scope isolation', () => {
       for (const client of views) {
         expect((await client.publish(event, { transaction })).deliveryCount).toBe(1)
       }
-      expect((await pool.query('SELECT id FROM webhooks.events')).rows).toEqual([])
+      expect((await pool.query('SELECT id FROM public.webhook_events')).rows).toEqual([])
     } finally {
       await transaction.query('ROLLBACK')
       transaction.release()
@@ -217,7 +217,10 @@ describe('optional scope isolation', () => {
       ['replay_of', foreign.id],
     ] as const) {
       await expect(
-        pool.query(`UPDATE webhooks.deliveries SET ${column}=$1 WHERE id=$2`, [value, delivery.id]),
+        pool.query(`UPDATE public.webhook_deliveries SET ${column}=$1 WHERE id=$2`, [
+          value,
+          delivery.id,
+        ]),
       ).rejects.toMatchObject({ code: '23503' })
     }
     expect((await app!.deliveries.get(delivery.id)).endpointId).toBe(first.endpoint.id)
@@ -264,7 +267,7 @@ describe('optional scope isolation', () => {
       expect(received.sort()).toEqual(eventIds.sort())
       for (const client of views)
         expect((await client.deliveries.list()).items[0]?.status).toBe('succeeded')
-      await pool.query("UPDATE webhooks.events SET created_at=now()-interval '8 days'")
+      await pool.query("UPDATE public.webhook_events SET created_at=now()-interval '8 days'")
       expect(await app.worker.prune()).toBe(views.length)
       for (const client of views) expect((await client.deliveries.list()).items).toEqual([])
     } finally {

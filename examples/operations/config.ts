@@ -50,7 +50,12 @@ export function readOperationsConfig(
       idle_in_transaction_session_timeout: statementTimeout,
       idleTimeoutMillis: 30_000,
     },
-    webhooks: { events, encryptionKey, allowLocalhost: localhost === 'true' },
+    webhooks: {
+      events,
+      encryptionKey,
+      schema: env.WEBHOOK_SCHEMA ?? 'public',
+      allowLocalhost: localhost === 'true',
+    },
     pollIntervalMs: integer(env, 'WEBHOOK_POLL_INTERVAL_MS', 1_000, 10, 60_000),
     cleanupMaxBatches: integer(env, 'WEBHOOK_CLEANUP_MAX_BATCHES', 20, 1, 1_000),
     cleanupMaxDurationMs: integer(env, 'WEBHOOK_CLEANUP_MAX_DURATION_MS', 30_000, 100, 3_600_000),

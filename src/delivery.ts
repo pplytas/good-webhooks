@@ -60,7 +60,7 @@ export function createDelivery<const E extends EventDefinitions>(options: Delive
     ...bind(APPLICATION_SCOPE),
     /** Check delivery schema compatibility. Does not apply migrations. */
     check: () => store.checkSchema(),
-    /** Worker execution and pruning cover every scope in the configured delivery database. */
+    /** Worker execution and pruning cover every scope in the configured delivery database and schema. */
     worker,
     /** Selecting a scope does not authorize access. */
     forScope: (scope: Scope) => bind(scopeKey(scope)),

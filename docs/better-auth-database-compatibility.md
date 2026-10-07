@@ -30,6 +30,8 @@ The storage matrix verifies:
 
 The normal SQLite tests also inject failed lookups, ambiguous committed writes, explicit database rollbacks, and concurrent deletion between enumeration batches. Those checks establish that failures do not become partial successful lookups or automatic duplicate writes.
 
+Native PostgreSQL integration tests cover management and delivery in default `public`, a shared custom schema, and separate schemas. Each case creates an endpoint through an authenticated BA route and sends a signed delivery through a separately initialized provider. Decoy tables and connection search paths verify that each component uses its configured schema.
+
 The matrix does **not** establish every database, ORM, driver, and runtime combination. Bun's SQLite runtime, hosted D1, remote Turso/libSQL, MongoDB replica-set transactions, and Drizzle/Prisma on other databases have not been exercised here. Native database coverage does not imply deployment or performance certification. Use the host's usual database migration workflow before serving requests.
 
 ## Storage invariants

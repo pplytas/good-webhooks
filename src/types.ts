@@ -38,6 +38,8 @@ export interface PublishOptions {
 
 export interface DeliveryOptions<E extends EventDefinitions> {
   database: Database
+  /** PostgreSQL schema containing the webhook-prefixed delivery tables. Defaults to public. */
+  schema?: string
   events: E
   source: EndpointSource
   retry?: { delaysMs?: readonly number[]; maxAgeMs?: number }
@@ -62,6 +64,7 @@ export interface WebhookOptions<E extends EventDefinitions> extends Omit<
 }
 export interface ResolvedConfig {
   database: Database
+  schema: string
   source: EndpointSource
   retryDelaysMs: readonly number[]
   maxAgeMs: number

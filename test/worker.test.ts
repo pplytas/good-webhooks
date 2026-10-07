@@ -49,12 +49,12 @@ async function fixture(url: string, count = 1, maxInFlight = 2) {
     const eventId = randomUUID()
     const body = JSON.stringify({ id: eventId, type: 'test.sent', data: { n } })
     await pool.query(
-      `INSERT INTO webhooks.events(id,scope_key,type,body,fingerprint)
+      `INSERT INTO public.webhook_events(id,scope_key,type,body,fingerprint)
       VALUES($1,$3,'test.sent',$2,'fixture')`,
       [eventId, body, testScopeKey('scope-a')],
     )
     const result = await pool.query<{ id: string }>(
-      `INSERT INTO webhooks.deliveries(scope_key,endpoint_id,event_id)
+      `INSERT INTO public.webhook_deliveries(scope_key,endpoint_id,event_id)
       VALUES($3,$1,$2) RETURNING id::text`,
       [endpointId, eventId, testScopeKey('scope-a')],
     )
@@ -64,20 +64,22 @@ async function fixture(url: string, count = 1, maxInFlight = 2) {
 }
 async function due() {
   await pool.query(
-    "UPDATE webhooks.deliveries SET next_attempt_at=now()-interval '1 second' WHERE status='pending'",
+    "UPDATE public.webhook_deliveries SET next_attempt_at=now()-interval '1 second' WHERE status='pending'",
   )
 }
 async function expire(claim: ClaimedDelivery) {
   await pool.query(
-    "UPDATE webhooks.deliveries SET lease_expires_at=now()-interval '1 second' WHERE id=$1",
+    "UPDATE public.webhook_deliveries SET lease_expires_at=now()-interval '1 second' WHERE id=$1",
     [claim.id],
   )
 }
 async function state(id: string) {
-  const delivery = (await pool.query('SELECT * FROM webhooks.deliveries WHERE id=$1', [id]))
+  const delivery = (await pool.query('SELECT * FROM public.webhook_deliveries WHERE id=$1', [id]))
     .rows[0]!
   const attempts = (
-    await pool.query('SELECT * FROM webhooks.attempts WHERE delivery_id=$1 ORDER BY number', [id])
+    await pool.query('SELECT * FROM public.webhook_attempts WHERE delivery_id=$1 ORDER BY number', [
+      id,
+    ])
   ).rows
   return { delivery, attempts }
 }
@@ -110,14 +112,14 @@ describe('worker delivery durability', () => {
       await store.publish(id, { type: 'test.sent', data: {} })
     }
     await pool.query(
-      "UPDATE webhooks.deliveries SET next_attempt_at=now()-interval '1 minute' WHERE scope_key=$1",
+      "UPDATE public.webhook_deliveries SET next_attempt_at=now()-interval '1 minute' WHERE scope_key=$1",
       [testScopeKey('scope-a')],
     )
     const client = await pool.connect()
     try {
       await client.query('BEGIN')
       await client.query(
-        'SELECT endpoint_id FROM webhooks.endpoint_state WHERE scope_key=$1 FOR UPDATE',
+        'SELECT endpoint_id FROM public.webhook_endpoint_state WHERE scope_key=$1 FOR UPDATE',
         [testScopeKey('scope-a')],
       )
       const result = await createWorker(testConfig({ concurrency: 1 })).tick()
@@ -191,7 +193,7 @@ describe('worker delivery durability', () => {
     expect(
       (
         await pool.query(
-          "SELECT count(*)::int AS count FROM webhooks.deliveries WHERE status='in_flight'",
+          "SELECT count(*)::int AS count FROM public.webhook_deliveries WHERE status='in_flight'",
         )
       ).rows[0].count,
     ).toBe(2)
@@ -208,7 +210,7 @@ describe('worker delivery durability', () => {
     const second = await fixture(url)
     const [lower, higher] = [first, second].sort((a, b) => a.endpointId.localeCompare(b.endpointId))
     await pool.query(
-      "UPDATE webhooks.deliveries SET next_attempt_at=now()-interval '1 hour' WHERE endpoint_id=$1",
+      "UPDATE public.webhook_deliveries SET next_attempt_at=now()-interval '1 hour' WHERE endpoint_id=$1",
       [higher!.endpointId],
     )
     const worker = createWorker(testConfig({ concurrency: 1 }))
@@ -223,7 +225,7 @@ describe('worker delivery durability', () => {
     const second = await fixture(url, 3, 2)
     const [lower, higher] = [first, second].sort((a, b) => a.endpointId.localeCompare(b.endpointId))
     await pool.query(
-      "UPDATE webhooks.deliveries SET next_attempt_at=now()-interval '1 hour' WHERE id=$1",
+      "UPDATE public.webhook_deliveries SET next_attempt_at=now()-interval '1 hour' WHERE id=$1",
       [higher!.deliveries[0]!.id],
     )
     const worker = createWorker(testConfig({ concurrency: 2 }))
@@ -448,11 +450,11 @@ describe('worker delivery durability', () => {
     expect(delayedSelections).toBe(1)
     expect(claims).toHaveLength(3)
     const leases = await pool.query<{ live: boolean; lease_expires_at: Date }>(
-      'SELECT lease_expires_at>clock_timestamp() AS live,lease_expires_at FROM webhooks.deliveries',
+      'SELECT lease_expires_at>clock_timestamp() AS live,lease_expires_at FROM public.webhook_deliveries',
     )
     expect(leases.rows.every((row) => row.live)).toBe(true)
     expect(new Set(leases.rows.map((row) => row.lease_expires_at.getTime())).size).toBe(1)
-    const attempts = await pool.query('SELECT * FROM webhooks.attempts')
+    const attempts = await pool.query('SELECT * FROM public.webhook_attempts')
     expect(attempts.rows).toHaveLength(3)
     expect(attempts.rows.every((row) => row.outcome === 'started')).toBe(true)
     const outcomes = await Promise.all(
@@ -479,7 +481,7 @@ describe('worker delivery durability', () => {
     const {
       claims: [claim],
     } = await storage.claim()
-    await pool.query("UPDATE webhooks.deliveries SET created_at=now()-interval '2 minutes'")
+    await pool.query("UPDATE public.webhook_deliveries SET created_at=now()-interval '2 minutes'")
     await expire(claim!)
     expect((await createWorker(testConfig()).tick()).claimed).toBe(0)
     expect(requests).toBe(0)
@@ -552,7 +554,7 @@ describe('worker delivery durability', () => {
     const url = await receiver((_request, response) => response.end('accepted'))
     const healthy = await fixture(url)
     const corrupt = await fixture(url)
-    await pool.query('UPDATE webhooks_management.endpoints SET secret=$2 WHERE id=$1', [
+    await pool.query('UPDATE public.webhook_endpoints SET secret=$2 WHERE id=$1', [
       corrupt.endpointId,
       'corrupted',
     ])
@@ -600,14 +602,14 @@ describe('worker delivery durability', () => {
     })
     const { endpointId } = await fixture(url, 2, 1)
     await pool.query(
-      `UPDATE webhooks_management.endpoints SET previous_secret=$2,
+      `UPDATE public.webhook_endpoints SET previous_secret=$2,
       previous_secret_expires_at=now()+interval '1 hour' WHERE id=$1`,
       [endpointId, encryptSecret(previous, TEST_ENCRYPTION_KEY)],
     )
     const worker = createWorker(testConfig())
     await worker.tick()
     await pool.query(
-      "UPDATE webhooks_management.endpoints SET previous_secret_expires_at=now()-interval '1 second' WHERE id=$1",
+      "UPDATE public.webhook_endpoints SET previous_secret_expires_at=now()-interval '1 second' WHERE id=$1",
       [endpointId],
     )
     await worker.tick()
@@ -619,15 +621,15 @@ describe('worker delivery durability', () => {
     const {
       deliveries: [delivery],
     } = await fixture(url)
-    await pool.query("UPDATE webhooks.events SET created_at=now()-interval '2 minutes'")
+    await pool.query("UPDATE public.webhook_events SET created_at=now()-interval '2 minutes'")
     await pool.query(
-      "UPDATE webhooks.deliveries SET status='failed', created_at=now()-interval '2 minutes'",
+      "UPDATE public.webhook_deliveries SET status='failed', created_at=now()-interval '2 minutes'",
     )
     const replay = await createStore(testConfig()).replay('scope-a', delivery!.id)
     expect((await createWorker(testConfig()).tick()).succeeded).toBe(1)
     expect((await state(replay.id)).delivery.status).toBe('succeeded')
     expect(await createWorker(testConfig({ retentionMs: 60_000 })).prune()).toBe(1)
-    expect((await pool.query('SELECT * FROM webhooks.deliveries')).rows).toEqual([])
+    expect((await pool.query('SELECT * FROM public.webhook_deliveries')).rows).toEqual([])
   })
 
   it('prunes expired history with an expired lease and fences its stale completion', async () => {
@@ -638,13 +640,14 @@ describe('worker delivery durability', () => {
     const {
       claims: [claim],
     } = await storage.claim()
-    await pool.query("UPDATE webhooks.events SET created_at=now()-interval '2 days'")
+    await pool.query("UPDATE public.webhook_events SET created_at=now()-interval '2 days'")
     await expire(claim!)
     expect(await createWorker(testConfig()).prune()).toBe(1)
     expect(
-      (await pool.query('SELECT id FROM webhooks.events WHERE id=$1', [delivery!.eventId])).rows,
+      (await pool.query('SELECT id FROM public.webhook_events WHERE id=$1', [delivery!.eventId]))
+        .rows,
     ).toEqual([])
-    expect((await pool.query('SELECT * FROM webhooks.attempts')).rows).toEqual([])
+    expect((await pool.query('SELECT * FROM public.webhook_attempts')).rows).toEqual([])
     expect(
       await storage.complete(claim!, {
         status: 200,
@@ -660,9 +663,9 @@ describe('worker delivery durability', () => {
       deliveries: [delivery],
     } = await fixture('http://127.0.0.1:12345')
     await createWorkerStore(testConfig()).claim()
-    await pool.query("UPDATE webhooks.events SET created_at=now()-interval '2 days'")
+    await pool.query("UPDATE public.webhook_events SET created_at=now()-interval '2 days'")
     await pool.query(
-      `INSERT INTO webhooks.events(id,scope_key,type,body,fingerprint,created_at)
+      `INSERT INTO public.webhook_events(id,scope_key,type,body,fingerprint,created_at)
       SELECT gen_random_uuid(),$1,'test.sent','{}','fixture',now()-interval '2 days' FROM generate_series(1,101)`,
       [testScopeKey('scope-a')],
     )
@@ -671,7 +674,7 @@ describe('worker delivery durability', () => {
     expect(first).toBeGreaterThanOrEqual(99)
     expect(first).toBeLessThanOrEqual(100)
     expect(await worker.prune()).toBe(101 - first)
-    expect((await pool.query('SELECT id FROM webhooks.events')).rows).toEqual([
+    expect((await pool.query('SELECT id FROM public.webhook_events')).rows).toEqual([
       { id: delivery!.eventId },
     ])
   })

@@ -1,3 +1,4 @@
+import { dropWebhookTables } from './db.js'
 import { once } from 'node:events'
 import { readFile } from 'node:fs/promises'
 import { createServer, type Server } from 'node:http'
@@ -43,6 +44,7 @@ function provider(): EndpointSource {
 function config(source: EndpointSource, options: Partial<ResolvedConfig> = {}): ResolvedConfig {
   return {
     database,
+    schema: 'public',
     source,
     retryDelaysMs: [10, 20],
     maxAgeMs: 60_000,
@@ -68,11 +70,11 @@ function engine(source: EndpointSource, leaseMs = 2000) {
 const event = { type: 'order.created', data: { id: 1 } } as const
 async function due() {
   await database.query(
-    "UPDATE webhooks.deliveries SET next_attempt_at=now()-interval '1 second' WHERE status='pending'",
+    "UPDATE public.webhook_deliveries SET next_attempt_at=now()-interval '1 second' WHERE status='pending'",
   )
 }
 async function rows() {
-  return (await database.query('SELECT * FROM webhooks.deliveries ORDER BY id')).rows
+  return (await database.query('SELECT * FROM public.webhook_deliveries ORDER BY id')).rows
 }
 async function receiver() {
   const received: { body: string; headers: Record<string, string | string[] | undefined> }[] = []
@@ -97,8 +99,7 @@ beforeEach(async () => {
   const client = await database.connect()
   try {
     await client.query('BEGIN')
-    await client.query('DROP SCHEMA IF EXISTS webhooks CASCADE')
-    await client.query('DROP SCHEMA IF EXISTS webhooks_management CASCADE')
+    await dropWebhookTables(client)
     await client.query(migration)
     await client.query('COMMIT')
   } catch (error) {
@@ -133,7 +134,7 @@ describe('delivery with an independent management provider', () => {
     const published = await app.publish(event)
     expect(published.deliveryCount).toBe(1)
     expect(
-      (await database.query("SELECT to_regnamespace('webhooks_management') AS schema")).rows[0]
+      (await database.query("SELECT to_regclass('public.webhook_endpoints') AS schema")).rows[0]
         .schema,
     ).toBeNull()
     expect(await app.worker.tick()).toMatchObject({ claimed: 1, succeeded: 1 })
@@ -167,7 +168,7 @@ describe('delivery with an independent management provider', () => {
           release: () => client.release(),
           async query<R extends Record<string, unknown>>(text: string, values?: unknown[]) {
             if (
-              text.includes('FROM webhooks.endpoint_state') &&
+              text.includes('FROM "public"."webhook_endpoint_state"') &&
               !text.includes('SKIP LOCKED') &&
               text.includes('FOR ')
             ) {
@@ -207,13 +208,13 @@ describe('delivery with an independent management provider', () => {
       await control.query('SELECT pg_advisory_lock(982741, $1)', [gate])
       // PostgreSQL runs this after its FK triggers. The publisher already holds
       // b's KEY SHARE lock when it waits here, before checking recipient a.
-      await database.query(`CREATE FUNCTION webhooks.pause_after_b() RETURNS trigger LANGUAGE plpgsql AS $$
+      await database.query(`CREATE OR REPLACE FUNCTION public.webhook_pause_after_b() RETURNS trigger LANGUAGE plpgsql AS $$
         BEGIN
           IF NEW.endpoint_id='b' THEN PERFORM pg_advisory_xact_lock(982741, ${gate}); END IF;
           RETURN NEW;
         END $$;
-        CREATE TRIGGER zz_pause_after_b AFTER INSERT ON webhooks.deliveries
-        FOR EACH ROW EXECUTE FUNCTION webhooks.pause_after_b()`)
+        CREATE TRIGGER zz_pause_after_b AFTER INSERT ON public.webhook_deliveries
+        FOR EACH ROW EXECUTE FUNCTION public.webhook_pause_after_b()`)
       await publisher.query('BEGIN')
       publishing = app
         .publish({ ...event, data: { id: 2 } }, { transaction: publisher })
@@ -261,7 +262,7 @@ describe('delivery with an independent management provider', () => {
       expect(
         (
           await database.query(
-            'SELECT endpoint_id,max_in_flight FROM webhooks.endpoint_state ORDER BY endpoint_id',
+            'SELECT endpoint_id,max_in_flight FROM public.webhook_endpoint_state ORDER BY endpoint_id',
           )
         ).rows,
       ).toEqual([
@@ -317,7 +318,8 @@ describe('delivery with an independent management provider', () => {
     expect(await losing).toEqual({ ...winning, duplicate: true })
     expect((await rows()).map((row) => row.endpoint_id)).toEqual(['new-recipient'])
     expect(
-      (await database.query('SELECT count(*)::int AS count FROM webhooks.events')).rows[0].count,
+      (await database.query('SELECT count(*)::int AS count FROM public.webhook_events')).rows[0]
+        .count,
     ).toBe(1)
   })
 
@@ -329,11 +331,12 @@ describe('delivery with an independent management provider', () => {
     await expect(engine(source).publish(event)).rejects.toThrow('Second page failed')
     expect(await rows()).toEqual([])
     expect(
-      (await database.query('SELECT count(*)::int AS count FROM webhooks.events')).rows[0].count,
+      (await database.query('SELECT count(*)::int AS count FROM public.webhook_events')).rows[0]
+        .count,
     ).toBe(0)
     expect(
-      (await database.query('SELECT count(*)::int AS count FROM webhooks.endpoint_state')).rows[0]
-        .count,
+      (await database.query('SELECT count(*)::int AS count FROM public.webhook_endpoint_state'))
+        .rows[0].count,
     ).toBe(0)
   })
 
@@ -350,7 +353,7 @@ describe('delivery with an independent management provider', () => {
       preparing: false,
       attempt_count: 0,
     })
-    expect((await database.query('SELECT * FROM webhooks.attempts')).rows).toEqual([])
+    expect((await database.query('SELECT * FROM public.webhook_attempts')).rows).toEqual([])
     const target = await receiver()
     const rotated = generateSecret()
     source.resolveEndpoint = async () => ({ status: 'active', url: target.url, secrets: [rotated] })
@@ -387,7 +390,7 @@ describe('delivery with an independent management provider', () => {
     await due()
     await expect(app.worker.tick()).rejects.toBeInstanceOf(AggregateError)
     expect((await rows())[0].attempt_count).toBe(1)
-    expect((await database.query('SELECT * FROM webhooks.attempts')).rows).toHaveLength(1)
+    expect((await database.query('SELECT * FROM public.webhook_attempts')).rows).toHaveLength(1)
     const target = await receiver()
     source.resolveEndpoint = async () => ({ status: 'active', url: target.url, secrets: [secret] })
     await due()
@@ -430,14 +433,14 @@ describe('delivery with an independent management provider', () => {
     const stale = first.claim()
     await lookupStarted.promise
     await database.query(
-      "UPDATE webhooks.deliveries SET lease_expires_at=now()-interval '1 second'",
+      "UPDATE public.webhook_deliveries SET lease_expires_at=now()-interval '1 second'",
     )
     await second.recoverExpired()
     const replacement = await second.claim()
     expect(replacement.claims).toHaveLength(1)
     finishLookup.resolve(active())
     expect((await stale).claims).toEqual([])
-    expect((await database.query('SELECT * FROM webhooks.attempts')).rows).toHaveLength(1)
+    expect((await database.query('SELECT * FROM public.webhook_attempts')).rows).toHaveLength(1)
     expect((await rows())[0].attempt_count).toBe(1)
   })
 
@@ -485,7 +488,7 @@ describe('delivery with an independent management provider', () => {
     await app.publish(event)
     expect((await createWorkerStore(config(source)).claim()).claims).toEqual([])
     expect((await rows()).map((row) => row.status)).toEqual(['cancelled', 'cancelled'])
-    expect((await database.query('SELECT * FROM webhooks.attempts')).rows).toEqual([])
+    expect((await database.query('SELECT * FROM public.webhook_attempts')).rows).toEqual([])
   })
 
   it('isolates endpoint capacity and settings when scopes share an opaque endpoint ID', async () => {

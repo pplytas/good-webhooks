@@ -107,18 +107,42 @@ export const webhooks = createWebhooks({
 await webhooks.check()
 ```
 
-Construction starts no background work and applies no DDL. `check()` verifies the management schema and delivery schema version. Your migration runner owns schema changes.
+Construction starts no background work and applies no DDL. `check()` verifies the management schema and delivery schema version. Your migration runner owns schema changes. PostgreSQL tables use the `webhook_` prefix in `public` by default.
 
-For an installed package, resolve its SQL migration through the exported path:
+Generate the initial SQL from an installed package, then apply it through your migration runner:
 
 ```sh
-node --input-type=module -e 'import { readFile } from "node:fs/promises"; process.stdout.write(await readFile(new URL(import.meta.resolve("good-webhooks/migrations/001-initial.sql")), "utf8"))' > 001-webhooks.sql
+node --input-type=module -e 'import { getPostgresMigration } from "good-webhooks/migrations"; process.stdout.write(getPostgresMigration())' > 001-webhooks.sql
 psql "$DATABASE_URL" --single-transaction -v ON_ERROR_STOP=1 -f 001-webhooks.sql
 ```
 
-Review and apply the migration once before calling `check()`. It creates `webhooks_management` and `webhooks` in the database you supply. For modular setup, apply `good-webhooks/migrations/management.sql` or `good-webhooks/migrations/delivery.sql` separately. BA management uses BA migrations instead of `management.sql`. Do not apply the combined and separate migrations to the same installation.
+Review and apply the migration once before calling `check()`. It creates `public.webhook_endpoints` for standalone management and `public.webhook_endpoint_state`, `public.webhook_events`, `public.webhook_deliveries`, `public.webhook_attempts`, and `public.webhook_schema_version` for delivery.
 
-The SQL contains no `BEGIN` or `COMMIT`. Your migration runner must execute it and its migration bookkeeping in one transaction on the same connection. For standalone setup, the `psql` command above supplies that transaction and rolls back on failure. The application's migration ledger tracks execution order; `webhooks.schema_version` records schema compatibility.
+`getPostgresMigration({ component: 'management' })` or `{ component: 'delivery' }` returns only that component's SQL. The default is `component: 'all'`. The shipped `001-initial.sql`, `management.sql`, and `delivery.sql` files contain the same SQL for `public`. BA management uses BA's schema workflow instead of the standalone management migration. Do not apply the combined and separate migrations to the same installation.
+
+For a custom PostgreSQL schema, share one constant between your migration configuration and runtime:
+
+```ts
+import { getPostgresMigration } from 'good-webhooks/migrations'
+
+// webhook-schema.ts
+export const webhookSchema = 'notifications'
+
+// Migration configuration: save this SQL or pass it to your migration runner.
+const sql = getPostgresMigration({ schema: webhookSchema })
+
+// Application and worker configuration:
+const webhooks = createWebhooks({
+  database: pool,
+  schema: webhookSchema,
+  encryptionKey: process.env.WEBHOOK_ENCRYPTION_KEY!,
+  events,
+})
+```
+
+`getPostgresMigration` only returns SQL. `createWebhooks({ schema })` uses that schema for its built-in management provider and delivery tables. To separate them, inject a management provider configured with its own schema or database; see the [management guide](docs/management.md#separate-postgresql-schemas).
+
+The SQL contains no `BEGIN` or `COMMIT`. Your migration runner must execute it and its migration bookkeeping in one transaction on the same connection. For standalone setup, the `psql` command above supplies that transaction and rolls back on failure. The application's migration ledger tracks execution order; `webhook_schema_version` in the selected schema records delivery compatibility.
 
 This unpublished revision uses delivery schema version 3. Earlier prototype schemas are incompatible. This migration initializes a fresh database; it does not upgrade existing prototype data. `check()` rejects that older schema. No schema or data changes happen automatically.
 
@@ -216,7 +240,7 @@ await webhooks.worker.run({ signal: stop.signal, pollIntervalMs: 1000 })
 
 Use the [runnable worker and cleanup entry points](docs/operations.md) for complete process setup, signal handling, database timeouts, failure reporting, pool closure, and cleanup scheduling.
 
-Workers and pruning operate across every scope in the configured database. These maintenance operations are available only on the root instance. Each worker claims work through PostgreSQL leases. Multiple processes can share the database. A worker holds no database transaction open during HTTP requests. Shutdown aborts active requests, whose receiver outcomes may be unknown.
+Workers and pruning operate across every scope in the configured delivery database and schema. These maintenance operations are available only on the root instance. Each worker claims work through PostgreSQL leases. Multiple processes can share the database. A worker holds no database transaction open during HTTP requests. Shutdown aborts active requests, whose receiver outcomes may be unknown.
 
 Without `onError`, an unexpected worker error rejects `run()`. With `onError`, the worker reports the error and continues polling. Receiver failures appear in delivery records.
 

@@ -6,7 +6,7 @@ For authenticated HTTP management using your application's existing database, us
 
 ## Standalone PostgreSQL setup
 
-Apply `good-webhooks/migrations/management.sql` to a PostgreSQL 16+ database using your migration runner. Then create the provider:
+Apply `good-webhooks/migrations/management.sql` to a PostgreSQL 16+ database using your migration runner. It creates `public.webhook_endpoints`. Then create the provider:
 
 ```ts
 import { Pool } from 'pg'
@@ -24,7 +24,40 @@ await management.check()
 
 Supply a base64-encoded 32-byte storage encryption key or a `Uint8Array` containing 32 bytes. Keep it outside the database. `generateEncryptionKey()` from `good-webhooks` can generate a key during setup; persist it instead of generating one each time the app starts.
 
-The provider uses only `webhooks_management.endpoints`. `check()` reads the expected columns; it does not install or migrate them. The host owns database connections and closes its pool on shutdown.
+The provider uses only `webhook_endpoints` in the configured schema. Its `schema` option defaults to `public`. `check()` reads the expected columns; it does not install or migrate them. The host owns database connections and closes its pool on shutdown.
+
+## Separate PostgreSQL schemas
+
+Management and delivery can share the default `public` schema, use separate schemas, or use separate databases. Keep migration and runtime schema selections together:
+
+```ts
+import { createWebhooks } from 'good-webhooks'
+import { getPostgresMigration } from 'good-webhooks/migrations'
+
+const managementSchema = 'management'
+const deliverySchema = 'delivery'
+
+// Pass each SQL string to your migration runner, or save it as a migration file.
+const managementSQL = getPostgresMigration({ schema: managementSchema, component: 'management' })
+const deliverySQL = getPostgresMigration({ schema: deliverySchema, component: 'delivery' })
+
+const management = createPostgresManagement({
+  database: managementDatabase,
+  schema: managementSchema,
+  eventTypes: Object.keys(events),
+  encryptionKey: process.env.WEBHOOK_ENCRYPTION_KEY!,
+})
+const webhooks = createWebhooks({
+  database: deliveryDatabase,
+  schema: deliverySchema,
+  management,
+  events,
+})
+```
+
+After applying these migrations, management uses `management.webhook_endpoints` and delivery uses tables prefixed with `webhook_` in `delivery`. The provider remains responsible for its own schema; injecting it does not change that schema. `createDelivery({ schema: deliverySchema, source: management.source, ... })` provides the same separation when you need only the sender interface.
+
+`getPostgresMigration` returns SQL without executing it. Apply each migration once in a host-owned transaction with your migration ledger. The shipped `.sql` files target `public`; use generated SQL for custom schemas. BA management follows its adapter's schema configuration instead of this standalone provider's `schema` option.
 
 ## Operations and scopes
 
@@ -105,7 +138,7 @@ const delivery = createDelivery({
 })
 ```
 
-Apply `good-webhooks/migrations/delivery.sql` to that database before calling `delivery.check()`. Start `delivery.worker.run(...)` or invoke `delivery.worker.tick()` explicitly. Management and delivery databases may differ. Publication stores accepted events and deliveries atomically within delivery storage; it does not automatically share your application's business transaction.
+Apply `good-webhooks/migrations/delivery.sql` to that database before calling `delivery.check()`, or generate matching SQL with `getPostgresMigration({ schema, component: 'delivery' })` when supplying a custom `schema` to `createDelivery`. Start `delivery.worker.run(...)` or invoke `delivery.worker.tick()` explicitly. Publication stores accepted events and deliveries atomically within delivery storage; it does not automatically share your application's business transaction.
 
 ## Destination validation
 

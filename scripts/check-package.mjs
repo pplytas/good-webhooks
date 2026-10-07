@@ -26,11 +26,13 @@ import { createWebhooks } from 'good-webhooks'
 import { createDelivery } from 'good-webhooks/delivery'
 import { createManagement } from 'good-webhooks/management'
 import { createPostgresManagement } from 'good-webhooks/management/postgres'
+import { getPostgresMigration } from 'good-webhooks/migrations'
 import { parseWebhook } from 'good-webhooks/verify'
 const require = createRequire(import.meta.url)
 assert.throws(() => require.resolve('better-auth'), { code: 'MODULE_NOT_FOUND' })
 for (const value of [createWebhooks, createDelivery, createManagement, createPostgresManagement, parseWebhook]) assert.equal(typeof value, 'function')
-for (const [entry, name] of [['good-webhooks', 'createWebhooks'], ['good-webhooks/delivery', 'createDelivery'], ['good-webhooks/management', 'createManagement'], ['good-webhooks/management/postgres', 'createPostgresManagement'], ['good-webhooks/verify', 'parseWebhook']]) assert.equal(typeof require(entry)[name], 'function')
+for (const [entry, name] of [['good-webhooks', 'createWebhooks'], ['good-webhooks/delivery', 'createDelivery'], ['good-webhooks/management', 'createManagement'], ['good-webhooks/management/postgres', 'createPostgresManagement'], ['good-webhooks/verify', 'parseWebhook'], ['good-webhooks/migrations', 'getPostgresMigration']]) assert.equal(typeof require(entry)[name], 'function')
+assert.ok(getPostgresMigration({schema:'custom',component:'delivery'}).includes('"custom"."webhook_events"'))
 for (const name of ['001-initial', 'management', 'delivery']) {
   const sql = await readFile(new URL(import.meta.resolve('good-webhooks/migrations/' + name + '.sql')), 'utf8')
   assert.ok(sql.includes('CREATE SCHEMA'))

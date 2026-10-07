@@ -1,6 +1,7 @@
 import { randomInt, randomUUID } from 'node:crypto'
 import { signWebhook } from './crypto.js'
 import { scopeFromKey } from './scope.js'
+import { postgresTables } from './postgres-schema.js'
 import type { EndpointResolution } from './management/types.js'
 import type { ClaimedDelivery, DatabaseClient, ResolvedConfig } from './types.js'
 
@@ -31,6 +32,7 @@ type Resolution = { reservation: Reservation } & (
 
 /** Lock delivery-owned endpoint state before deliveries. Never hold a transaction during provider or HTTP calls. */
 export function createWorkerStore(config: ResolvedConfig) {
+  const tables = postgresTables(config.schema)
   async function transaction<T>(operation: (client: DatabaseClient) => Promise<T>): Promise<T> {
     const client = await config.database.connect()
     try {
@@ -68,8 +70,8 @@ export function createWorkerStore(config: ResolvedConfig) {
   async function recoverExpired(): Promise<void> {
     await transaction(async (client) => {
       const endpoints = await client.query<EndpointState>(`
-        SELECT s.scope_key,s.endpoint_id,s.max_in_flight FROM webhooks.endpoint_state s
-        WHERE EXISTS (SELECT 1 FROM webhooks.deliveries d
+        SELECT s.scope_key,s.endpoint_id,s.max_in_flight FROM ${tables.endpointState} s
+        WHERE EXISTS (SELECT 1 FROM ${tables.deliveries} d
           WHERE d.scope_key=s.scope_key AND d.endpoint_id=s.endpoint_id
           AND d.status='in_flight' AND d.lease_expires_at <= now())
         ORDER BY s.scope_key,s.endpoint_id LIMIT 100 FOR NO KEY UPDATE OF s SKIP LOCKED`)
@@ -81,7 +83,7 @@ export function createWorkerStore(config: ResolvedConfig) {
           }
         >(
           `SELECT id::text,attempt_count,created_at,preparing,clock_timestamp() AS now
-          FROM webhooks.deliveries WHERE scope_key=$1 AND endpoint_id=$2
+          FROM ${tables.deliveries} WHERE scope_key=$1 AND endpoint_id=$2
           AND status='in_flight' AND lease_expires_at <= now()
           ORDER BY id FOR UPDATE SKIP LOCKED`,
           [endpoint.scope_key, endpoint.endpoint_id],
@@ -98,13 +100,13 @@ export function createWorkerStore(config: ResolvedConfig) {
             : 'Worker lease expired; receiver outcome is unknown'
           if (!delivery.preparing) {
             await client.query(
-              `UPDATE webhooks.attempts SET outcome='abandoned',finished_at=clock_timestamp(),error=$3
+              `UPDATE ${tables.attempts} SET outcome='abandoned',finished_at=clock_timestamp(),error=$3
               WHERE delivery_id=$1 AND number=$2 AND outcome='started'`,
               [delivery.id, delivery.attempt_count, error],
             )
           }
           await client.query(
-            `UPDATE webhooks.deliveries SET status=$2,preparing=false,claim_token=NULL,lease_expires_at=NULL,
+            `UPDATE ${tables.deliveries} SET status=$2,preparing=false,claim_token=NULL,lease_expires_at=NULL,
             next_attempt_at=COALESCE($3,next_attempt_at),last_status=NULL,last_error=$4 WHERE id=$1`,
             [delivery.id, next ? 'pending' : 'failed', next, error],
           )
@@ -116,11 +118,11 @@ export function createWorkerStore(config: ResolvedConfig) {
   async function reserve(signal?: AbortSignal): Promise<Reservation[]> {
     return transaction(async (client) => {
       const endpoints = await client.query<EndpointState>(
-        `SELECT s.scope_key,s.endpoint_id,s.max_in_flight FROM webhooks.endpoint_state s
-        JOIN LATERAL (SELECT min(d.next_attempt_at) AS due FROM webhooks.deliveries d
+        `SELECT s.scope_key,s.endpoint_id,s.max_in_flight FROM ${tables.endpointState} s
+        JOIN LATERAL (SELECT min(d.next_attempt_at) AS due FROM ${tables.deliveries} d
           WHERE d.scope_key=s.scope_key AND d.endpoint_id=s.endpoint_id
           AND d.status='pending' AND d.next_attempt_at <= now()) pending ON pending.due IS NOT NULL
-        WHERE (SELECT count(*) FROM webhooks.deliveries active
+        WHERE (SELECT count(*) FROM ${tables.deliveries} active
           WHERE active.scope_key=s.scope_key AND active.endpoint_id=s.endpoint_id
           AND active.status='in_flight') < s.max_in_flight
         ORDER BY pending.due,s.scope_key,s.endpoint_id LIMIT $1 FOR NO KEY UPDATE OF s SKIP LOCKED`,
@@ -130,7 +132,7 @@ export function createWorkerStore(config: ResolvedConfig) {
       for (const endpoint of endpoints.rows) {
         if (signal?.aborted || reservations.length >= config.concurrency) break
         const count = await client.query<{ count: number }>(
-          `SELECT count(*)::int AS count FROM webhooks.deliveries
+          `SELECT count(*)::int AS count FROM ${tables.deliveries}
           WHERE scope_key=$1 AND endpoint_id=$2 AND status='in_flight'`,
           [endpoint.scope_key, endpoint.endpoint_id],
         )
@@ -142,7 +144,7 @@ export function createWorkerStore(config: ResolvedConfig) {
         const deliveries = await client.query<DeliveryRow & { now: Date }>(
           `SELECT d.id::text,d.scope_key,d.endpoint_id,d.event_id,d.attempt_count,d.created_at,
             e.body,e.created_at AS event_created_at,clock_timestamp() AS now
-          FROM webhooks.deliveries d JOIN webhooks.events e ON e.id=d.event_id
+          FROM ${tables.deliveries} d JOIN ${tables.events} e ON e.id=d.event_id
           WHERE d.scope_key=$1 AND d.endpoint_id=$2 AND d.status='pending' AND d.next_attempt_at <= now()
           ORDER BY d.next_attempt_at,d.id LIMIT $3 FOR UPDATE OF d SKIP LOCKED`,
           [endpoint.scope_key, endpoint.endpoint_id, capacity],
@@ -151,7 +153,7 @@ export function createWorkerStore(config: ResolvedConfig) {
           if (signal?.aborted) break
           if (exhausted(delivery, delivery.now)) {
             await client.query(
-              "UPDATE webhooks.deliveries SET status='failed',last_error='Delivery retry budget expired' WHERE id=$1",
+              `UPDATE ${tables.deliveries} SET status='failed',last_error='Delivery retry budget expired' WHERE id=$1`,
               [delivery.id],
             )
           } else {
@@ -161,7 +163,7 @@ export function createWorkerStore(config: ResolvedConfig) {
       }
       if (reservations.length) {
         await client.query(
-          `UPDATE webhooks.deliveries d SET status='in_flight',preparing=true,
+          `UPDATE ${tables.deliveries} d SET status='in_flight',preparing=true,
           claim_token=input.token,lease_expires_at=statement_timestamp()+($3 * interval '1 millisecond')
           FROM unnest($1::bigint[],$2::uuid[]) AS input(id,token) WHERE d.id=input.id`,
           [reservations.map((row) => row.id), reservations.map((row) => row.token), config.leaseMs],
@@ -225,7 +227,7 @@ export function createWorkerStore(config: ResolvedConfig) {
       // allowing publication's foreign-key checks to proceed. Use database ordering
       // for every batch, including scope/endpoint IDs with non-ASCII characters.
       await client.query(
-        `SELECT s.scope_key,s.endpoint_id FROM webhooks.endpoint_state s
+        `SELECT s.scope_key,s.endpoint_id FROM ${tables.endpointState} s
         WHERE (s.scope_key,s.endpoint_id) IN (SELECT * FROM unnest($1::text[],$2::text[]))
         ORDER BY s.scope_key,s.endpoint_id FOR NO KEY UPDATE OF s`,
         [
@@ -238,7 +240,7 @@ export function createWorkerStore(config: ResolvedConfig) {
         if (resolution.endpoint?.status === 'deleted') {
           // An attempt already prepared may finish. Pending and unresolved work cannot start.
           await client.query(
-            `UPDATE webhooks.deliveries SET status='cancelled',preparing=false,claim_token=NULL,
+            `UPDATE ${tables.deliveries} SET status='cancelled',preparing=false,claim_token=NULL,
               lease_expires_at=NULL,last_error='Endpoint deleted'
             WHERE scope_key=$1 AND endpoint_id=$2 AND (status='pending' OR (status='in_flight' AND preparing))`,
             [reservation.scope_key, reservation.endpoint_id],
@@ -247,7 +249,7 @@ export function createWorkerStore(config: ResolvedConfig) {
         }
         if (!resolution.endpoint || resolution.endpoint.status !== 'active' || signal?.aborted) {
           await client.query(
-            `UPDATE webhooks.deliveries SET status='pending',preparing=false,claim_token=NULL,lease_expires_at=NULL,
+            `UPDATE ${tables.deliveries} SET status='pending',preparing=false,claim_token=NULL,lease_expires_at=NULL,
               next_attempt_at=clock_timestamp()+interval '1 second',last_error=COALESCE($3,last_error)
             WHERE id=$1 AND claim_token=$2 AND status='in_flight' AND preparing`,
             [
@@ -259,14 +261,14 @@ export function createWorkerStore(config: ResolvedConfig) {
           continue
         }
         const current = await client.query<{ now: Date }>(
-          `SELECT clock_timestamp() AS now FROM webhooks.deliveries WHERE id=$1 AND claim_token=$2
+          `SELECT clock_timestamp() AS now FROM ${tables.deliveries} WHERE id=$1 AND claim_token=$2
           AND status='in_flight' AND preparing AND lease_expires_at>clock_timestamp() FOR UPDATE`,
           [reservation.id, reservation.token],
         )
         if (!current.rows[0]) continue
         if (exhausted(reservation, current.rows[0].now)) {
           await client.query(
-            `UPDATE webhooks.deliveries SET status='failed',preparing=false,claim_token=NULL,lease_expires_at=NULL,
+            `UPDATE ${tables.deliveries} SET status='failed',preparing=false,claim_token=NULL,lease_expires_at=NULL,
             last_error='Delivery retry budget expired' WHERE id=$1 AND claim_token=$2`,
             [reservation.id, reservation.token],
           )
@@ -290,13 +292,13 @@ export function createWorkerStore(config: ResolvedConfig) {
         // All real attempts begin together, after provider reads, with a fresh send lease.
         const started = await client.query<{ id: string }>(
           `WITH claimed AS (
-            UPDATE webhooks.deliveries d SET preparing=false,attempt_count=d.attempt_count+1,
+            UPDATE ${tables.deliveries} d SET preparing=false,attempt_count=d.attempt_count+1,
               lease_expires_at=statement_timestamp()+($3 * interval '1 millisecond')
             FROM unnest($1::bigint[],$2::uuid[]) AS input(id,token)
             WHERE d.id=input.id AND d.claim_token=input.token AND d.status='in_flight' AND d.preparing
               AND d.lease_expires_at>clock_timestamp() RETURNING d.id,d.attempt_count
           ), attempts AS (
-            INSERT INTO webhooks.attempts(delivery_id,number,started_at)
+            INSERT INTO ${tables.attempts}(delivery_id,number,started_at)
             SELECT id,attempt_count,statement_timestamp() FROM claimed RETURNING delivery_id
           ) SELECT delivery_id::text AS id FROM attempts`,
           [prepared.map((row) => row.id), prepared.map((row) => row.token), config.leaseMs],
@@ -312,11 +314,11 @@ export function createWorkerStore(config: ResolvedConfig) {
   async function complete(claim: ClaimedDelivery, outcome: DeliveryOutcome): Promise<Completion> {
     return transaction(async (client) => {
       await client.query(
-        'SELECT endpoint_id FROM webhooks.endpoint_state WHERE scope_key=$1 AND endpoint_id=$2 FOR NO KEY UPDATE',
+        `SELECT endpoint_id FROM ${tables.endpointState} WHERE scope_key=$1 AND endpoint_id=$2 FOR NO KEY UPDATE`,
         [claim.scopeKey, claim.endpointId],
       )
       const current = await client.query<{ now: Date }>(
-        `SELECT clock_timestamp() AS now FROM webhooks.deliveries
+        `SELECT clock_timestamp() AS now FROM ${tables.deliveries}
         WHERE id=$1 AND status='in_flight' AND NOT preparing AND claim_token=$2 AND lease_expires_at > clock_timestamp()
         FOR UPDATE`,
         [claim.id, claim.token],
@@ -341,7 +343,7 @@ export function createWorkerStore(config: ResolvedConfig) {
             ? 'retry'
             : 'failed'
       await client.query(
-        `UPDATE webhooks.attempts SET outcome=$3,finished_at=clock_timestamp(),response_status=$4,
+        `UPDATE ${tables.attempts} SET outcome=$3,finished_at=clock_timestamp(),response_status=$4,
         response_body=$5,error=$6 WHERE delivery_id=$1 AND number=$2 AND outcome='started'`,
         [
           claim.id,
@@ -353,7 +355,7 @@ export function createWorkerStore(config: ResolvedConfig) {
         ],
       )
       await client.query(
-        `UPDATE webhooks.deliveries SET status=$3,claim_token=NULL,lease_expires_at=NULL,
+        `UPDATE ${tables.deliveries} SET status=$3,claim_token=NULL,lease_expires_at=NULL,
         next_attempt_at=COALESCE($4,next_attempt_at),last_status=$5,last_error=$6 WHERE id=$1 AND claim_token=$2`,
         [
           claim.id,
@@ -372,25 +374,25 @@ export function createWorkerStore(config: ResolvedConfig) {
   async function prune(): Promise<number> {
     return transaction(async (client) => {
       const candidates = await client.query<{ id: string }>(
-        `SELECT id FROM webhooks.events
-        WHERE created_at < now()-($1 * interval '1 millisecond')
-        AND NOT EXISTS (SELECT 1 FROM webhooks.deliveries d WHERE d.event_id=webhooks.events.id
+        `SELECT e.id FROM ${tables.events} e
+        WHERE e.created_at < now()-($1 * interval '1 millisecond')
+        AND NOT EXISTS (SELECT 1 FROM ${tables.deliveries} d WHERE d.event_id=e.id
           AND d.status='in_flight' AND d.lease_expires_at>clock_timestamp())
-        ORDER BY created_at,id LIMIT 100`,
+        ORDER BY e.created_at,e.id LIMIT 100`,
         [config.retentionMs],
       )
       if (!candidates.rows.length) return 0
       const ids = candidates.rows.map((row) => row.id)
       const locked = await client.query<{ scope_key: string; endpoint_id: string }>(
-        `SELECT s.scope_key,s.endpoint_id FROM webhooks.endpoint_state s
-        WHERE EXISTS (SELECT 1 FROM webhooks.deliveries d WHERE d.scope_key=s.scope_key
+        `SELECT s.scope_key,s.endpoint_id FROM ${tables.endpointState} s
+        WHERE EXISTS (SELECT 1 FROM ${tables.deliveries} d WHERE d.scope_key=s.scope_key
           AND d.endpoint_id=s.endpoint_id AND d.event_id=ANY($1::uuid[]))
         ORDER BY s.scope_key,s.endpoint_id FOR NO KEY UPDATE OF s SKIP LOCKED`,
         [ids],
       )
       const eligible = await client.query<{ id: string }>(
-        `SELECT e.id FROM webhooks.events e WHERE e.id=ANY($1::uuid[])
-        AND NOT EXISTS (SELECT 1 FROM webhooks.deliveries d WHERE d.event_id=e.id
+        `SELECT e.id FROM ${tables.events} e WHERE e.id=ANY($1::uuid[])
+        AND NOT EXISTS (SELECT 1 FROM ${tables.deliveries} d WHERE d.event_id=e.id
           AND ((d.status='in_flight' AND d.lease_expires_at>clock_timestamp())
             OR NOT EXISTS (SELECT 1 FROM unnest($2::text[],$3::text[]) AS locked(scope_key,endpoint_id)
               WHERE locked.scope_key=d.scope_key AND locked.endpoint_id=d.endpoint_id)))
@@ -398,7 +400,7 @@ export function createWorkerStore(config: ResolvedConfig) {
         [ids, locked.rows.map((row) => row.scope_key), locked.rows.map((row) => row.endpoint_id)],
       )
       if (!eligible.rows.length) return 0
-      const deleted = await client.query('DELETE FROM webhooks.events WHERE id=ANY($1::uuid[])', [
+      const deleted = await client.query(`DELETE FROM ${tables.events} WHERE id=ANY($1::uuid[])`, [
         eligible.rows.map((row) => row.id),
       ])
       return deleted.rowCount ?? 0

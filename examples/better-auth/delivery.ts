@@ -9,10 +9,18 @@ const events = {
   'invoice.paid': z.object({ invoiceId: z.string() }),
 }
 
+// Reuse this value when generating delivery SQL with getPostgresMigration.
+export const deliverySchema = 'public'
+
 /** The supplied PostgreSQL database stores delivery work, while BA keeps its SQLite database. */
 export async function createExampleDelivery(auth: ExampleAuth, deliveryDatabase: Database) {
   const management = await createBetterAuthManagement(auth)
-  return createDelivery({ database: deliveryDatabase, events, source: management.source })
+  return createDelivery({
+    database: deliveryDatabase,
+    schema: deliverySchema,
+    events,
+    source: management.source,
+  })
 }
 
 /** Call only after the application authorizes the organization and commits its business write. */

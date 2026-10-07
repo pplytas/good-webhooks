@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { scopeFromKey } from './scope.js'
+import { postgresTables, resolvePostgresSchema } from './postgres-schema.js'
 import { WebhookError } from './errors.js'
 import type {
   Attempt,
@@ -93,14 +94,16 @@ function postgresCode(error: unknown): string | undefined {
 }
 
 /** Delivery acceptance serializes within each scope, including caller-owned transactions. */
-async function lockScope(client: SqlClient, scopeKey: string): Promise<void> {
-  // Keep this database lock namespace stable across package renames.
+async function lockScope(client: SqlClient, schema: string, scopeKey: string): Promise<void> {
+  // Schema is part of the installation identity; tuples avoid ambiguous concatenation.
   await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
-    `@pplytas/webhooks:scope:${scopeKey}`,
+    `good-webhooks:delivery:${JSON.stringify([schema, scopeKey])}`,
   ])
 }
 
 export function createStore(config: ResolvedConfig) {
+  const schema = resolvePostgresSchema(config.schema)
+  const tables = postgresTables(schema)
   async function transaction<T>(
     run: (client: SqlClient) => Promise<T>,
     supplied?: SqlClient,
@@ -145,7 +148,7 @@ export function createStore(config: ResolvedConfig) {
   async function checkSchema(): Promise<void> {
     try {
       const result = await config.database.query<{ version: number }>(
-        'SELECT version FROM webhooks.schema_version ORDER BY version',
+        `SELECT version FROM ${tables.schemaVersion} ORDER BY version`,
       )
       if (result.rows.length !== 1 || result.rows[0]?.version !== 3) {
         throw new WebhookError(
@@ -158,7 +161,7 @@ export function createStore(config: ResolvedConfig) {
       if (['42P01', '3F000', '42703'].includes(postgresCode(error) ?? '')) {
         throw new WebhookError(
           'SCHEMA_MISMATCH',
-          'Webhook schema is missing or incompatible. Apply the package migrations before using the library.',
+          `Webhook delivery schema ${JSON.stringify(schema)} is missing or incompatible. Generate matching SQL with getPostgresMigration({ schema: ${JSON.stringify(schema)}, component: 'delivery' }).`,
           { cause: error },
         )
       }
@@ -189,9 +192,9 @@ export function createStore(config: ResolvedConfig) {
     async function existingPublication(client: SqlClient): Promise<PublishResult | null> {
       if (input.idempotencyKey === undefined) return null
       const existing = await client.query<{ id: string; fingerprint: string; count: number }>(
-        `SELECT e.id,e.fingerprint,(SELECT count(*)::integer FROM webhooks.deliveries d
+        `SELECT e.id,e.fingerprint,(SELECT count(*)::integer FROM ${tables.deliveries} d
           WHERE d.event_id=e.id AND d.replay_of IS NULL) AS count
-        FROM webhooks.events e WHERE e.scope_key=$1 AND e.idempotency_key=$2`,
+        FROM ${tables.events} e WHERE e.scope_key=$1 AND e.idempotency_key=$2`,
         [scopeKey, input.idempotencyKey],
       )
       if (!existing.rows[0]) return null
@@ -217,7 +220,7 @@ export function createStore(config: ResolvedConfig) {
     const recipients = [...new Set(matched)]
     for (const id of recipients) endpointId(id)
     return transaction(async (client) => {
-      await lockScope(client, scopeKey)
+      await lockScope(client, schema, scopeKey)
       // A concurrent publication may have committed while this caller resolved recipients.
       const accepted = await existingPublication(client)
       if (accepted) return accepted
@@ -231,7 +234,7 @@ export function createStore(config: ResolvedConfig) {
         data: input.data,
       })
       await client.query(
-        'INSERT INTO webhooks.events(id,scope_key,type,body,fingerprint,idempotency_key,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7)',
+        `INSERT INTO ${tables.events}(id,scope_key,type,body,fingerprint,idempotency_key,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
         [
           eventId,
           scopeKey,
@@ -243,13 +246,13 @@ export function createStore(config: ResolvedConfig) {
         ],
       )
       await client.query(
-        `INSERT INTO webhooks.endpoint_state(scope_key,endpoint_id)
+        `INSERT INTO ${tables.endpointState}(scope_key,endpoint_id)
         SELECT $1,id FROM unnest($2::text[]) AS input(id)
         ON CONFLICT (scope_key,endpoint_id) DO NOTHING`,
         [scopeKey, recipients],
       )
       const result = await client.query(
-        `INSERT INTO webhooks.deliveries(scope_key,endpoint_id,event_id)
+        `INSERT INTO ${tables.deliveries}(scope_key,endpoint_id,event_id)
         SELECT $1,id,$2 FROM unnest($3::text[]) AS input(id)`,
         [scopeKey, eventId, recipients],
       )
@@ -276,7 +279,7 @@ export function createStore(config: ResolvedConfig) {
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100)
       invalid('Delivery list limit must be an integer from 1 to 100.')
     const { rows } = await config.database.query<DeliveryRow>(
-      `SELECT ${DELIVERY_FIELDS} FROM webhooks.deliveries WHERE scope_key=$1 AND ($2::text IS NULL OR endpoint_id=$2) AND ($3::text IS NULL OR status=$3) AND ($4::bigint IS NULL OR id<$4) AND ($6::uuid IS NULL OR event_id=$6) ORDER BY id DESC LIMIT $5`,
+      `SELECT ${DELIVERY_FIELDS} FROM ${tables.deliveries} WHERE scope_key=$1 AND ($2::text IS NULL OR endpoint_id=$2) AND ($3::text IS NULL OR status=$3) AND ($4::bigint IS NULL OR id<$4) AND ($6::uuid IS NULL OR event_id=$6) ORDER BY id DESC LIMIT $5`,
       [
         scopeKey,
         query.endpointId ?? null,
@@ -295,10 +298,10 @@ export function createStore(config: ResolvedConfig) {
     deliveryId(id)
     const { rows } = await config.database.query<DeliveryHistoryRow>(
       `WITH delivery AS (
-        SELECT ${DELIVERY_FIELDS} FROM webhooks.deliveries WHERE scope_key=$1 AND id=$2
+        SELECT ${DELIVERY_FIELDS} FROM ${tables.deliveries} WHERE scope_key=$1 AND id=$2
       )
       SELECT d.*,a.number,a.started_at,a.finished_at,a.outcome,a.response_status,a.response_body,a.error
-      FROM delivery d LEFT JOIN webhooks.attempts a ON a.delivery_id=d.id::bigint ORDER BY a.number`,
+      FROM delivery d LEFT JOIN ${tables.attempts} a ON a.delivery_id=d.id::bigint ORDER BY a.number`,
       [scopeKey, id],
     )
     if (!rows[0]) throw new WebhookError('NOT_FOUND', 'Delivery not found in this scope.')
@@ -326,7 +329,7 @@ export function createStore(config: ResolvedConfig) {
     scope(scopeKey)
     deliveryId(id)
     const found = await config.database.query<{ endpoint_id: string }>(
-      'SELECT endpoint_id FROM webhooks.deliveries WHERE scope_key=$1 AND id=$2',
+      `SELECT endpoint_id FROM ${tables.deliveries} WHERE scope_key=$1 AND id=$2`,
       [scopeKey, id],
     )
     if (!found.rows[0]) throw new WebhookError('NOT_FOUND', 'Delivery not found in this scope.')
@@ -337,13 +340,13 @@ export function createStore(config: ResolvedConfig) {
     if (target.status !== 'active')
       throw new WebhookError('INVALID_STATE', 'Replay requires an active endpoint.')
     return transaction(async (client) => {
-      await lockScope(client, scopeKey)
+      await lockScope(client, schema, scopeKey)
       await client.query(
-        'SELECT endpoint_id FROM webhooks.endpoint_state WHERE scope_key=$1 AND endpoint_id=$2 FOR NO KEY UPDATE',
+        `SELECT endpoint_id FROM ${tables.endpointState} WHERE scope_key=$1 AND endpoint_id=$2 FOR NO KEY UPDATE`,
         [scopeKey, found.rows[0]!.endpoint_id],
       )
       const original = await client.query<DeliveryRow>(
-        `SELECT ${DELIVERY_FIELDS} FROM webhooks.deliveries WHERE scope_key=$1 AND id=$2 FOR UPDATE`,
+        `SELECT ${DELIVERY_FIELDS} FROM ${tables.deliveries} WHERE scope_key=$1 AND id=$2 FOR UPDATE`,
         [scopeKey, id],
       )
       const row = original.rows[0]
@@ -354,13 +357,13 @@ export function createStore(config: ResolvedConfig) {
           'Only an original succeeded or failed delivery can be replayed.',
         )
       const retained = await client.query<{ valid: boolean }>(
-        "SELECT created_at>clock_timestamp()-$3::bigint*interval '1 millisecond' AS valid FROM webhooks.events WHERE scope_key=$1 AND id=$2",
+        `SELECT created_at>clock_timestamp()-$3::bigint*interval '1 millisecond' AS valid FROM ${tables.events} WHERE scope_key=$1 AND id=$2`,
         [scopeKey, row.event_id, config.retentionMs],
       )
       if (!retained.rows[0]?.valid)
         throw new WebhookError('INVALID_STATE', 'The event is outside the replay retention window.')
       const active = await client.query(
-        "SELECT id FROM webhooks.deliveries WHERE scope_key=$1 AND replay_of=$2 AND status IN ('pending','in_flight')",
+        `SELECT id FROM ${tables.deliveries} WHERE scope_key=$1 AND replay_of=$2 AND status IN ('pending','in_flight')`,
         [scopeKey, id],
       )
       if (active.rows.length)
@@ -369,7 +372,7 @@ export function createStore(config: ResolvedConfig) {
           'This delivery already has a pending or in-flight replay.',
         )
       const inserted = await client.query<DeliveryRow>(
-        `INSERT INTO webhooks.deliveries(scope_key,endpoint_id,event_id,replay_of) VALUES ($1,$2,$3,$4) RETURNING ${DELIVERY_FIELDS}`,
+        `INSERT INTO ${tables.deliveries}(scope_key,endpoint_id,event_id,replay_of) VALUES ($1,$2,$3,$4) RETURNING ${DELIVERY_FIELDS}`,
         [scopeKey, row.endpoint_id, row.event_id, id],
       )
       return delivery(inserted.rows[0]!)
@@ -386,7 +389,7 @@ export function createStore(config: ResolvedConfig) {
     if (resolved.status === 'deleted')
       throw new WebhookError('NOT_FOUND', 'Endpoint not found in this scope.')
     const result = await config.database.query<{ max_in_flight: number }>(
-      'SELECT max_in_flight FROM webhooks.endpoint_state WHERE scope_key=$1 AND endpoint_id=$2',
+      `SELECT max_in_flight FROM ${tables.endpointState} WHERE scope_key=$1 AND endpoint_id=$2`,
       [scopeKey, id],
     )
     return { maxInFlight: result.rows[0]?.max_in_flight ?? 2 }
@@ -405,7 +408,7 @@ export function createStore(config: ResolvedConfig) {
     if (resolved.status === 'deleted')
       throw new WebhookError('NOT_FOUND', 'Endpoint not found in this scope.')
     await config.database.query(
-      `INSERT INTO webhooks.endpoint_state(scope_key,endpoint_id,max_in_flight) VALUES ($1,$2,$3)
+      `INSERT INTO ${tables.endpointState}(scope_key,endpoint_id,max_in_flight) VALUES ($1,$2,$3)
       ON CONFLICT (scope_key,endpoint_id) DO UPDATE SET max_in_flight=EXCLUDED.max_in_flight`,
       [scopeKey, id, value],
     )
