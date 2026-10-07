@@ -1,0 +1,111 @@
+---
+title: Add Good Webhooks delivery
+description: Connect Better Auth management to the PostgreSQL publisher and a separately initialized worker.
+---
+
+Keep Better Auth's existing management storage and add PostgreSQL delivery. Complete [plugin configuration](/better-auth/configuration) first. The app and worker must read the same management records.
+
+## Prepare delivery storage
+
+Install `pg` and a Standard Schema validator in the application. This guide uses Zod:
+
+```sh
+npm install pg zod
+```
+
+Generate delivery-only SQL from the installed package:
+
+```sh
+node --input-type=module -e 'import { getPostgresMigration } from "good-webhooks/migrations"; process.stdout.write(getPostgresMigration({ component: "delivery" }))' > 001-webhook-delivery.sql
+psql "$DELIVERY_DATABASE_URL" --single-transaction -v ON_ERROR_STOP=1 -f 001-webhook-delivery.sql
+```
+
+Apply the migration once to fresh delivery storage. It creates delivery tables in `public`. Use [matching generated SQL](/operations/migrations) when selecting another schema.
+
+This migration does not create the Better Auth management model. Better Auth continues to own that migration workflow.
+
+## Connect the provider
+
+In your server bootstrap, import the configured auth instance and construct the delivery engine:
+
+```ts title="delivery.ts"
+import { Pool } from 'pg'
+import { z } from 'zod'
+import { createBetterAuthManagement } from 'good-webhooks/better-auth'
+import { createDelivery } from 'good-webhooks/delivery'
+import { auth } from './auth.js'
+
+export const deliveryDatabase = new Pool({
+  connectionString: process.env.DELIVERY_DATABASE_URL,
+})
+const management = await createBetterAuthManagement(auth)
+export const delivery = createDelivery({
+  database: deliveryDatabase,
+  source: management.source,
+  events: {
+    'invoice.created': z.object({ invoiceId: z.string(), total: z.number().nonnegative() }),
+    'invoice.paid': z.object({ invoiceId: z.string() }),
+  },
+})
+await delivery.check()
+```
+
+The provider uses Better Auth's configured adapter and encryption keys. It needs neither a session nor an HTTP listener because it is a trusted server capability.
+
+## Publish to the endpoint's scope
+
+Authorize the business action in your application, then select the same scope that owns the endpoint:
+
+```ts
+const publisher = delivery.forScope({ type: 'user', id: user.id })
+const result = await publisher.publish({
+  type: 'invoice.created',
+  data: { invoiceId: 'inv_123', total: 4200 },
+  idempotencyKey: 'invoice.created:inv_123',
+})
+```
+
+A personal endpoint created with omitted BA route scope belongs to that user. Publishing on the root `delivery` instance instead selects application scope and does not reach it.
+
+A successful publication commits the event and selected deliveries together in PostgreSQL. It does not combine a separate Better Auth or business-database transaction with that commit. See [publication transactions](/delivery/enqueue#publish-with-a-business-transaction).
+
+## Start a separate worker
+
+Configure the worker with the same auth options and persistent management database. Construct the provider again in that process, then call `worker.run()` explicitly.
+
+The checked repository examples separate auth setup from delivery and worker startup:
+
+<include cwd lang="ts" meta='title="examples/better-auth/worker.ts"'>
+  ../../packages/good-webhooks/examples/better-auth/worker.ts
+</include>
+
+This example exports a function. Call it from a worker entrypoint:
+
+```ts title="start-worker.ts"
+import { runExampleWorker } from './worker.js'
+
+const stop = new AbortController()
+process.once('SIGTERM', () => stop.abort())
+process.once('SIGINT', () => stop.abort())
+
+await runExampleWorker({
+  auth: {
+    managementFilename: process.env.AUTH_DATABASE_FILE!,
+    baseURL: process.env.AUTH_BASE_URL!,
+    secret: process.env.BETTER_AUTH_SECRET!,
+  },
+  deliveryDatabaseUrl: process.env.DELIVERY_DATABASE_URL!,
+  signal: stop.signal,
+  onError(error) {
+    console.error('Webhook worker failed:', error)
+    process.exitCode = 1
+    stop.abort()
+  },
+})
+```
+
+Copy the checked `auth.ts`, `delivery.ts`, and `worker.ts` examples together, then adapt their configuration to your application. If running TypeScript directly with Node, change those copied files' relative `.js` imports to `.ts`; otherwise compile them first.
+
+For SQLite, app and worker must open the same persistent file. Two `:memory:` databases or separate container-local files do not share endpoints. For other adapters, both processes need access to the same database and matching model configuration.
+
+Apply migrations before starting either process. Retain the same current and previous storage encryption keys in both processes. Use [worker supervision and shutdown bounds](/operations/workers) in a deployed application.

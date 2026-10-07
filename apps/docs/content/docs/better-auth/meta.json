@@ -1,0 +1,4 @@
+{
+  "title": "Better Auth",
+  "pages": ["first-endpoint", "configuration", "add-delivery", "database-adapters"]
+}

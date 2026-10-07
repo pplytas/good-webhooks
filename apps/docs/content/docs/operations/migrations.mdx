@@ -1,0 +1,78 @@
+---
+title: Apply migrations and choose schemas
+description: Select fresh management and delivery SQL without confusing Better Auth storage with PostgreSQL delivery.
+---
+
+Choose the migration for the components you run. Apply each initial migration once through your application's migration runner.
+
+| Setup                                               | Management migration               | Delivery migration            |
+| --------------------------------------------------- | ---------------------------------- | ----------------------------- |
+| Standalone management and delivery, same schema     | Combined `001-initial.sql`         | Included in the combined file |
+| Standalone management only                          | `management.sql`                   | None                          |
+| Better Auth management only                         | Better Auth or ORM schema workflow | None                          |
+| Better Auth management with Good Webhooks delivery  | Better Auth or ORM schema workflow | `delivery.sql`                |
+| Separate standalone management and delivery schemas | Generated management SQL           | Generated delivery SQL        |
+
+Do not apply the combined migration and component migrations to the same installation. The shipped SQL files target `public` and create tables with a `webhook_` prefix.
+
+The current delivery schema is version 3. These files initialize fresh storage. They do not upgrade older prototype schemas or migrate prototype data. `check()` rejects an incompatible delivery schema and never applies DDL.
+
+## Generate SQL for a custom schema
+
+Use the same schema name in runtime configuration and migration generation:
+
+```ts
+import { getPostgresMigration } from 'good-webhooks/migrations'
+
+const webhookSchema = 'notifications'
+const sql = getPostgresMigration({ schema: webhookSchema })
+const webhooks = createWebhooks({
+  database: pool,
+  schema: webhookSchema,
+  encryptionKey: process.env.WEBHOOK_ENCRYPTION_KEY!,
+  events,
+})
+```
+
+Pass `sql` to your migration runner, or save it as a migration file. `getPostgresMigration` returns text without executing it.
+
+Apply the SQL and your migration ledger change in one transaction on the same connection. The SQL contains no `BEGIN` or `COMMIT`. With `psql`, use `--single-transaction -v ON_ERROR_STOP=1`.
+
+The application's ledger records migration execution. `webhook_schema_version` records delivery compatibility within the configured schema.
+
+## Separate management from delivery
+
+Configure each provider's schema explicitly:
+
+```ts
+const managementSchema = 'management'
+const deliverySchema = 'delivery'
+
+const managementSQL = getPostgresMigration({
+  schema: managementSchema,
+  component: 'management',
+})
+const deliverySQL = getPostgresMigration({
+  schema: deliverySchema,
+  component: 'delivery',
+})
+
+const management = createPostgresManagement({
+  database: managementDatabase,
+  schema: managementSchema,
+  eventTypes: Object.keys(events),
+  encryptionKey: process.env.WEBHOOK_ENCRYPTION_KEY!,
+})
+const delivery = createDelivery({
+  database: deliveryDatabase,
+  schema: deliverySchema,
+  source: management.source,
+  events,
+})
+```
+
+Apply both generated SQL strings before checking or starting these components. The pools may connect to the same database or different databases. Injecting a provider never changes its configured schema.
+
+For Better Auth, its adapter or ORM configuration chooses management-model placement. Generate only Good Webhooks delivery SQL. A delivery schema named `notifications` does not move Better Auth's management model into that namespace.
+
+Keep the app, workers, and cleanup jobs on the same configuration for their respective components. See the [migration reference](/reference/migrations) for exported files and supported schema names.

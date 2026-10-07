@@ -1,0 +1,61 @@
+---
+title: PostgreSQL management
+description: Standalone management storage and encryption options.
+---
+
+```ts
+import {
+  createPostgresManagement,
+  createPostgresManagementRepository,
+} from 'good-webhooks/management/postgres'
+import type {
+  PostgresManagement,
+  PostgresManagementOptions,
+} from 'good-webhooks/management/postgres'
+```
+
+## createPostgresManagement
+
+```ts
+createPostgresManagement(options: PostgresManagementOptions): PostgresManagement
+```
+
+Returns the complete [EndpointManagement interface](/reference/management) plus `check()`. It uses only the configured schema's `webhook_endpoints` table. It creates no delivery records and starts no sender.
+
+| Option           | Default    | Contract                                                                                  |
+| ---------------- | ---------- | ----------------------------------------------------------------------------------------- |
+| `database`       | Required   | PostgreSQL `Database` with `query` and `connect`. `pg.Pool` satisfies this shape.         |
+| `eventTypes`     | Required   | Nonempty array of configured event names. Management does not validate event payloads.    |
+| `encryptionKey`  | Required   | Base64-encoded 32 bytes or a 32-byte `Uint8Array`. Encrypts newly stored signing secrets. |
+| `decryptionKeys` | `[]`       | Older keys accepted when reading existing ciphertext.                                     |
+| `schema`         | `'public'` | PostgreSQL schema containing `webhook_endpoints`.                                         |
+| `allowLocalhost` | `false`    | Permits HTTP loopback destinations for development.                                       |
+
+The provider resolves hostnames during endpoint creation, URL updates, and resume. It rejects destinations that resolve to unsafe addresses. This admission check does not replace the sender's checks before each connection.
+
+Signing secrets use AES-256-GCM storage encryption. Decryption tries the current key followed by the retained keys. `reencrypt(scope)` writes live records with the current key while preserving receiver-facing signing values. The host must keep old keys until every affected scope has been rewritten. See [key rotation](/operations/key-rotation).
+
+### check
+
+```ts
+check(): Promise<void>
+```
+
+Reads the expected table columns without returning rows. Missing schema, table, or columns produce `SCHEMA_MISMATCH`. Other database failures propagate. This method neither executes migrations nor validates an injected delivery engine.
+
+`good-webhooks/migrations/management.sql` initializes this provider in `public`. [Generated migration SQL](/reference/migrations) can target a custom schema. The host owns the pool and closes it on shutdown.
+
+## createPostgresManagementRepository
+
+```ts
+createPostgresManagementRepository(
+	database: Database,
+	options?: { schema?: string },
+): ManagementRepository
+```
+
+Creates the storage implementation without the lifecycle API or cipher. This is an extension point for `createManagement`; most standalone applications use `createPostgresManagement`.
+
+The repository scopes every query and uses revision-guarded updates. Creation uses a transaction and an advisory lock to enforce the 1,000 nondeleted endpoint limit. Enumeration rejects `INVALID_STATE` if storage exceeds that limit rather than returning a partial recipient set.
+
+`schema` defaults to `public` and follows the [PostgreSQL identifier rules](/reference/migrations#schema-names). Invalid database or schema configuration produces `INVALID_CONFIG`.

@@ -1,0 +1,86 @@
+---
+title: Configure an existing auth instance
+description: Add the plugin, generate its management model, and preserve the auth boundary.
+---
+
+Add endpoint management to an existing Better Auth instance without adding a sender. Use Better Auth 1.7.7 for the tested baseline and Node.js 24 or later.
+
+## Add the server plugin
+
+```ts
+import { betterAuth } from 'better-auth'
+import { goodWebhooks } from 'good-webhooks/better-auth'
+
+export const eventTypes = ['invoice.created', 'invoice.paid'] as const
+export const auth = betterAuth({
+  database, // Your existing Better Auth database or adapter.
+  secret: process.env.BETTER_AUTH_SECRET!,
+  plugins: [goodWebhooks({ eventTypes })],
+})
+```
+
+Preserve your existing plugins and auth configuration. Management needs event names. Payload validators belong to the sender's publication configuration.
+
+Mount `auth.handler` using your framework's existing Better Auth integration. The plugin adds POST routes under that handler's configured base path. It does not create a separate HTTP server.
+
+## Generate and apply the schema
+
+Use [Better Auth's CLI workflow](https://better-auth.com/docs/concepts/cli) with a CLI compatible with your installed Better Auth version.
+
+- For a built-in SQL adapter, use `auth migrate --config ./src/auth.ts` through that CLI.
+- For Drizzle or Prisma, use `auth generate --config ./src/auth.ts`, then apply the generated schema with the ORM's migration tooling.
+- For MongoDB, retain the adapter's declared index setup before writes.
+
+The plugin declares a `webhookEndpoint` model. Preserve all generated fields and its unique allocation index. The index enforces the per-scope endpoint limit under concurrent creates.
+
+Do not apply Good Webhooks' `management.sql` here. That SQL belongs to the standalone PostgreSQL provider. Plugin initialization applies no migrations.
+
+## Choose model and schema placement
+
+Rename the management model or fields with the plugin's `schema` option:
+
+```ts
+goodWebhooks({
+  eventTypes,
+  schema: {
+    modelName: 'outboundWebhookEndpoint',
+    fields: { description: 'label' },
+  },
+})
+```
+
+Regenerate and apply the matching schema after configuration changes. Do not use a dotted PostgreSQL namespace as `modelName`.
+
+Better Auth's database or ORM configuration chooses the model's database namespace. For native PostgreSQL, an explicit Kysely database configuration supports `schemaName`. Drizzle's table definitions choose runtime placement, while its adapter's `schemaName` configures CLI generation. Prisma placement follows the Prisma configuration.
+
+If app and worker use the same endpoints, both must use the same model configuration and persistent database. Delivery's `schema` option never changes this management model's location.
+
+## Configure the client
+
+```ts
+import { createAuthClient } from 'better-auth/client'
+import { goodWebhooksClient } from 'good-webhooks/better-auth/client'
+import { eventTypes } from './event-types.js'
+
+export const authClient = createAuthClient({
+  plugins: [goodWebhooksClient({ eventTypes })],
+})
+```
+
+Keep the shared event-name tuple in a module that imports no server configuration. The client entrypoint infers names from that tuple; it does not import your server plugin at runtime.
+
+Client calls use the current signed-in session. Server `auth.api` calls also need the request's session headers:
+
+```ts
+const created = await auth.api.createWebhookEndpoint({
+  headers: request.headers,
+  body: {
+    url: 'https://receiver.example/webhooks',
+    eventTypes: ['invoice.created'],
+  },
+})
+```
+
+Create and rotate responses include a signing secret for secure transfer to the receiver. Ordinary reads omit secrets. HTTP timestamps are ISO strings; trusted provider methods return `Date` values.
+
+See [scopes and permissions](/management/scopes), [database compatibility](/better-auth/database-adapters), and the [server API reference](/reference/better-auth).

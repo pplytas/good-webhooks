@@ -1,0 +1,11 @@
+packages:
+  - packages/*
+  - apps/*
+
+# Approve only the native tools exercised by the package and adapter checks.
+allowBuilds:
+  '@prisma/engines': true
+  esbuild: true
+  prisma: true
+  workerd: true
+  fsevents: false

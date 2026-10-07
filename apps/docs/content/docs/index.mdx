@@ -1,0 +1,48 @@
+---
+title: Good Webhooks
+description: Build webhook delivery into your TypeScript application.
+---
+
+Good Webhooks provides endpoint management and signed webhook delivery for Node.js applications. Use them together, or connect endpoint management to your own sender.
+
+<Callout>
+  This is an unpublished v0. Start with the [checkout and local archive
+  instructions](/getting-started/installation).
+</Callout>
+
+## Choose your setup
+
+| Management                               | Sender                          | Start here                                                                                                                |
+| ---------------------------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| Better Auth, using your existing adapter | Good Webhooks, using PostgreSQL | [Create your first endpoint](/better-auth/first-endpoint), then [connect delivery](/better-auth/add-delivery).            |
+| Better Auth, using your existing adapter | Your own sender                 | [Create your first endpoint](/better-auth/first-endpoint), then follow the [sender contract](/management/custom-senders). |
+| Standalone PostgreSQL                    | Good Webhooks, using PostgreSQL | [Send your first webhook](/getting-started/first-delivery).                                                               |
+| Standalone PostgreSQL                    | Your own sender                 | [Manage endpoints](/management/endpoints), then follow the [sender contract](/management/custom-senders).                 |
+
+Better Auth management does not require delivery storage. Its authenticated routes register destinations and subscriptions in the host adapter. A separate worker sends events when you use Good Webhooks delivery.
+
+## Requirements
+
+- Node.js 24 or later.
+- PostgreSQL 16 or later for built-in delivery or standalone PostgreSQL management. CI covers PostgreSQL 16 and 17.
+- Better Auth 1.7.7 for the documented integration baseline. The optional peer range is `>=1.7.7 <1.8.0`. Check the [tested adapter profiles](/better-auth/database-adapters).
+- A host-owned migration workflow, database connections, and worker lifecycle.
+
+Adapter compatibility does not establish support for edge runtimes. This package targets Node.js.
+
+## Find the next step
+
+<Cards>
+  <Card title="Understand the architecture" href="/concepts/architecture">
+    See what management, delivery, and your application each own.
+  </Card>
+  <Card title="Receive a webhook" href="/delivery/receiving">
+    Verify the raw request body, decode the event, and handle duplicates.
+  </Card>
+  <Card title="Operate a worker" href="/operations/workers">
+    Start delivery explicitly and shut down without losing queued work.
+  </Card>
+  <Card title="Look up an API" href="/reference">
+    Browse public imports, options, results, and errors.
+  </Card>
+</Cards>

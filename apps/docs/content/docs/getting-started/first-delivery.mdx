@@ -1,0 +1,90 @@
+---
+title: Send your first webhook
+description: Run a signed delivery, inspect a retry, and replay without repeating receiver work.
+---
+
+Run a local receiver that rejects its first request, accepts the retry, and deduplicates a replay. The example also proves that rolling back a publication leaves no delivery.
+
+Use Node.js 24 or later, pnpm, Docker, and `psql`. Complete the [checkout setup](/getting-started/installation#prepare-the-checkout) first. Run the commands below from the repository root.
+
+## Start a disposable PostgreSQL database
+
+```sh
+docker run --name good-webhooks-tutorial \
+	-e POSTGRES_PASSWORD=webhooks_dev_only \
+	-e POSTGRES_DB=webhooks \
+	-p 127.0.0.1:55439:5432 \
+	-d postgres:16
+export DATABASE_URL='postgres://postgres:webhooks_dev_only@127.0.0.1:55439/webhooks'
+```
+
+Wait until this command prints `accepting connections`:
+
+```sh
+docker exec good-webhooks-tutorial pg_isready -U postgres -d webhooks
+```
+
+Use another host port if `55439` is occupied, and change `DATABASE_URL` to match.
+
+## Apply the two initial migrations
+
+Use this fresh tutorial database. Apply each file once.
+
+```sh
+psql "$DATABASE_URL" --single-transaction -v ON_ERROR_STOP=1 \
+	-f packages/good-webhooks/migrations/001-initial.sql
+psql "$DATABASE_URL" --single-transaction -v ON_ERROR_STOP=1 \
+	-f packages/good-webhooks/examples/basic/receiver.sql
+```
+
+The first file installs standalone management and delivery tables. The second creates the example application's receipts and invoices. Those receiver tables belong to the example, not the library.
+
+## Run the example
+
+```sh
+pnpm --filter good-webhooks example
+```
+
+The example starts a loopback HTTP receiver on an available port. It registers an endpoint, publishes an invoice, and drives the worker explicitly.
+
+The output includes these results, with generated IDs:
+
+```text
+Transaction rollback left no delivery.
+Event accepted: <event ID>
+Delivery <delivery ID> succeeded after 2 attempts.
+Replay <replay ID> succeeded with the same event ID. Receiver applied the event once.
+```
+
+The attempt table shows `503` followed by `200`. The replay produces another `200`. All three requests carry the same authenticated event ID.
+
+## Inspect the receiver's result
+
+```sh
+psql "$DATABASE_URL" -c 'SELECT event_id FROM webhooks_example.receipts;'
+psql "$DATABASE_URL" -c 'SELECT id, amount FROM webhooks_example.invoices;'
+```
+
+After one run, each table contains one row. The invoice amount is `4200`. The receiver inserts its receipt and invoice in one transaction before acknowledging the request.
+
+Each additional example run uses a unique invoice. The example removes its endpoint on exit and retains history, so later runs add rows instead of resetting earlier data.
+
+## Read the working code
+
+This is the source executed by the command above:
+
+<include cwd lang="ts" meta='title="examples/basic/demo.ts"'>
+  ../../packages/good-webhooks/examples/basic/demo.ts
+</include>
+
+The temporary encryption key and `allowLocalhost: true` suit this local example. For a persistent installation, store one encryption key and configure every producer and worker to use it. Follow [worker setup](/operations/workers).
+
+## Stop the tutorial database
+
+After inspecting the result, remove this disposable container:
+
+```sh
+docker rm -f good-webhooks-tutorial
+```
+
+Next, [publish within your application's transaction](/delivery/enqueue) and [implement a receiver](/delivery/receiving).

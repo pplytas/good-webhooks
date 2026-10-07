@@ -1,0 +1,13 @@
+{
+  "title": "Good Webhooks",
+  "pages": [
+    "index",
+    "getting-started",
+    "better-auth",
+    "management",
+    "delivery",
+    "operations",
+    "concepts",
+    "reference"
+  ]
+}

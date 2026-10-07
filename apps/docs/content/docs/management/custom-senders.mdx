@@ -1,0 +1,52 @@
+---
+title: Connect a custom sender
+description: Use EndpointSource while preserving recipient lookup, lifecycle, signing, and destination safety.
+---
+
+Pass `management.source` to an existing sender. Both the PostgreSQL and Better Auth management providers expose the same `EndpointSource` contract.
+
+```ts
+const source = management.source
+const recipients = await source.matchRecipients(scope, 'invoice.created')
+```
+
+`scope` is `null` for application scope or `{ type, id }` for a named scope. Treat this source as a trusted server capability. Active endpoint resolution exposes plaintext signing secrets and must never reach a browser.
+
+## Capture recipients when accepting an event
+
+Call `matchRecipients(scope, eventType)` and durably store its complete returned set with the accepted event. Include paused endpoints. An idempotent repeat keeps the accepted event's original recipients instead of running a new lookup.
+
+Propagate lookup failures. A failed database read is neither an empty recipient set nor a deleted endpoint. Never accept only a partial result when one lookup batch fails.
+
+Concurrent endpoint edits may be observed before or after each edit. The provider does not promise one simultaneous snapshot across the scope. Read the [delivery guarantees](/concepts/delivery-guarantees) before combining selection with another transaction.
+
+## Resolve again before each attempt
+
+```ts
+const endpoint = await source.resolveEndpoint(scope, endpointId)
+if (endpoint.status === 'active') {
+  // Prepare this attempt with endpoint.url and every usable endpoint.secrets value.
+} else if (endpoint.status === 'paused') {
+  // Keep the pending delivery within your sender's expiry policy.
+} else {
+  // Cancel pending delivery work for this deleted or missing endpoint.
+}
+```
+
+Resolve before retries as well as the first attempt. Resolution gives the current URL and usable signing secrets. Do not reuse a URL or secret captured when the event was published.
+
+Preserve backlog while an endpoint is paused. Stop preparing attempts when it is deleted or missing. A request prepared before a lifecycle change can still arrive. Management does not wait for sender cleanup.
+
+## Validate and sign each request
+
+Implement the [Standard Webhooks signing format](https://github.com/standard-webhooks/standard-webhooks/blob/main/spec/standard-webhooks.md). Preserve the event ID and body across retries and replays. Sign with all secrets returned during a rotation overlap.
+
+Before every connection, resolve the destination's hostname, reject private or otherwise unsafe addresses, and pin the validated address for the connection. Preserve TLS hostname checks and reject redirects.
+
+Portable management validates URL syntax, HTTPS, embedded credentials, and unsafe IP literals. Standalone PostgreSQL management also resolves DNS when registering or changing a URL. Neither registration check makes a later connection safe from a DNS change.
+
+`allowLocalhost: true` permits HTTP loopback for development. It does not permit arbitrary private networks.
+
+Your sender also owns durable queuing, bounded retries, delivery history, retention, and concurrency. To use the built-in implementation instead, connect `source` to [Good Webhooks delivery](/better-auth/add-delivery).
+
+For a custom management database rather than a custom sender, implement the [management repository contract](/reference/management). A sender needs only `EndpointSource`.

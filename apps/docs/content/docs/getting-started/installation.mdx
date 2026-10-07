@@ -1,0 +1,66 @@
+---
+title: Install a local build
+description: Build the unpublished package and install its archive with npm.
+---
+
+Good Webhooks is an unpublished v0 package. Build a local archive before adding it to an application. Repository contributors use pnpm. Applications can install the archive with npm.
+
+## Prepare the checkout
+
+Use Node.js 24 or later and the pnpm version pinned in the root `package.json`. With Corepack installed, enable its pnpm shim once:
+
+```sh
+corepack enable pnpm
+```
+
+Corepack selects the repository pin when you run pnpm inside the checkout. If your Node installation has no Corepack, follow [pnpm installation](https://pnpm.io/installation) before continuing.
+
+```sh
+git clone https://github.com/pplytas/good-webhooks.git
+cd good-webhooks
+pnpm install --frozen-lockfile
+pnpm --filter good-webhooks build
+```
+
+The library lives in `packages/good-webhooks`. The documentation app lives in `apps/docs`. Run contributor commands from the repository root unless a step says otherwise.
+
+## Create an archive
+
+```sh
+mkdir -p artifacts
+pnpm --dir packages/good-webhooks pack --pack-destination ../../artifacts
+```
+
+The archive is `artifacts/good-webhooks-0.0.0.tgz`. Packing runs the library build. It includes the compiled package and its SQL assets, without the documentation app.
+
+## Install in your application
+
+Run this command from your application's directory. Replace the absolute path with your checkout's path.
+
+```sh
+npm install /absolute/path/to/good-webhooks/artifacts/good-webhooks-0.0.0.tgz
+```
+
+For standalone PostgreSQL management or built-in delivery, install the driver you use to supply a database connection. These guides use node-postgres and Zod for payload schemas:
+
+```sh
+npm install pg zod
+npm install --save-dev @types/pg
+```
+
+For Better Auth management, use the tested Better Auth version:
+
+```sh
+npm install better-auth@1.7.7
+```
+
+Better Auth is an optional peer. The declared peer range is `>=1.7.7 <1.8.0`; the compatibility checks use 1.7.7. Standalone management, delivery, and verification do not require it.
+
+The package ships ESM. Node.js 24 can load this build through either `import` or CommonJS `require()`. pnpm's repository layout does not become an installation requirement for consumers.
+
+## Choose a first tutorial
+
+- [Manage your first endpoint with Better Auth](/better-auth/first-endpoint) uses a local SQLite file and an authenticated session. It needs no sender or PostgreSQL.
+- [Send your first webhook](/getting-started/first-delivery) runs a local receiver and PostgreSQL delivery, including retry, replay, and deduplication.
+
+See the [setup chooser](/) for management with a custom sender.

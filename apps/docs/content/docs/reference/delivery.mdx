@@ -1,0 +1,132 @@
+---
+title: Delivery
+description: Publication, delivery history, worker execution, and PostgreSQL sender options.
+---
+
+```ts
+import { createDelivery } from 'good-webhooks/delivery'
+import type { DeliveryEngine, DeliveryOptions } from 'good-webhooks/delivery'
+```
+
+## createDelivery
+
+```ts
+createDelivery<const E extends EventDefinitions>(options: DeliveryOptions<E>): DeliveryEngine<E>
+```
+
+Creates a PostgreSQL sender backed by an `EndpointSource`. The constructor starts no work.
+
+| Option           | Default                                        | Contract                                                                                                                                |
+| ---------------- | ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `database`       | Required                                       | PostgreSQL executor with `query()` and `connect()`. A checked-out client has `query()` and `release()`. `pg.Pool` satisfies this shape. |
+| `events`         | Required                                       | Nonempty map of event names to Standard Schema validators.                                                                              |
+| `source`         | Required                                       | Trusted `EndpointSource` with `matchRecipients` and `resolveEndpoint`.                                                                  |
+| `schema`         | `'public'`                                     | PostgreSQL schema containing delivery tables.                                                                                           |
+| `retry.delaysMs` | `[1000, 5000, 30000, 120000, 600000, 1800000]` | At most 20 integer delays, each from 1 through 86,400,000 ms. An empty array disables retries.                                          |
+| `retry.maxAgeMs` | `86400000`                                     | Delivery age limit from 100 through 2,592,000,000 ms.                                                                                   |
+| `retentionMs`    | `604800000`                                    | Event retention from 1,000 through 31,536,000,000 ms. Must be at least `retry.maxAgeMs`.                                                |
+| `allowLocalhost` | `false`                                        | Permits HTTP loopback destinations for development. Other private addresses stay forbidden.                                             |
+
+Event names match `^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,119}$`. The constructor validates each event's Standard Schema interface.
+
+The `delivery` object has the following fields. This table is generated from the public `DeliveryOptions` type.
+
+<auto-type-table path="../../reference-types.ts" name="DeliverySettings" />
+
+| Field              | Default | Limits                                                             |
+| ------------------ | ------- | ------------------------------------------------------------------ |
+| `timeoutMs`        | `10000` | Integer from 10 through 120,000 ms.                                |
+| `concurrency`      | `10`    | Integer from 1 through 100 claims per tick.                        |
+| `leaseMs`          | `60000` | Integer from 100 through 3,600,000 ms, at least twice `timeoutMs`. |
+| `maxResponseBytes` | `4096`  | Integer from 0 through 65,536 captured response bytes.             |
+
+## publish
+
+```ts
+publish(input: PublishInput<E>, options?: PublishOptions): Promise<PublishResult>
+```
+
+`input` contains `type`, the event validator's input `data`, and an optional `idempotencyKey`. The selected validator runs before publication. Its output must be plain JSON. The stored body contains `{ id, type, occurredAt, data }`, where `id` is the event UUID and `occurredAt` is an ISO timestamp assigned during publication.
+
+| Input or result        | Contract                                                                                                         |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `idempotencyKey`       | Nonblank string of at most 200 characters without null bytes. Unique within a scope while the event is retained. |
+| `options.transaction`  | Optional PostgreSQL client inside an active `BEGIN` transaction. It must access the configured delivery tables.  |
+| `result.eventId`       | Accepted event UUID.                                                                                             |
+| `result.deliveryCount` | Number of original deliveries created for the accepted recipient set, including paused recipients. Can be zero.  |
+| `result.duplicate`     | `true` when the same key already identifies the same event type and validated payload.                           |
+
+Payload normalization sorts object keys. It rejects nonfinite numbers, cycles, non-JSON values, nonplain objects, nesting beyond 64 levels, and JSON larger than 256 KiB. A publication validator can transform input, but its output must meet those JSON limits.
+
+The event and original deliveries commit atomically within delivery storage. A caller-owned transaction remains uncommitted when `publish` returns. The [transaction and recipient guarantees](/concepts/delivery-guarantees) also apply to duplicate publication.
+
+Errors include `INVALID_INPUT`, `IDEMPOTENCY_CONFLICT`, and `TRANSACTION_REQUIRED`. Validator-thrown errors and source or database failures can propagate.
+
+## deliveries
+
+```ts
+deliveries.list(query?: DeliveryQuery): Promise<Page<Delivery>>
+deliveries.get(id: string): Promise<DeliveryDetail>
+deliveries.replay(id: string): Promise<Delivery>
+```
+
+`list` returns newest delivery IDs first. `DeliveryQuery` accepts `endpointId`, event UUID `eventId`, `status`, `limit`, and the exclusive delivery-ID cursor `before`. `limit` defaults to 25 and accepts 1 through 100. The result is `{ items, nextCursor }`; `nextCursor: null` marks the final page.
+
+`get` includes the `attempts` array in attempt-number order. Delivery IDs are positive PostgreSQL bigint strings. A missing record in the selected scope produces `NOT_FOUND`.
+
+`replay` accepts only an original `succeeded` or `failed` delivery. It requires an active endpoint and an event inside its retention window. A pending or in-flight replay produces `REPLAY_IN_PROGRESS`. Invalid lifecycle or retention conditions produce `INVALID_STATE`. Replays retain the original event ID and body but have a new delivery ID and retry budget.
+
+### Delivery and attempt records
+
+| Delivery field                | Type or meaning                                                          |
+| ----------------------------- | ------------------------------------------------------------------------ |
+| `id`, `endpointId`, `eventId` | String identifiers.                                                      |
+| `status`                      | `'pending'`, `'in_flight'`, `'succeeded'`, `'failed'`, or `'cancelled'`. |
+| `attemptCount`                | Number of recorded attempts.                                             |
+| `nextAttemptAt`, `createdAt`  | `Date` values.                                                           |
+| `replayOf`                    | Original delivery ID, or `null`.                                         |
+| `lastError`                   | Last error text, or `null`.                                              |
+| `lastStatus`                  | Last HTTP status, or `null`.                                             |
+
+An `Attempt` has `number`, `startedAt`, nullable `finishedAt`, `outcome`, nullable `responseStatus`, nullable `responseBody`, and nullable `error`. Dates are `Date` values. Outcomes are `'started'`, `'succeeded'`, `'retry'`, `'failed'`, or `'abandoned'`. `responseBody` is bounded by `maxResponseBytes`.
+
+## deliverySettings
+
+```ts
+deliverySettings.get(endpointId: string): Promise<{ maxInFlight: number }>
+deliverySettings.set(endpointId: string, settings: { maxInFlight: number }): Promise<{ maxInFlight: number }>
+```
+
+Stores sender-owned concurrency settings separately from endpoint records. `maxInFlight` defaults to 2 and accepts an integer from 1 through 50. Active and paused endpoints accept settings. Missing or deleted endpoints produce `NOT_FOUND`.
+
+These settings apply to workers sharing the same delivery database and schema. They are distinct from the `delivery.concurrency` limit on each tick.
+
+## worker
+
+```ts
+worker.tick(options?: { signal?: AbortSignal }): Promise<WorkerResult>
+worker.run(options: {
+	signal: AbortSignal
+	onError?: (error: unknown) => void
+	pollIntervalMs?: number
+}): Promise<void>
+worker.prune(): Promise<number>
+```
+
+`tick` recovers expired leases and processes one bounded batch. Its result contains `claimed`, `succeeded`, `retried`, `failed`, and `stale` counts. `stale` means the worker's claim no longer owns completion. Internal failures can reject with `AggregateError` after all sibling attempts settle.
+
+`run` polls until its signal aborts. `pollIntervalMs` defaults to 1,000 and accepts an integer from 10 through 60,000. Without `onError`, an internal tick failure stops the loop. With `onError`, the loop reports the error and continues unless the callback throws.
+
+One worker instance cannot run overlapping ticks or mix `tick` with an active `run` loop. Separate instances coordinate through PostgreSQL leases. An abort can leave the receiver's outcome unknown and require another attempt. Workers own neither the host's process signal handlers nor its database pool.
+
+`prune` deletes at most 100 expired events and their dependent deliveries and attempts per call. Live leases or contended locks can defer deletion. It returns the number of removed events. It does not run automatically.
+
+All worker methods cover every scope in the configured delivery database and schema.
+
+## check and forScope
+
+`check(): Promise<void>` verifies delivery schema version `3`. It never applies migrations and does not check management storage.
+
+`forScope(scope: Scope)` returns `publish`, `deliveries`, and `deliverySettings` bound to one named scope. The root methods use application scope. Scope selection does not authorize access.
+
+The delivery entrypoint also exports the `EndpointSource`, `EndpointResolution`, and `ManagementScope` types. Shared event, database, query, and result types are available from `good-webhooks`.

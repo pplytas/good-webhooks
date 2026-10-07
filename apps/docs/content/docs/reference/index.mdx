@@ -1,0 +1,21 @@
+---
+title: API reference
+description: Public imports and contracts for the current Good Webhooks v0.
+---
+
+The package exposes eight code entrypoints and three SQL assets. Better Auth is an optional peer. Standalone code does not require it.
+
+| Import                                                              | Public API                                                                                                      |
+| ------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| [`good-webhooks`](/reference/core)                                  | `createWebhooks`, `createDelivery`, `generateEncryptionKey`, `verifyWebhook`, `WebhookError`, and shared types. |
+| [`good-webhooks/delivery`](/reference/delivery)                     | `createDelivery` and delivery construction types.                                                               |
+| [`good-webhooks/management`](/reference/management)                 | `createManagement` and the management, repository, cipher, and sender contracts.                                |
+| [`good-webhooks/management/postgres`](/reference/postgres)          | `createPostgresManagement`, `createPostgresManagementRepository`, and provider options.                         |
+| [`good-webhooks/better-auth`](/reference/better-auth)               | `goodWebhooks`, `createBetterAuthManagement`, authorization types, and endpoint DTOs.                           |
+| [`good-webhooks/better-auth/client`](/reference/better-auth-client) | `goodWebhooksClient`.                                                                                           |
+| [`good-webhooks/verify`](/reference/verify)                         | `verifyWebhook`, `parseWebhook`, `ParsedWebhook`, and verification errors.                                      |
+| [`good-webhooks/migrations`](/reference/migrations)                 | `getPostgresMigration` and `PostgresMigrationOptions`.                                                          |
+
+The SQL assets are `good-webhooks/migrations/001-initial.sql`, `good-webhooks/migrations/management.sql`, and `good-webhooks/migrations/delivery.sql`. All target fresh storage in `public`.
+
+Most runtime calls are asynchronous. Constructors validate options but do not apply migrations or start workers. Expected operation failures use [`WebhookError`](/reference/errors). Database failures and other unexpected failures can propagate without that class.

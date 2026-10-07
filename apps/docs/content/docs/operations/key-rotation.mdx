@@ -1,0 +1,71 @@
+---
+title: Rotate signing and storage keys
+description: Change receiver-facing secrets separately from encryption keys used for stored endpoint secrets.
+---
+
+Signing-secret rotation changes what the receiver verifies. Storage-key rotation re-encrypts stored secrets without changing receiver-facing values. Use the procedure for the key you intend to change.
+
+## Rotate an endpoint's signing secret
+
+Through the combined API:
+
+```ts
+const rotated = await webhooks.endpoints.rotateSecret(endpointId, {
+  graceMs: 3_600_000,
+})
+```
+
+Through a direct management provider:
+
+```ts
+const rotated = await management.rotateSecret(scope, endpointId, {
+  graceMs: 3_600_000,
+})
+```
+
+Through an authenticated Better Auth client:
+
+```ts
+const result = await authClient.goodWebhooks.rotateSecret({
+  id: endpointId,
+  graceMs: 3_600_000,
+})
+```
+
+Select the endpoint's scope in each API. Omitting Better Auth's scope selects the current user.
+
+Transfer the new returned secret to the receiver before the overlap expires. During the overlap, endpoint resolution returns both secrets and built-in delivery signs with both. The receiver can verify with either secret while deploying its configuration.
+
+The default and maximum overlap is 24 hours. A second overlapping rotation fails. Passing `graceMs: 0` immediately replaces the current secret and discards the previous one, so coordinate that change with the receiver.
+
+## Rotate standalone storage encryption keys
+
+Keep an inventory of scopes that contain live endpoints. The library does not enumerate all application owners for you.
+
+1. Generate and securely store the new encryption key.
+2. Add the new key to `decryptionKeys` on every app and worker while keeping the old `encryptionKey` current.
+3. After all readers accept both keys, switch to the new `encryptionKey` and retain the old key in `decryptionKeys`.
+4. Call `management.reencrypt(scope)` for each affected scope, including `null` when application scope is in use.
+5. Confirm that rewritten active endpoints resolve under the new key, then retire old keys when no live records require them.
+
+```ts
+const management = createPostgresManagement({
+  database,
+  eventTypes,
+  encryptionKey: newKey,
+  decryptionKeys: [oldKey],
+})
+const rewritten = await management.reencrypt(scope)
+```
+
+Inject this provider into `createWebhooks` with `management`, or pass its `source` to `createDelivery`. The combined factory's simple `encryptionKey` option does not configure retained decryption keys.
+
+Reads never rewrite ciphertext. A failed rewrite can leave a mixture of old and new ciphertext. Keep both keys and retry. Re-encryption includes paused endpoints and guards against concurrent edits and signing rotation. Deleted endpoints have already cleared their secrets.
+
+## Rotate Better Auth storage keys
+
+Use [Better Auth's versioned secrets](https://better-auth.com/docs/reference/options#secrets). Put the new key first and retain the previous keys.
+
+During a rolling deployment, make every reader accept the new key before any writer starts using it. Initialize both app and worker with compatible retained keys. Obtain the provider through `createBetterAuthManagement(auth)`, then call `management.reencrypt(scope)` for every affected scope. Verify rewritten records before removing retained keys.
+
+Changing Better Auth configuration alone does not rewrite stored endpoint ciphertext. Keep prior keys until every live record that requires them has been migrated. Receiver-facing signing values stay unchanged throughout storage re-encryption.

@@ -1,0 +1,42 @@
+---
+title: Prune retained history
+description: Schedule bounded cleanup without treating retention as a deletion deadline.
+---
+
+Run cleanup separately from delivery workers. Neither `worker.tick()` nor `worker.run()` calls `prune()`.
+
+The default retention window is seven days. Expired events become eligible for deletion; retention is not a guaranteed deletion deadline.
+
+## Run a bounded cleanup process
+
+Configure the database, schema, and encryption key as in [worker setup](/operations/workers). Run the checked entrypoint from the repository root:
+
+```sh
+node packages/good-webhooks/examples/operations/cleanup.ts
+```
+
+Each run calls `prune()` sequentially for up to 20 batches or 30 seconds. Override these budgets with `WEBHOOK_CLEANUP_MAX_BATCHES` and `WEBHOOK_CLEANUP_MAX_DURATION_MS`.
+
+<include cwd lang="ts" meta='title="examples/operations/cleanup.ts"'>
+  ../../packages/good-webhooks/examples/operations/cleanup.ts
+</include>
+
+Each batch deletes at most 100 expired events, along with their deliveries and attempts. A positive batch continues the loop. Zero deletions, a signal, or an exhausted budget stops it. The time budget is checked between batches, so an in-progress batch can exceed that budget within the database timeout bounds.
+
+The process closes its pool before reporting `webhooks.cleanup.finished`, including batch count, deletion count, and stop reason.
+
+## Schedule enough cleanup capacity
+
+Use your host's scheduler and avoid overlapping runs. Monitor deletion counts and the age of expired history.
+
+Twenty batches every minute can remove at most 2,000 expired events per minute. Query time, locks, and active leases can lower that capacity. Choose a cadence whose observed capacity exceeds the rate at which history expires.
+
+`no_progress` means the last batch deleted nothing. Locks or active delivery leases can defer otherwise expired events. It does not prove that all eligible history is gone.
+
+Budget exhaustion emits `webhooks.cleanup.budget_exhausted` and still exits successfully. Alert on repeated exhaustion and on nonzero exits. Exhaustion alone does not prove a backlog remains, since the final batch may have removed all eligible events.
+
+## Keep business idempotency separate
+
+Pruning removes replay data and releases the deleted events' publication idempotency keys. If your business workflow needs longer-lived deduplication, retain those keys in application storage.
+
+Cleanup operates across every scope in the configured delivery database and schema. It does not delete Better Auth management records or receiver-owned receipts.
