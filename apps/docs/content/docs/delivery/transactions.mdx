@@ -1,0 +1,89 @@
+---
+title: Select recipients in a business transaction
+description: Query payload-dependent recipients and commit business writes with delivery work on one PostgreSQL client.
+---
+
+Use a publication-specific `EndpointSource` when recipient selection depends on the payload or on uncommitted business data. Query the complete recipient list on the host's active PostgreSQL client, capture the IDs, and pass that same client to `publish`.
+
+The business tables and delivery tables must share a PostgreSQL database. The host owns authorization, routing rules, transaction isolation, commit, and rollback. This recipe uses the existing API and does not start a worker.
+
+## Define the host's routing rules
+
+This example publishes `invoice.paid` to endpoints whose currency and minimum amount match the invoice. The host's `invoice_routes` table is the authority for this event's recipients. It replaces the normal subscription lookup for this publication.
+
+Validate endpoint ownership when creating a route. Include every eligible endpoint in the organization, including paused endpoints. If your application also requires managed event subscriptions or other access rules, incorporate them into the host's routing query or maintain them in this table. Do not treat lookup failures as an empty recipient list.
+
+Apply the [delivery migration](/getting-started/installation) and these application-owned tables separately:
+
+<include cwd lang="sql" meta='title="examples/transactions/schema.sql"'>
+  ../../packages/good-webhooks/examples/transactions/schema.sql
+</include>
+
+## Capture recipients per publication
+
+The function updates the invoice and queries routes on `pgClient`. It then creates an inert delivery instance with a frozen recipient list. Separate calls have separate sources, so concurrent requests cannot overwrite each other's recipients.
+
+<include cwd lang="ts" meta='title="examples/transactions/invoices.ts"'>
+  ../../packages/good-webhooks/examples/transactions/invoices.ts
+</include>
+
+`matchRecipients` only receives the scope and event type. It has no payload or transaction argument. The closure supplies the selection already computed by the host. It rejects use for another scope or event type.
+
+`resolveEndpoint` delegates to the normal source. It must continue to return current URLs, secrets, and lifecycle state. Do not capture a checked-out transaction client in this method, and do not reinterpret a provider failure as deletion.
+
+## Commit through the caller
+
+After authorizing the organization, call the function with a checked-out client from the configured delivery database. The example assumes `pool` and the normal `source` are already configured:
+
+```ts title="pay-invoice.ts"
+import { recordInvoicePayment } from './invoices.js'
+
+const pgClient = await pool.connect()
+try {
+  await pgClient.query('BEGIN')
+  const publication = await recordInvoicePayment({
+    database: pool,
+    pgClient,
+    source,
+    organizationId: 'org_123',
+    invoiceId: 'inv_123',
+  })
+  await pgClient.query('COMMIT')
+  // Only now report publication as committed to the caller.
+  console.log(publication)
+} catch (error) {
+  await pgClient.query('ROLLBACK').catch(() => {})
+  throw error
+} finally {
+  pgClient.release()
+}
+```
+
+Do not pass the pool itself as `transaction` or run concurrent operations on the client. A successful `publish` return remains provisional until commit. A later rollback removes the invoice update, event, and pending deliveries together.
+
+The query uses the transaction's PostgreSQL isolation level. Default `READ COMMITTED` sees the host's earlier writes and a snapshot for each statement. It does not freeze all routing changes for the whole transaction. Choose stronger isolation or application locks only if the business rule requires them.
+
+## Retry and run the worker
+
+If a transaction aborts, retry the complete business operation with a fresh transaction and a fresh call to `recordInvoicePayment`. Do not reuse its captured selection. Apply the host's retry policy to transient database errors and keep external side effects outside the retried transaction.
+
+After an accepted commit, the same scope, key, event type, and validated payload retain the original recipient set. Later route changes do not alter it. The example still queries routes before calling `publish`, so this wrapper can fail if routing storage is unavailable, even when the underlying publication is already accepted. Reusing the key with changed event content raises `IDEMPOTENCY_CONFLICT`. Webhook idempotency does not make other business effects idempotent; this example repeats only an assignment of `paid = true`.
+
+Create the worker once with the normal source and the same events, delivery database, and schema:
+
+```ts title="worker.ts"
+import { createDelivery } from 'good-webhooks/delivery'
+import { deliverySchema, events } from './invoices.js'
+
+const delivery = createDelivery({
+  database: pool,
+  schema: deliverySchema,
+  events,
+  source,
+})
+await delivery.worker.run({ signal: shutdown.signal })
+```
+
+The worker uses the committed recipient IDs and resolves current endpoint state before attempts. It does not rerun the invoice routing query. Follow [worker operation](/operations/workers) for lifecycle management and [delivery guarantees](/concepts/delivery-guarantees) for endpoint changes and duplicate delivery.
+
+This recipe cannot make a separate management database part of the PostgreSQL transaction. If recipient authorization depends on another database, the host must define how it synchronizes that state or use a durable recovery workflow.

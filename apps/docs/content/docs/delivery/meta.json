@@ -1,4 +1,4 @@
 {
   "title": "Delivery",
-  "pages": ["enqueue", "receiving"]
+  "pages": ["enqueue", "transactions", "receiving"]
 }

@@ -8,6 +8,8 @@ Good Webhooks is an embedded TypeScript package for outbound webhooks. Manage en
 
 This is an unpublished v0. The package requires Node.js 24 or later. The built-in delivery engine and standalone management provider require PostgreSQL 16 or later. Better Auth management uses the host's supported database adapter.
 
+TypeScript consumers need TypeScript 5.9.3 or later. Read the [compatibility policy](apps/docs/content/docs/operations/compatibility.mdx) for tested configurations and alpha upgrades.
+
 | Setup                                              | Start here                                                                           |
 | -------------------------------------------------- | ------------------------------------------------------------------------------------ |
 | Better Auth endpoint management                    | [Create your first endpoint](apps/docs/content/docs/better-auth/first-endpoint.mdx)  |
@@ -74,9 +76,9 @@ pnpm --dir packages/good-webhooks pack
 In your application, install the resulting archive using npm or your preferred package manager:
 
 ```sh
-npm install /absolute/path/to/packages/good-webhooks/good-webhooks-0.0.0.tgz
+npm install /absolute/path/to/packages/good-webhooks/good-webhooks-0.1.0-alpha.1.tgz
 ```
 
 Follow the [installation guide](apps/docs/content/docs/getting-started/installation.mdx) for the dependencies your chosen setup needs. `pnpm test:package` verifies the archive with fresh npm consumers, both with and without Better Auth, including the published declarations and SQL exports. Registry publication is a separate release step.
 
-Read [CONTRIBUTING.md](CONTRIBUTING.md) before proposing changes. Report vulnerabilities through the [security policy](SECURITY.md). Licensed under [MIT](LICENSE).
+Read [CONTRIBUTING.md](CONTRIBUTING.md) before proposing changes. Maintainers use the [release guide](docs/releasing.md) to verify a candidate before publishing. Report vulnerabilities through the [security policy](SECURITY.md). Licensed under [MIT](LICENSE).

@@ -46,6 +46,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm check:package
       - run: pnpm test
+      - name: Rehearse backlog, receiver timeout, and process recovery
+        run: pnpm test:operations
       - name: Prepare a fresh demo database
         run: |
           psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -c 'CREATE DATABASE webhooks_demo'

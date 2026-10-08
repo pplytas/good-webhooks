@@ -30,6 +30,12 @@ Follow the [README example](README.md#try-the-example) to verify delivery, retry
 
 CI runs the full suite and demo on PostgreSQL 16 and 17 with Node.js 24. It also installs the package archive and checks all entry points through ESM and CommonJS, standalone installation without Better Auth, the exported migrations, and public TypeScript declarations. It does not publish to npm. The root and docs manifests are private. Keep the library private until a separate publication decision.
 
+`pnpm test:package` checks TypeScript 5.9.3 and the repository compiler with NodeNext and Bundler resolution. Standalone consumers check all declarations; Better Auth consumers retain inference checks with `skipLibCheck` for upstream types.
+
+`pnpm test:operations` requires an explicit `TEST_DATABASE_URL` for a disposable PostgreSQL database. It creates and removes a unique schema, drains a bounded backlog, forces receiver timeouts, kills a worker process, and verifies recovery with a replacement worker. It checks durable completion and receiver deduplication, not production capacity. CI runs this on PostgreSQL 16 and 17.
+
+See the [release guide](docs/releasing.md) for candidate verification, npm ownership, and trusted publishing setup. The release workflow defaults to a dry run. Publication requires a separate decision and never runs on an ordinary merge.
+
 The fresh-install SQL is defined in `packages/good-webhooks/src/migrations.ts`. After editing it, run `pnpm migrations:generate` to refresh the three default SQL files. Tests verify that the shipped files match the generator. Runtime queries and migration generation share the table names in `packages/good-webhooks/src/postgres-schema.ts`.
 
 ## Verify Better Auth adapters

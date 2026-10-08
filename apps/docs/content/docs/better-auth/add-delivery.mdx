@@ -13,6 +13,8 @@ Install `pg` and a Standard Schema validator in the application. This guide uses
 npm install pg zod
 ```
 
+Set `DELIVERY_DATABASE_URL` to your PostgreSQL connection string. The commands below use the PostgreSQL `psql` client. If your database runs in Docker, you can instead pipe the generated file to `docker exec -i <container> psql -U <user> -d <database> --single-transaction -v ON_ERROR_STOP=1`.
+
 Generate delivery-only SQL from the installed package:
 
 ```sh

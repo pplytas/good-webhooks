@@ -15,7 +15,7 @@ Choose a new directory outside the repository:
 mkdir good-webhooks-auth-tutorial
 cd good-webhooks-auth-tutorial
 npm init -y
-npm install /absolute/path/to/good-webhooks/artifacts/good-webhooks-0.0.0.tgz better-auth@1.7.7
+npm install /absolute/path/to/good-webhooks/artifacts/good-webhooks-0.1.0-alpha.1.tgz better-auth@1.7.7
 ```
 
 Generate a local auth secret once and keep this shell open:
@@ -137,6 +137,8 @@ node tutorial.mjs
 ```
 
 Expect a rejected unauthenticated request, a created endpoint ID, a list with one endpoint, and a rejected application-scope request. The endpoint is retired before exit. The user and management history remain in `tutorial.sqlite`.
+
+On repeated runs, Better Auth 1.7.7's SQLite migration inspector can warn that `eventTypes` and `additionalEventTypes` expect `string[]` but use `TEXT` storage. The tutorial's create and list checks still pass. Do not delete an existing application's database to silence these warnings.
 
 Omitting `scope` selects the authenticated user's personal endpoints. `scope: null` requests application scope, which needs an explicit authorization policy.
 

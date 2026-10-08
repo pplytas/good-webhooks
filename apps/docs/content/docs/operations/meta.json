@@ -1,4 +1,11 @@
 {
   "title": "Operations",
-  "pages": ["migrations", "workers", "retries-and-replay", "retention", "key-rotation"]
+  "pages": [
+    "migrations",
+    "compatibility",
+    "workers",
+    "retries-and-replay",
+    "retention",
+    "key-rotation"
+  ]
 }

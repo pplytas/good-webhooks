@@ -19,7 +19,8 @@
     "example": "pnpm --filter good-webhooks example",
     "migrations:generate": "pnpm --filter good-webhooks migrations:generate",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "test:operations": "pnpm --filter good-webhooks test:operations"
   },
   "devDependencies": {
     "prettier": "^3.9.9"

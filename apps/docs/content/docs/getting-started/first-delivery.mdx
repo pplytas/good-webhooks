@@ -1,13 +1,26 @@
 ---
 title: Send your first webhook
-description: Run a signed delivery, inspect a retry, and replay without repeating receiver work.
+description: Install the package in a fresh application and deliver a signed event to a local receiver.
 ---
 
-Run a local receiver that rejects its first request, accepts the retry, and deduplicates a replay. The example also proves that rolling back a publication leaves no delivery.
+Create an endpoint, publish an invoice event, and verify the signed request at a local receiver.
 
-Use Node.js 24 or later, pnpm, Docker, and `psql`. Complete the [checkout setup](/getting-started/installation#prepare-the-checkout) first. Run the commands below from the repository root.
+Use Node.js 24 or later, npm, and Docker. Create the local package archive with the [installation guide](/getting-started/installation#create-an-archive).
 
-## Start a disposable PostgreSQL database
+## Create an application
+
+Run these commands in a new directory. Replace the archive path with your local path.
+
+```sh
+mkdir good-webhooks-tutorial
+cd good-webhooks-tutorial
+npm init -y
+npm install /absolute/path/to/good-webhooks-0.1.0-alpha.1.tgz pg zod
+```
+
+## Start PostgreSQL
+
+Start a fresh, disposable PostgreSQL 16 database:
 
 ```sh
 docker run --name good-webhooks-tutorial \
@@ -18,73 +31,141 @@ docker run --name good-webhooks-tutorial \
 export DATABASE_URL='postgres://postgres:webhooks_dev_only@127.0.0.1:55439/webhooks'
 ```
 
+If port `55439` is occupied, choose another host port and update `DATABASE_URL` to match.
+
 Wait until this command prints `accepting connections`:
 
 ```sh
 docker exec good-webhooks-tutorial pg_isready -U postgres -d webhooks
 ```
 
-Use another host port if `55439` is occupied, and change `DATABASE_URL` to match.
+## Apply the migration
 
-## Apply the two initial migrations
-
-Use this fresh tutorial database. Apply each file once.
+Generate the combined management and delivery migration from the installed package. Apply it once to the fresh database with the container's `psql`:
 
 ```sh
-psql "$DATABASE_URL" --single-transaction -v ON_ERROR_STOP=1 \
-	-f packages/good-webhooks/migrations/001-initial.sql
-psql "$DATABASE_URL" --single-transaction -v ON_ERROR_STOP=1 \
-	-f packages/good-webhooks/examples/basic/receiver.sql
+node --input-type=module -e 'import { getPostgresMigration } from "good-webhooks/migrations"; process.stdout.write(getPostgresMigration())' > 001-webhooks.sql
+docker exec -i good-webhooks-tutorial psql -U postgres -d webhooks \
+	--single-transaction -v ON_ERROR_STOP=1 < 001-webhooks.sql
 ```
 
-The first file installs standalone management and delivery tables. The second creates the example application's receipts and invoices. Those receiver tables belong to the example, not the library.
+The output lists the tables and indexes created by the migration. For an existing application, use its [migration runner](/operations/migrations).
 
-## Run the example
+## Create the receiver and sender
+
+Save this file as `first-delivery.mts`. Node.js 24 runs it directly.
+
+```ts title="first-delivery.mts"
+import assert from 'node:assert/strict'
+import { once } from 'node:events'
+import { createServer } from 'node:http'
+import { Pool } from 'pg'
+import { z } from 'zod'
+import { createWebhooks, generateEncryptionKey } from 'good-webhooks'
+import { parseWebhook, WebhookError } from 'good-webhooks/verify'
+
+const events = {
+  'invoice.paid': z.object({ invoiceId: z.string(), amount: z.number().int().nonnegative() }),
+}
+const pool = new Pool({ connectionString: process.env.DATABASE_URL })
+const webhooks = createWebhooks({
+  database: pool,
+  events,
+  encryptionKey: generateEncryptionKey(),
+  allowLocalhost: true,
+})
+let endpointId: string | undefined
+let endpointSecret = ''
+let receivedEventId: string | undefined
+
+const receiver = createServer(async (request, response) => {
+  try {
+    const chunks: Buffer[] = []
+    let size = 0
+    for await (const chunk of request) {
+      const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
+      size += bytes.length
+      if (size > 512 * 1024) {
+        response.writeHead(413).end()
+        return
+      }
+      chunks.push(bytes)
+    }
+    const event = await parseWebhook({
+      body: Buffer.concat(chunks),
+      headers: request.headers,
+      secret: endpointSecret,
+      events,
+    })
+    receivedEventId = event.id
+    console.log(`Received ${event.type}: ${event.data.invoiceId}, amount ${event.data.amount}`)
+    response.writeHead(200).end('accepted')
+  } catch (error) {
+    console.error(error)
+    const invalidRequest =
+      error instanceof WebhookError &&
+      ['SIGNATURE_INVALID', 'SIGNATURE_EXPIRED', 'PAYLOAD_INVALID'].includes(error.code)
+    response.writeHead(invalidRequest ? 400 : 500).end()
+  }
+})
+
+try {
+  await webhooks.check()
+  receiver.listen(0, '127.0.0.1')
+  await once(receiver, 'listening')
+  const address = receiver.address()
+  assert(address && typeof address !== 'string')
+
+  const created = await webhooks.endpoints.create({
+    url: `http://127.0.0.1:${address.port}/webhooks`,
+    eventTypes: ['invoice.paid'],
+  })
+  endpointId = created.endpoint.id
+  endpointSecret = created.secret
+  const publication = await webhooks.publish({
+    type: 'invoice.paid',
+    data: { invoiceId: 'inv_123', amount: 4200 },
+  })
+  assert.equal(publication.deliveryCount, 1)
+  const result = await webhooks.worker.runOnce()
+  assert.equal(result.succeeded, 1)
+  assert.equal(receivedEventId, publication.eventId)
+  console.log('Delivery succeeded with a verified signature.')
+} finally {
+  try {
+    if (endpointId) await webhooks.endpoints.remove(endpointId)
+  } finally {
+    await new Promise<void>((resolve) => receiver.close(() => resolve()))
+    await pool.end()
+  }
+}
+```
+
+The receiver authenticates the original request bytes before it reads the invoice payload. The worker sends the request only when you call `runOnce()`.
+
+## Send the event
 
 ```sh
-pnpm --filter good-webhooks example
+node first-delivery.mts
 ```
 
-The example starts a loopback HTTP receiver on an available port. It registers an endpoint, publishes an invoice, and drives the worker explicitly.
-
-The output includes these results, with generated IDs:
+The program prints:
 
 ```text
-Transaction rollback left no delivery.
-Event accepted: <event ID>
-Delivery <delivery ID> succeeded after 2 attempts.
-Replay <replay ID> succeeded with the same event ID. Receiver applied the event once.
+Received invoice.paid: inv_123, amount 4200
+Delivery succeeded with a verified signature.
 ```
 
-The attempt table shows `503` followed by `200`. The replay produces another `200`. All three requests carry the same authenticated event ID.
+The program removes its endpoint and closes the receiver and database pool. Each run creates a new endpoint and event.
 
-## Inspect the receiver's result
+The temporary encryption key and `allowLocalhost: true` suit this disposable tutorial. For a persistent application, [save one encryption key and configure your workers](/operations/workers). Before adding receiver business logic, [commit a receipt and the business changes together](/delivery/receiving#commit-receiver-work-before-acknowledging-it) so retries cannot repeat the changes.
 
-```sh
-psql "$DATABASE_URL" -c 'SELECT event_id FROM webhooks_example.receipts;'
-psql "$DATABASE_URL" -c 'SELECT id, amount FROM webhooks_example.invoices;'
-```
+## Stop PostgreSQL
 
-After one run, each table contains one row. The invoice amount is `4200`. The receiver inserts its receipt and invoice in one transaction before acknowledging the request.
-
-Each additional example run uses a unique invoice. The example removes its endpoint on exit and retains history, so later runs add rows instead of resetting earlier data.
-
-## Read the working code
-
-This is the source executed by the command above:
-
-<include cwd lang="ts" meta='title="examples/basic/demo.ts"'>
-  ../../packages/good-webhooks/examples/basic/demo.ts
-</include>
-
-The temporary encryption key and `allowLocalhost: true` suit this local example. For a persistent installation, store one encryption key and configure every producer and worker to use it. Follow [worker setup](/operations/workers).
-
-## Stop the tutorial database
-
-After inspecting the result, remove this disposable container:
+Remove the tutorial's disposable database when you finish:
 
 ```sh
 docker rm -f good-webhooks-tutorial
 ```
 
-Next, [publish within your application's transaction](/delivery/enqueue) and [implement a receiver](/delivery/receiving).
+For transaction rollback, retry, replay, and durable receiver deduplication, run the [full repository demo](https://github.com/pplytas/good-webhooks/blob/main/packages/good-webhooks/examples/basic/demo.ts) with the [README instructions](https://github.com/pplytas/good-webhooks#try-the-example). To integrate publication into your application, follow [Publish events](/delivery/enqueue).
