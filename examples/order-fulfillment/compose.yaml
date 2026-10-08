@@ -1,0 +1,18 @@
+name: northstar-order-fulfillment
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_PASSWORD: northstar_local_only
+      POSTGRES_DB: commerce
+    ports:
+      - '127.0.0.1:55441:5432'
+    volumes:
+      - commerce-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d commerce']
+      interval: 2s
+      timeout: 3s
+      retries: 30
+volumes:
+  commerce-data:

@@ -30,6 +30,8 @@ Follow the [README example](README.md#try-the-example) to verify delivery, retry
 
 CI runs the full suite and demo on PostgreSQL 16 and 17 with Node.js 24. It also installs the package archive and checks all entry points through ESM and CommonJS, standalone installation without Better Auth, the exported migrations, and public TypeScript declarations. It does not publish to npm. The root and docs manifests remain private; only the library permits publication.
 
+The [complete application examples](examples/README.md) are independent npm consumers of a pinned published version. Their CI jobs run type checks, browser builds, and HTTP/PostgreSQL integration suites. Run their commands from each example directory; the repository's pnpm workspace does not install them. Update an example's package pin only after verifying the integration against that release.
+
 `pnpm test:package` checks TypeScript 5.9.3 and the repository compiler with NodeNext and Bundler resolution. Standalone consumers check all declarations; Better Auth consumers retain inference checks with `skipLibCheck` for upstream types.
 
 `pnpm test:operations` requires an explicit `TEST_DATABASE_URL` for a disposable PostgreSQL database. It creates and removes a unique schema, drains a bounded backlog, forces receiver timeouts, kills a worker process, and verifies recovery with a replacement worker. It checks durable completion and receiver deduplication, not production capacity. CI runs this on PostgreSQL 16 and 17.

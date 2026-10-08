@@ -1,0 +1,19 @@
+name: good-webhooks-billing
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: billing
+      POSTGRES_USER: billing
+      POSTGRES_PASSWORD: billing_local_only
+    ports:
+      - '127.0.0.1:55442:5432'
+    volumes:
+      - billing-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U billing -d billing']
+      interval: 2s
+      timeout: 3s
+      retries: 20
+volumes:
+  billing-data:

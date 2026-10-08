@@ -3,6 +3,7 @@
   "pages": [
     "index",
     "getting-started",
+    "examples",
     "better-auth",
     "management",
     "delivery",

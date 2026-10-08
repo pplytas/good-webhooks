@@ -44,15 +44,25 @@ pnpm --filter @good-webhooks/docs check:links
 pnpm --filter @good-webhooks/docs preview
 ```
 
-| Directory                                          | Contents                                                |
-| -------------------------------------------------- | ------------------------------------------------------- |
-| [`packages/good-webhooks`](packages/good-webhooks) | Public package source, examples, migrations, and tests  |
-| [`apps/docs`](apps/docs)                           | Private Fumadocs app and canonical public documentation |
-| [`docs`](docs)                                     | Engineering plans and architecture decisions            |
+| Directory                                          | Contents                                                     |
+| -------------------------------------------------- | ------------------------------------------------------------ |
+| [`packages/good-webhooks`](packages/good-webhooks) | Public package source, examples, migrations, and tests       |
+| [`apps/docs`](apps/docs)                           | Private Fumadocs app and canonical public documentation      |
+| [`examples`](examples)                             | Complete applications that install the published npm package |
+| [`docs`](docs)                                     | Engineering plans and architecture decisions                 |
 
 Run `pnpm check`, `pnpm format:check`, and `pnpm test:unit` for checks without a PostgreSQL server. The [contribution guide](CONTRIBUTING.md) covers integration tests, adapter checks, and documentation verification.
 
-## Try the example
+## Run complete applications
+
+Two interactive examples show the full path from a business action to a verified webhook and receiver outcome:
+
+- [Order fulfillment](examples/order-fulfillment): place a shop order, send it to a warehouse, simulate an outage, and replay a delivery without creating a second shipment.
+- [Better Auth billing](examples/better-auth-billing): sign in, manage personal endpoints, publish invoice events, and inspect delivery attempts within the signed-in user's scope.
+
+Each example has its own npm lockfile, PostgreSQL setup, browser UI, receiver, and separate worker process. Both install `good-webhooks@0.1.0-alpha.2` from npm and can run together. Follow the [examples guide](examples/README.md) to get started.
+
+## Try the command-line example
 
 The [standalone demo](packages/good-webhooks/examples/basic/demo.ts) demonstrates rollback, signed delivery, retry, replay, and durable receiver deduplication. Start a disposable database:
 
