@@ -5,17 +5,17 @@ description: Install the package in a fresh application and deliver a signed eve
 
 Create an endpoint, publish an invoice event, and verify the signed request at a local receiver.
 
-Use Node.js 24 or later, npm, and Docker. Create the local package archive with the [installation guide](/getting-started/installation#create-an-archive).
+Use Node.js 24 or later, npm, and Docker. See the [installation guide](/getting-started/installation) for supported configurations.
 
 ## Create an application
 
-Run these commands in a new directory. Replace the archive path with your local path.
+Run these commands in a new directory.
 
 ```sh
 mkdir good-webhooks-tutorial
 cd good-webhooks-tutorial
 npm init -y
-npm install /absolute/path/to/good-webhooks-0.1.0-alpha.1.tgz pg zod
+npm install good-webhooks@0.1.0-alpha.1 pg zod
 ```
 
 ## Start PostgreSQL

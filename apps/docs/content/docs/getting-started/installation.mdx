@@ -1,11 +1,49 @@
 ---
-title: Install a local build
-description: Build the unpublished package and install its archive with npm.
+title: Install Good Webhooks
+description: Install the alpha package from npm and choose the dependencies for your setup.
 ---
 
-Good Webhooks is an unpublished v0 package. Build a local archive before adding it to an application. Repository contributors use pnpm. Applications can install the archive with npm.
+Good Webhooks is in alpha and requires Node.js 24 or later.
+
+## Install in your application
+
+Run this command from your application's directory:
+
+```sh
+npm install good-webhooks@alpha
+```
+
+The `alpha` tag selects the current alpha release. To pin this release explicitly, use `npm install --save-exact good-webhooks@0.1.0-alpha.1`. Commit your lockfile and review the [release notes](https://github.com/pplytas/good-webhooks/releases/tag/v0.1.0-alpha.1) before upgrading.
+
+For standalone PostgreSQL management or built-in delivery, install the driver you use to supply a database connection. These guides use node-postgres and Zod for payload schemas:
+
+```sh
+npm install pg zod
+npm install --save-dev @types/pg
+```
+
+For Better Auth management, use the tested Better Auth version:
+
+```sh
+npm install better-auth@1.7.7
+```
+
+Better Auth is an optional peer. The declared peer range is `>=1.7.7 <1.8.0`; the compatibility checks use 1.7.7. Standalone management, delivery, and verification do not require it.
+
+The package ships ESM. Node.js 24 can load this build through either `import` or CommonJS `require()`. Applications can use npm, pnpm, or another compatible package manager.
+
+TypeScript applications need TypeScript 5.9.3 or later. Consumer checks cover both NodeNext and Bundler resolution. Better Auth consumers should enable `skipLibCheck` for its upstream declarations; application-level event and payload checks still apply. See [compatibility and upgrades](/operations/compatibility).
+
+## Choose a first tutorial
+
+- [Manage your first endpoint with Better Auth](/better-auth/first-endpoint) uses a local SQLite file and an authenticated session. It needs no sender or PostgreSQL.
+- [Send your first webhook](/getting-started/first-delivery) delivers a signed event through PostgreSQL and verifies it at a local receiver.
+
+See the [setup chooser](/) for management with a custom sender.
 
 ## Prepare the checkout
+
+To try unreleased changes, build a local archive from the repository.
 
 Use Node.js 24 or later and the pnpm version pinned in the root `package.json`. With Corepack installed, enable its pnpm shim once:
 
@@ -33,36 +71,10 @@ pnpm --dir packages/good-webhooks pack --pack-destination ../../artifacts
 
 The archive is `artifacts/good-webhooks-0.1.0-alpha.1.tgz`. Packing runs the library build. It includes the compiled package and its SQL assets, without the documentation app.
 
-## Install in your application
+## Install the local archive
 
 Run this command from your application's directory. Replace the absolute path with your checkout's path.
 
 ```sh
 npm install /absolute/path/to/good-webhooks/artifacts/good-webhooks-0.1.0-alpha.1.tgz
 ```
-
-For standalone PostgreSQL management or built-in delivery, install the driver you use to supply a database connection. These guides use node-postgres and Zod for payload schemas:
-
-```sh
-npm install pg zod
-npm install --save-dev @types/pg
-```
-
-For Better Auth management, use the tested Better Auth version:
-
-```sh
-npm install better-auth@1.7.7
-```
-
-Better Auth is an optional peer. The declared peer range is `>=1.7.7 <1.8.0`; the compatibility checks use 1.7.7. Standalone management, delivery, and verification do not require it.
-
-The package ships ESM. Node.js 24 can load this build through either `import` or CommonJS `require()`. pnpm's repository layout does not become an installation requirement for consumers.
-
-TypeScript applications need TypeScript 5.9.3 or later. Consumer checks cover both NodeNext and Bundler resolution. Better Auth consumers should enable `skipLibCheck` for its upstream declarations; application-level event and payload checks still apply. See [compatibility and upgrades](/operations/compatibility).
-
-## Choose a first tutorial
-
-- [Manage your first endpoint with Better Auth](/better-auth/first-endpoint) uses a local SQLite file and an authenticated session. It needs no sender or PostgreSQL.
-- [Send your first webhook](/getting-started/first-delivery) runs a local receiver and PostgreSQL delivery, including retry, replay, and deduplication.
-
-See the [setup chooser](/) for management with a custom sender.
