@@ -6,7 +6,7 @@ Build webhook delivery into your TypeScript application.
 
 Good Webhooks is an embedded TypeScript package for outbound webhooks. Manage endpoints through Better Auth, connect your own sender, or use the PostgreSQL publisher and worker. Standalone PostgreSQL management is also available.
 
-This is an unpublished v0. The package requires Node.js 24 or later. The built-in delivery engine and standalone management provider require PostgreSQL 16 or later. Better Auth management uses the host's supported database adapter.
+Good Webhooks is in alpha. The package requires Node.js 24 or later. The built-in delivery engine and standalone management provider require PostgreSQL 16 or later. Better Auth management uses the host's supported database adapter.
 
 TypeScript consumers need TypeScript 5.9.3 or later. Read the [compatibility policy](apps/docs/content/docs/operations/compatibility.mdx) for tested configurations and alpha upgrades.
 
@@ -18,6 +18,14 @@ TypeScript consumers need TypeScript 5.9.3 or later. Read the [compatibility pol
 | Management with your own sender                    | [Custom senders](apps/docs/content/docs/management/custom-senders.mdx)               |
 
 See the [documentation overview](apps/docs/content/docs/index.mdx) for guides, concepts, operations, and API reference. Preview the rendered site locally with the commands below.
+
+## Install
+
+```sh
+npm install good-webhooks@alpha
+```
+
+Follow the [installation guide](https://good-webhooks.vercel.app/getting-started/installation) for the dependencies your setup needs. Pin the exact alpha version in applications and read the [release notes](https://github.com/pplytas/good-webhooks/releases/tag/v0.1.0-alpha.1) before upgrading.
 
 ## Work on the repository
 

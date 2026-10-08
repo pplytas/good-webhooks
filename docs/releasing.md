@@ -1,6 +1,6 @@
 # Release Good Webhooks
 
-The current candidate is `0.1.0-alpha.1`. Its library manifest permits publication. Preparing or merging a candidate does not publish it. The root and documentation packages always remain private.
+The first public alpha is [`0.1.0-alpha.1`](https://www.npmjs.com/package/good-webhooks/v/0.1.0-alpha.1). Its library manifest permits publication. Preparing or merging a candidate does not publish it. The root and documentation packages always remain private.
 
 ## Verify a candidate
 
@@ -56,6 +56,8 @@ For a subsequent approved alpha, update the package version and changelog in a P
 
 ## Verify and announce a release
 
-Check the package version, dist-tag, contents, integrity, and provenance where applicable. Install `good-webhooks@<exact-version>` into a fresh consumer and verify the supported entry points. Confirm `alpha` resolves to the intended version; never move `latest` for an alpha release.
+Check the package version, dist-tag, contents, integrity, and provenance where applicable. Install `good-webhooks@<exact-version>` into a fresh consumer and verify the supported entry points. Confirm `alpha` resolves to the intended version. Do not move `latest` when publishing subsequent alphas.
+
+On the first publication, npm also assigned `latest` to `0.1.0-alpha.1` despite `--tag alpha`, and rejected `npm dist-tag rm good-webhooks latest` with HTTP 400. This matches the [reported npm first-publication behavior](https://github.com/npm/cli/issues/8490). Plain `npm install good-webhooks` therefore selects the initial alpha. Keep documentation explicit about alpha status and use `@alpha` or an exact version in installation commands.
 
 Create a GitHub prerelease named `v<version>` targeting the verified commit, with its changelog entry and installation command. Update the installation docs to use `npm install good-webhooks@alpha` only after confirming registry availability. Link the release's compatibility and migration notes. Retain old versions so existing lockfiles continue to work; use npm deprecation messages for superseded or broken versions when needed.
