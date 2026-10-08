@@ -426,6 +426,7 @@ describe('worker delivery durability', () => {
   it('starts all leases together after slow selection and persists attempts before returning', async () => {
     await fixture('http://127.0.0.1:12345', 3, 3)
     let delayedSelections = 0
+    let selectionFinishedAt: Date | undefined
     const database: Database = {
       query: pool.query.bind(pool),
       async connect() {
@@ -437,22 +438,30 @@ describe('worker delivery durability', () => {
             if (text.includes('FOR UPDATE OF d SKIP LOCKED')) {
               delayedSelections++
               await new Promise((resolve) => setTimeout(resolve, 450))
+              selectionFinishedAt = (
+                await client.query<{ finished_at: Date }>('SELECT clock_timestamp() AS finished_at')
+              ).rows[0]!.finished_at
             }
             return result
           },
         }
       },
     }
-    const storage = createWorkerStore(
-      testConfig({ database, concurrency: 3, timeoutMs: 40, leaseMs: 100 }),
-    )
+    const leaseMs = 5000
+    const storage = createWorkerStore(testConfig({ database, concurrency: 3, leaseMs }))
     const { claims } = await storage.claim()
     expect(delayedSelections).toBe(1)
     expect(claims).toHaveLength(3)
-    const leases = await pool.query<{ live: boolean; lease_expires_at: Date }>(
-      'SELECT lease_expires_at>clock_timestamp() AS live,lease_expires_at FROM public.webhook_deliveries',
+    expect(selectionFinishedAt).toBeInstanceOf(Date)
+    // Compare database timestamps directly. A short lease would also expire during the
+    // assertions and serialized completion writes on a busy runner, unrelated to selection.
+    const leases = await pool.query<{ fresh: boolean; lease_expires_at: Date }>(
+      `SELECT lease_expires_at >= $1::timestamptz + ($2 * interval '1 millisecond') AS fresh,
+        lease_expires_at FROM public.webhook_deliveries`,
+      [selectionFinishedAt, leaseMs],
     )
-    expect(leases.rows.every((row) => row.live)).toBe(true)
+    expect(leases.rows).toHaveLength(3)
+    expect(leases.rows.every((row) => row.fresh)).toBe(true)
     expect(new Set(leases.rows.map((row) => row.lease_expires_at.getTime())).size).toBe(1)
     const attempts = await pool.query('SELECT * FROM public.webhook_attempts')
     expect(attempts.rows).toHaveLength(3)
