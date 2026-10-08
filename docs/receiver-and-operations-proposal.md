@@ -82,7 +82,7 @@ Packaged SQL contains no `BEGIN` or `COMMIT`. The application's runner executes 
 
 The audit reproduced the old file committing its caller's transaction. A later `ROLLBACK` left a preceding marker row committed. PostgreSQL treats an inner `BEGIN` as a warning, not as a nested transaction. [PostgreSQL 16 transaction documentation](https://www.postgresql.org/docs/16/sql-begin.html)
 
-The host's migration ledger tracks execution order. `webhook_schema_version` in the configured PostgreSQL schema records compatibility for `check()`. Published migration files become immutable; later schema changes append migrations. The current unpublished schema remains a fresh-install baseline, with no automatic conversion of older prototype data.
+The host's migration ledger tracks execution order. `webhook_schema_version` in the configured PostgreSQL schema records compatibility for `check()`. Published migration files become immutable; later schema changes append migrations. At the time of this design's implementation, the unpublished schema was a fresh-install baseline, with no automatic conversion of older prototype data. See the current [migration guide](../apps/docs/content/docs/operations/migrations.mdx) for release requirements.
 
 No new migration API, CLI, ORM integration, or runtime DDL is needed.
 
