@@ -17,6 +17,43 @@ beforeEach(resetDatabase)
 afterAll(closeDatabase)
 
 describe('public server API', () => {
+  it.each(['1', '95', '9007199254740987'])(
+    'lists and paginates deliveries in numeric order starting at %s',
+    async (start) => {
+      const app = createWebhooks(options)
+      const { endpoint } = await app.endpoints.create({
+        url: 'http://127.0.0.1:12345',
+        eventTypes: ['order.created'],
+      })
+      await pool.query(
+        "SELECT setval(pg_get_serial_sequence('public.webhook_deliveries', 'id'), $1::bigint, false)",
+        [start],
+      )
+      for (let index = 0; index < 12; index++) {
+        await app.publish({ type: 'order.created', data: { id: `order-${index}`, total: 1 } })
+      }
+      const expected = Array.from({ length: 12 }, (_, index) =>
+        (BigInt(start) + BigInt(11 - index)).toString(),
+      )
+      expect((await app.deliveries.list()).items.map(({ id }) => id)).toEqual(expected)
+
+      const seen: string[] = []
+      let before: string | undefined
+      do {
+        const page = await app.deliveries.list({
+          endpointId: endpoint.id,
+          status: 'pending',
+          limit: 5,
+          ...(before ? { before } : {}),
+        })
+        seen.push(...page.items.map(({ id }) => id))
+        expect(seen).toEqual(expected.slice(0, seen.length))
+        before = page.nextCursor ?? undefined
+      } while (before)
+      expect(seen).toEqual(expected)
+    },
+  )
+
   it('round-trips a maximum-sized persisted producer envelope through the receiver', async () => {
     const definitions = { ...events, large: z.string() }
     const app = createWebhooks({ ...options, events: definitions })

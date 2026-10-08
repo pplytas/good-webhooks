@@ -1,6 +1,14 @@
 # Published-package integration assessment
 
-Both examples consume `good-webhooks@0.1.0-alpha.2` from npm with independent lockfiles. The implementations started from public guides and installed declarations. Neither needed private Good Webhooks APIs or changes to the library.
+Both examples pin `good-webhooks@0.1.0-alpha.2` from npm with independent lockfiles. The implementations use public APIs. Longer manual use exposed a library defect in delivery-history ordering that the initial walkthroughs missed.
+
+## Delivery-history defect
+
+After delivery IDs crossed a digit boundary, `deliveries.list()` returned text order (`9`, `8`, ..., `43`) instead of descending numeric order. Its numeric cursor comparison then skipped records on subsequent pages. The order demo selected the first result after publication, so a successful order appeared to leave the delivery panel unchanged. This affects both integrations and other consumers of alpha.2.
+
+The library query now sorts by the qualified bigint column. Public API regression tests cover 9/10, 99/100, pagination, and IDs beyond JavaScript's safe integer range. Publication and dispatch were functioning; no schema or public API change is required.
+
+The local demos were verified with a packed candidate containing this fix. Their committed npm pins still resolve to alpha.2. Release the correction and update both pins after verifying the published package; reinstalling the current pins restores the affected version.
 
 ## What worked
 
