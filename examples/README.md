@@ -1,6 +1,6 @@
 # Complete consumer integrations
 
-These applications install `good-webhooks@0.1.0-alpha.2` from npm. They use independent package manifests and lockfiles outside the repository's pnpm workspace. You can copy either directory into another project without building the library.
+These applications install `good-webhooks@0.1.0-alpha.3` from npm. They use independent package manifests and lockfiles outside the repository's pnpm workspace. You can copy either directory into another project without building the library.
 
 | Application                                          | What it demonstrates                                                                                       | Local address           |
 | ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- | ----------------------- |

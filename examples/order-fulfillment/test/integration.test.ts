@@ -374,6 +374,21 @@ test(
           )
         },
       )
+      await context.test(
+        'new orders remain first in delivery history beyond nine deliveries',
+        async () => {
+          let newestEventId = ''
+          for (let index = 0; index < 12; index++) {
+            const placed = await request('/api/orders', order(`History customer ${index}`), 201)
+            newestEventId = placed.publication.eventId
+          }
+          const history = (await state()).deliveries
+          assert.equal(history[0].eventId, newestEventId)
+          for (let index = 1; index < history.length; index++) {
+            assert(BigInt(history[index - 1].id) > BigInt(history[index].id))
+          }
+        },
+      )
       await stop(worker)
       await stop(receiver)
       await stop(app)
