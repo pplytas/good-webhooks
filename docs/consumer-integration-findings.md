@@ -1,6 +1,6 @@
 # Published-package integration assessment
 
-Both examples pin `good-webhooks@0.1.0-alpha.2` from npm with independent lockfiles. The implementations use public APIs. Longer manual use exposed a library defect in delivery-history ordering that the initial walkthroughs missed.
+Both examples pin `good-webhooks@0.1.0-alpha.3` from npm with independent lockfiles. They were initially built against alpha.2 using public APIs. Longer manual use exposed a library defect in delivery-history ordering that the initial walkthroughs missed.
 
 ## Delivery-history defect
 
@@ -8,7 +8,7 @@ After delivery IDs crossed a digit boundary, `deliveries.list()` returned text o
 
 The library query now sorts by the qualified bigint column. Public API regression tests cover 9/10, 99/100, pagination, and IDs beyond JavaScript's safe integer range. Publication and dispatch were functioning; no schema or public API change is required.
 
-The local demos were verified with a packed candidate containing this fix. Their committed npm pins still resolve to alpha.2. Release the correction and update both pins after verifying the published package; reinstalling the current pins restores the affected version.
+Alpha.3 contains the correction. Both examples now pin it, and the order application's integration suite checks that new orders stay first after delivery IDs cross nine. That consumer regression fails with registry alpha.2 and passes with alpha.3.
 
 ## What worked
 
@@ -25,7 +25,7 @@ The local demos were verified with a packed candidate containing this fix. Their
 | First    | Personal endpoint routes default to the session user, while root delivery operations use application scope. A consumer must connect these explicitly.            | Keep the `forScope({ type: 'user', id: sessionUserId })` call visible in examples and scope documentation. Show the publication's delivery count so a missing recipient is observable. Do not infer identity inside the delivery core. |
 | Next     | The one-time signing secret needs an explicit receiver handoff and persistent receiver storage. Endpoint creation and host configuration can commit separately.  | Retain the examples' working handoff and recovery recipes. Consider a shorter receiver-setup guide after feedback from external integrations. A generic secret-distribution service is outside the package's current responsibilities. |
 | Next     | Replay controls need to account for original versus replay deliveries and endpoint status. Pausing retains pending work.                                         | Use actual delivery and endpoint state to explain which operations are available. Keep the lifecycle rules close to the replay examples; no new convenience API is justified yet.                                                      |
-| Later    | Introductory tutorials pin alpha.1 while these examples pin alpha.2. The releases have identical runtime behavior.                                               | Keep tested exact pins and clarify their baseline when the tutorials next change. Update them after rerunning the tutorial, rather than changing version strings alone.                                                                |
+| Later    | Introductory tutorials pin alpha.1 while these examples pin alpha.3, which corrects delivery-history ordering.                                                   | Rerun the tutorials against the corrected release before updating their exact pins.                                                                                                                                                    |
 
 ## Improvements made during this work
 
