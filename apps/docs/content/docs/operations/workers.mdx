@@ -43,19 +43,25 @@ Configuration errors, schema failures, unexpected worker errors, and database er
 
 The entrypoint omits `onError`, so unexpected errors reject `run()` and stop the process. Configure restart backoff in your supervisor. If you supply `onError` to log and continue instead, monitor whether the worker continues making delivery progress. Receiver failures already use the delivery retry policy.
 
-## Choose one batch or a polling process
+## Choose one batch or continuous processing
 
 Within your own process, use either method:
 
 ```ts
-await delivery.worker.tick()
+await delivery.worker.runOnce()
 
 // In a long-running worker process:
 const stop = new AbortController()
-await delivery.worker.run({ signal: stop.signal, pollIntervalMs: 1000 })
+await delivery.worker.run({
+  signal: stop.signal,
+  pollIntervalMs: 1000,
+  shutdownGraceMs: 30_000,
+})
 ```
 
-`tick()` processes one batch. `run()` polls until aborted or an unexpected unhandled error occurs. Set `pollIntervalMs` on `run()`, not on the factory.
+Use `runOnce()` for one bounded batch. Repeat the call through your scheduler if more work remains. Use `run()` for continuous processing until its signal aborts or an unhandled error occurs.
+
+`run()` starts another batch immediately after it completes a prepared attempt as a success, retry, or terminal failure. Set `pollIntervalMs` to control the wait after an empty batch, a stale-only result, or an error handled by `onError`. Receiver retries keep their configured schedule.
 
 Workers process every scope in their configured delivery database and schema. Multiple workers share PostgreSQL leases and per-endpoint concurrency limits. They hold no database transaction open during an HTTP request.
 
@@ -69,9 +75,13 @@ The example configuration sets a five-second connection timeout, a ten-second st
 
 Budget pool connections across all producers, workers, and cleanup jobs. The example permits ten pool connections per process.
 
-A client query timeout does not guarantee server-side cancellation. Pool closure can wait for checked-out clients. Set a final supervisor shutdown deadline; 45 seconds is a starting point for the example's default bounds. Increase it when adding shutdown work or raising database timeouts.
+Pass an `AbortSignal` to stop the worker. On abort, `run()` and `runOnce()` stop taking new work and stop waiting for endpoint-provider results. Already prepared attempts have up to `shutdownGraceMs` to finish before the worker requests cancellation of remaining sends. The default is 30,000 milliseconds, measured from the abort. Set `shutdownGraceMs: 0` for immediate cancellation. The grace period does not extend delivery leases.
 
-Aborting the worker interrupts active HTTP requests. It does not prove that a receiver did not process them. Interrupted attempts can have an unknown receiver outcome and can be retried. Receivers need durable deduplication.
+Await the worker before closing its pool. Both methods wait for owned work and completion writes, which can outlast the grace period. A client query timeout does not guarantee server-side cancellation. Pool closure can wait for checked-out clients, and underlying provider calls can continue after the worker stops waiting for them.
+
+Set a final supervisor shutdown deadline that allows for the grace period, database operations, pool closure, and any other application cleanup. The worker's grace period is not a process exit deadline.
+
+Forced cancellation interrupts active HTTP requests. It does not prove that a receiver did not process them. Interrupted attempts can have an unknown receiver outcome and can be retried. Receivers need durable deduplication.
 
 For local development only, `WEBHOOK_ALLOW_LOCALHOST=true` permits loopback HTTP receivers. It does not permit arbitrary private networks.
 

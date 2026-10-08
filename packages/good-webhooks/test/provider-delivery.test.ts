@@ -137,7 +137,7 @@ describe('delivery with an independent management provider', () => {
       (await database.query("SELECT to_regclass('public.webhook_endpoints') AS schema")).rows[0]
         .schema,
     ).toBeNull()
-    expect(await app.worker.tick()).toMatchObject({ claimed: 1, succeeded: 1 })
+    expect(await app.worker.runOnce()).toMatchObject({ claimed: 1, succeeded: 1 })
     expect(target.received).toHaveLength(1)
     verifyWebhook({ ...target.received[0]!, secret })
     expect((await app.deliveries.list({ endpointId })).items[0]?.endpointId).toBe(endpointId)
@@ -347,7 +347,7 @@ describe('delivery with an independent management provider', () => {
     }
     const app = engine(source)
     await app.publish(event)
-    await expect(app.worker.tick()).rejects.toBeInstanceOf(AggregateError)
+    await expect(app.worker.runOnce()).rejects.toBeInstanceOf(AggregateError)
     expect((await rows())[0]).toMatchObject({
       status: 'pending',
       preparing: false,
@@ -358,7 +358,7 @@ describe('delivery with an independent management provider', () => {
     const rotated = generateSecret()
     source.resolveEndpoint = async () => ({ status: 'active', url: target.url, secrets: [rotated] })
     await due()
-    expect(await app.worker.tick()).toMatchObject({ claimed: 1, succeeded: 1 })
+    expect(await app.worker.runOnce()).toMatchObject({ claimed: 1, succeeded: 1 })
     verifyWebhook({ ...target.received[0]!, secret: rotated })
   })
 
@@ -378,7 +378,7 @@ describe('delivery with an independent management provider', () => {
     ).toBe('retried')
     source.resolveEndpoint = async () => ({ status: 'paused' })
     await due()
-    expect(await app.worker.tick()).toMatchObject({ claimed: 0 })
+    expect(await app.worker.runOnce()).toMatchObject({ claimed: 0 })
     expect((await rows())[0]).toMatchObject({
       attempt_count: 1,
       last_status: 503,
@@ -388,13 +388,13 @@ describe('delivery with an independent management provider', () => {
       throw new Error('Provider outage')
     }
     await due()
-    await expect(app.worker.tick()).rejects.toBeInstanceOf(AggregateError)
+    await expect(app.worker.runOnce()).rejects.toBeInstanceOf(AggregateError)
     expect((await rows())[0].attempt_count).toBe(1)
     expect((await database.query('SELECT * FROM public.webhook_attempts')).rows).toHaveLength(1)
     const target = await receiver()
     source.resolveEndpoint = async () => ({ status: 'active', url: target.url, secrets: [secret] })
     await due()
-    expect(await app.worker.tick()).toMatchObject({ claimed: 1, succeeded: 1 })
+    expect(await app.worker.runOnce()).toMatchObject({ claimed: 1, succeeded: 1 })
     expect((await rows())[0].attempt_count).toBe(2)
   })
 
@@ -408,7 +408,7 @@ describe('delivery with an independent management provider', () => {
         : { status: 'active', url: target.url, secrets: [secret] }
     const app = engine(source, 1000)
     await app.publish(event)
-    await expect(app.worker.tick()).rejects.toBeInstanceOf(AggregateError)
+    await expect(app.worker.runOnce()).rejects.toBeInstanceOf(AggregateError)
     expect(target.received).toHaveLength(1)
     const byId = new Map((await rows()).map((row) => [row.endpoint_id, row]))
     expect(byId.get('healthy')).toMatchObject({ status: 'succeeded', attempt_count: 1 })
@@ -449,13 +449,13 @@ describe('delivery with an independent management provider', () => {
     source.resolveEndpoint = async () => ({ status: 'paused' })
     const app = engine(source)
     await app.publish(event)
-    expect(await app.worker.tick()).toMatchObject({ claimed: 0 })
+    expect(await app.worker.runOnce()).toMatchObject({ claimed: 0 })
     await app.publish(event)
     expect((await rows()).map((row) => row.attempt_count)).toEqual([0, 0])
     const target = await receiver()
     source.resolveEndpoint = async () => ({ status: 'active', url: target.url, secrets: [secret] })
     await due()
-    expect(await app.worker.tick()).toMatchObject({ claimed: 2, succeeded: 2 })
+    expect(await app.worker.runOnce()).toMatchObject({ claimed: 2, succeeded: 2 })
   })
 
   it('cancels pending work on deletion and allows an already prepared attempt to finish', async () => {
@@ -532,7 +532,7 @@ describe('delivery with an independent management provider', () => {
     const app = engine(source)
     await app.publish(event)
     await app.forScope({ type: 'organization', id: 'acme' }).publish(event)
-    await app.worker.tick()
+    await app.worker.runOnce()
     expect(scopes.filter((scope) => scope === null)).toHaveLength(2)
     expect(
       scopes.filter((scope) => scope?.type === 'organization' && scope.id === 'acme'),
@@ -545,7 +545,7 @@ describe('delivery with an independent management provider', () => {
     source.resolveEndpoint = async () => ({ status: 'unknown' }) as unknown as EndpointResolution
     const app = engine(source)
     await app.publish(event)
-    await expect(app.worker.tick()).rejects.toBeInstanceOf(AggregateError)
+    await expect(app.worker.runOnce()).rejects.toBeInstanceOf(AggregateError)
     expect((await rows())[0]).toMatchObject({ status: 'pending', attempt_count: 0 })
   })
 
@@ -559,7 +559,7 @@ describe('delivery with an independent management provider', () => {
     const app = engine(source, 60_000)
     await app.publish(event)
     const controller = new AbortController()
-    const ticking = app.worker.tick({ signal: controller.signal })
+    const ticking = app.worker.runOnce({ signal: controller.signal })
     await started.promise
     controller.abort()
     expect(await ticking).toMatchObject({ claimed: 0 })

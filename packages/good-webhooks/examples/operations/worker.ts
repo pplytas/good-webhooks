@@ -36,7 +36,11 @@ try {
     console.log(JSON.stringify({ event: 'webhooks.worker.started' }))
     phase = 'run'
     // Unexpected failures stop the process. A supervisor owns restart backoff.
-    await webhooks.worker.run({ signal: stop.signal, pollIntervalMs: config.pollIntervalMs })
+    await webhooks.worker.run({
+      signal: stop.signal,
+      pollIntervalMs: config.pollIntervalMs,
+      shutdownGraceMs: 30_000,
+    })
   }
 } catch (error) {
   fail(error, phase)

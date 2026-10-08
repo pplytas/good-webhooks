@@ -21,10 +21,36 @@ function waitForPoll(milliseconds: number, signal: AbortSignal): Promise<void> {
   })
 }
 
+/** Stop claims on caller abort, but give prepared attempts time to finish. */
+function shutdown(options: { signal?: AbortSignal; shutdownGraceMs?: number }) {
+  const graceMs = options.shutdownGraceMs ?? 30_000
+  if (!Number.isSafeInteger(graceMs) || graceMs < 0 || graceMs > 2_147_483_647) {
+    throw new WebhookError(
+      'INVALID_INPUT',
+      'The shutdown grace period must be an integer between 0 and 2147483647 milliseconds.',
+    )
+  }
+  const controller = new AbortController()
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const abort = () => {
+    if (graceMs === 0) controller.abort()
+    else timer = setTimeout(() => controller.abort(), graceMs)
+  }
+  if (options.signal?.aborted) controller.abort()
+  else options.signal?.addEventListener('abort', abort, { once: true })
+  return {
+    signal: controller.signal,
+    dispose() {
+      clearTimeout(timer)
+      options.signal?.removeEventListener('abort', abort)
+    },
+  }
+}
+
 /** Owns neither the caller's database pool nor process signal handlers. Nothing starts until called. */
 export function createWorker(config: ResolvedConfig) {
   const store = createWorkerStore(config)
-  let ticking = false
+  let processing = false
   let running = false
 
   async function deliver(claim: ClaimedDelivery, signal?: AbortSignal) {
@@ -80,19 +106,20 @@ export function createWorker(config: ResolvedConfig) {
     })
   }
 
-  async function performTick(options: { signal?: AbortSignal } = {}): Promise<WorkerResult> {
-    if (ticking)
-      throw new WebhookError('INVALID_STATE', 'This worker already has a tick in progress.')
-    if (options.signal?.aborted) return emptyResult()
-    ticking = true
+  async function performBatch(
+    stopSignal: AbortSignal | undefined,
+    sendSignal: AbortSignal,
+  ): Promise<WorkerResult> {
+    if (processing)
+      throw new WebhookError('INVALID_STATE', 'This worker already has a batch in progress.')
+    if (stopSignal?.aborted) return emptyResult()
+    processing = true
     try {
       await store.recoverExpired()
-      const { claims, errors } = await store.claim(options.signal)
+      const { claims, errors } = await store.claim(stopSignal)
       const result = { ...emptyResult(), claimed: claims.length }
       // Wait for every sibling even if an unexpected internal failure occurs.
-      const outcomes = await Promise.allSettled(
-        claims.map((claim) => deliver(claim, options.signal)),
-      )
+      const outcomes = await Promise.allSettled(claims.map((claim) => deliver(claim, sendSignal)))
       for (const outcome of outcomes) {
         if (outcome.status === 'fulfilled') result[outcome.value]++
         else errors.push(outcome.reason)
@@ -101,7 +128,7 @@ export function createWorker(config: ResolvedConfig) {
         throw new AggregateError(errors, 'Webhook worker could not finish one or more deliveries.')
       return result
     } finally {
-      ticking = false
+      processing = false
     }
   }
 
@@ -109,8 +136,9 @@ export function createWorker(config: ResolvedConfig) {
     signal: AbortSignal
     onError?: (error: unknown) => void
     pollIntervalMs?: number
+    shutdownGraceMs?: number
   }): Promise<void> {
-    if (running || ticking)
+    if (running || processing)
       throw new WebhookError('INVALID_STATE', 'This worker is already running.')
     const pollIntervalMs = options.pollIntervalMs ?? 1000
     if (!Number.isSafeInteger(pollIntervalMs) || pollIntervalMs < 10 || pollIntervalMs > 60_000) {
@@ -119,11 +147,13 @@ export function createWorker(config: ResolvedConfig) {
         'The polling interval must be an integer between 10 and 60000 milliseconds.',
       )
     }
+    const lifecycle = shutdown(options)
     running = true
     try {
       while (!options.signal.aborted) {
         try {
-          await performTick({ signal: options.signal })
+          const result = await performBatch(options.signal, lifecycle.signal)
+          if (result.succeeded + result.retried + result.failed > 0) continue
         } catch (error) {
           if (!options.onError) throw error
           await options.onError(error)
@@ -131,18 +161,26 @@ export function createWorker(config: ResolvedConfig) {
         await waitForPoll(pollIntervalMs, options.signal)
       }
     } finally {
+      lifecycle.dispose()
       running = false
     }
   }
 
-  async function tick(options: { signal?: AbortSignal } = {}): Promise<WorkerResult> {
+  async function runOnce(
+    options: { signal?: AbortSignal; shutdownGraceMs?: number } = {},
+  ): Promise<WorkerResult> {
     if (running)
       throw new WebhookError(
         'INVALID_STATE',
-        'This worker is running. Stop it before calling tick.',
+        'This worker is running. Stop it before calling runOnce.',
       )
-    return performTick(options)
+    const lifecycle = shutdown(options)
+    try {
+      return await performBatch(options.signal, lifecycle.signal)
+    } finally {
+      lifecycle.dispose()
+    }
   }
 
-  return { tick, run, prune: store.prune }
+  return { runOnce, run, prune: store.prune }
 }

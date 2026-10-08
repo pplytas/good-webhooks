@@ -288,6 +288,18 @@ export function createWorkerStore(config: ResolvedConfig) {
           eventCreatedAt: reservation.event_created_at,
         })
       }
+      // A stop request can arrive while a database read above is in progress.
+      // Release reservations before consuming attempts or starting any sends.
+      if (signal?.aborted && prepared.length) {
+        await client.query(
+          `UPDATE ${tables.deliveries} d SET status='pending',preparing=false,claim_token=NULL,
+            lease_expires_at=NULL,next_attempt_at=clock_timestamp()+interval '1 second'
+          FROM unnest($1::bigint[],$2::uuid[]) AS input(id,token)
+          WHERE d.id=input.id AND d.claim_token=input.token AND d.status='in_flight' AND d.preparing`,
+          [prepared.map((row) => row.id), prepared.map((row) => row.token)],
+        )
+        return []
+      }
       if (prepared.length) {
         // All real attempts begin together, after provider reads, with a fresh send lease.
         const started = await client.query<{ id: string }>(

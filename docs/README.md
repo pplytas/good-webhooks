@@ -9,5 +9,6 @@ This directory keeps architecture decisions and historical implementation propos
 - [Better Auth design discussion](better-auth-integration.md)
 - [Better Auth implementation plan](better-auth-implementation-plan.md)
 - [Receiver and operations proposal](receiver-and-operations-proposal.md)
+- [Worker lifecycle alignment](worker-lifecycle-plan.md)
 
 Historical plans describe the code and decisions at the time they were written. Current source, tests, and public documentation take precedence. Former public-guide files remain as links to their new locations.
