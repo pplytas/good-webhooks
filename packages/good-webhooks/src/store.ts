@@ -278,8 +278,9 @@ export function createStore(config: ResolvedConfig) {
     const limit = query.limit ?? 25
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100)
       invalid('Delivery list limit must be an integer from 1 to 100.')
+    // Sort the bigint column, not the text output named "id", to match the cursor comparison.
     const { rows } = await config.database.query<DeliveryRow>(
-      `SELECT ${DELIVERY_FIELDS} FROM ${tables.deliveries} WHERE scope_key=$1 AND ($2::text IS NULL OR endpoint_id=$2) AND ($3::text IS NULL OR status=$3) AND ($4::bigint IS NULL OR id<$4) AND ($6::uuid IS NULL OR event_id=$6) ORDER BY id DESC LIMIT $5`,
+      `SELECT ${DELIVERY_FIELDS} FROM ${tables.deliveries} AS d WHERE scope_key=$1 AND ($2::text IS NULL OR endpoint_id=$2) AND ($3::text IS NULL OR status=$3) AND ($4::bigint IS NULL OR id<$4) AND ($6::uuid IS NULL OR event_id=$6) ORDER BY d.id DESC LIMIT $5`,
       [
         scopeKey,
         query.endpointId ?? null,

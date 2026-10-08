@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Northstar Supply · Order fulfillment</title>
+    <link rel="stylesheet" href="/style.css" />
+    <script type="module" src="/app.js"></script>
+  </head>
+  <body>
+    <header class="masthead">
+      <div class="masthead-inner">
+        <a class="brand" href="/" aria-label="Northstar Supply home"
+          ><span class="brand-mark" aria-hidden="true">N</span>Northstar Supply</a
+        >
+        <a href="https://good-webhooks.vercel.app" target="_blank" rel="noreferrer"
+          >Built with Good Webhooks</a
+        >
+      </div>
+    </header>
+    <main>
+      <div class="page-heading">
+        <div>
+          <h1>From order to warehouse.</h1>
+          <p>A working shop integration. Place an order and follow its delivery.</p>
+        </div>
+        <span class="environment">Local demo</span>
+      </div>
+      <div class="journey" aria-label="Order fulfillment flow">
+        <div>
+          <span class="step-number">1</span
+          ><span><strong>Shop</strong><small>Save the order and publish its event</small></span>
+        </div>
+        <span class="connector" aria-hidden="true">→</span>
+        <div>
+          <span class="step-number">2</span
+          ><span
+            ><strong>Delivery worker</strong
+            ><small id="worker-state">Checking the worker…</small></span
+          >
+        </div>
+        <span class="connector" aria-hidden="true">→</span>
+        <div>
+          <span class="step-number">3</span
+          ><span><strong>Warehouse</strong><small>Verify and create one shipment</small></span>
+        </div>
+      </div>
+      <div id="notice" role="status" aria-live="polite" hidden></div>
+      <div class="setup-grid">
+        <section class="panel order-panel" aria-labelledby="order-heading">
+          <div class="section-heading">
+            <h2 id="order-heading">Create an order</h2>
+            <span class="quiet">Prices in USD</span>
+          </div>
+          <form id="order-form">
+            <label for="customer">Customer name</label>
+            <input
+              id="customer"
+              name="customer"
+              value="Avery Chen"
+              maxlength="100"
+              required
+              autocomplete="name"
+            />
+            <div class="form-row">
+              <div>
+                <label for="product">Product</label
+                ><select id="product" name="sku" required>
+                  <option value="">Loading products…</option>
+                </select>
+              </div>
+              <div class="quantity">
+                <label for="quantity">Quantity</label
+                ><input
+                  id="quantity"
+                  name="quantity"
+                  type="number"
+                  min="1"
+                  max="20"
+                  value="1"
+                  required
+                />
+              </div>
+            </div>
+            <div class="order-total">
+              <span>Order total</span><output id="total" for="product quantity">—</output>
+            </div>
+            <div class="form-actions">
+              <button id="place-order" type="submit" disabled>Place order</button
+              ><button id="rollback" class="secondary" type="button" disabled>Test rollback</button>
+            </div>
+            <p class="help" id="order-help">Connect the warehouse to receive your first order.</p>
+          </form>
+        </section>
+        <section class="panel connection-panel" aria-labelledby="connection-heading">
+          <div class="section-heading">
+            <h2 id="connection-heading">Warehouse connection</h2>
+            <span id="endpoint-status" class="badge">Not connected</span>
+          </div>
+          <p id="endpoint-url" class="endpoint-url">
+            Register the warehouse as an order subscriber. Its signing secret stays on the server.
+          </p>
+          <div class="connection-actions">
+            <button id="connect" type="button">Connect warehouse</button
+            ><button id="pause" class="secondary" type="button" hidden>Pause deliveries</button>
+          </div>
+          <div class="receiver-control">
+            <label for="receiver-mode">Receiver behavior</label>
+            <select id="receiver-mode">
+              <option value="healthy">Accept orders</option>
+              <option value="reject">Return 503 to simulate an outage</option>
+            </select>
+            <p class="help">
+              During an outage, the worker retries. Restore the receiver and replay a failed
+              delivery to recover it.
+            </p>
+          </div>
+          <div class="receiver-totals">
+            <span><strong id="accepted">0</strong> shipments accepted</span
+            ><span><strong id="duplicates">0</strong> duplicates ignored</span>
+          </div>
+        </section>
+      </div>
+      <section class="panel activity-panel" aria-labelledby="deliveries-heading">
+        <div class="section-heading">
+          <div>
+            <h2 id="deliveries-heading">Delivery activity</h2>
+            <p class="help">Select a delivery to see its attempts. Updates automatically.</p>
+          </div>
+          <span id="delivery-count" class="quiet">0 deliveries</span>
+        </div>
+        <div class="activity-grid">
+          <div id="deliveries" class="delivery-list">
+            <p class="empty">Your first delivery will appear here after you place an order.</p>
+          </div>
+          <div id="detail" class="delivery-detail" aria-live="polite">
+            <div class="empty-detail">
+              <span class="detail-symbol" aria-hidden="true">↗</span>
+              <h3>Follow the delivery</h3>
+              <p>See each HTTP response, retry, and final outcome here.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+      <div class="records-grid">
+        <section class="panel" aria-labelledby="orders-heading">
+          <div class="section-heading">
+            <h2 id="orders-heading">Shop orders</h2>
+            <span id="order-count" class="quiet">0 orders</span>
+          </div>
+          <div id="orders"><p class="empty">No orders yet.</p></div>
+        </section>
+        <section class="panel" aria-labelledby="shipments-heading">
+          <div class="section-heading">
+            <h2 id="shipments-heading">Warehouse shipments</h2>
+            <span class="quiet">One per event</span>
+          </div>
+          <div id="shipments"><p class="empty">Verified orders become shipments here.</p></div>
+        </section>
+      </div>
+      <footer>
+        <p>
+          Replay preserves the event ID. The warehouse records that ID with the shipment so a
+          duplicate request cannot create a second shipment.
+        </p>
+        <a
+          href="https://good-webhooks.vercel.app/concepts/delivery-guarantees"
+          target="_blank"
+          rel="noreferrer"
+          >Read the delivery contract</a
+        >
+      </footer>
+    </main>
+  </body>
+</html>

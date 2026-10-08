@@ -1,0 +1,32 @@
+{
+  "name": "northstar-order-fulfillment",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "setup": "node scripts/setup.ts",
+    "dev": "npm run build && node scripts/dev.ts",
+    "start": "node --env-file=.env src/server.ts",
+    "worker": "node --env-file=.env src/worker.ts",
+    "receiver": "node --env-file=.env src/receiver.ts",
+    "build": "esbuild src/client.ts --bundle --format=esm --target=es2022 --outfile=public/app.js",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test --test-concurrency=1 test/*.test.ts"
+  },
+  "dependencies": {
+    "express": "5.2.1",
+    "good-webhooks": "0.1.0-alpha.2",
+    "pg": "8.23.1",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@types/express": "5.0.6",
+    "@types/node": "24.10.1",
+    "@types/pg": "8.23.1",
+    "esbuild": "0.28.2",
+    "typescript": "5.9.3"
+  }
+}

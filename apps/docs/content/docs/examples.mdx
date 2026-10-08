@@ -1,0 +1,35 @@
+---
+title: Complete applications
+description: Run interactive order fulfillment and Better Auth billing integrations using the published package.
+---
+
+Run a complete application to follow a business action through publication, signed delivery, verification, and receiver work. Both examples install `good-webhooks@0.1.0-alpha.2` from npm and use real PostgreSQL storage.
+
+## Order fulfillment
+
+[Northstar Supply](https://github.com/pplytas/good-webhooks/tree/main/examples/order-fulfillment) is a shop connected to a warehouse. Place an order in the browser and watch the worker deliver it. The shop commits its order and webhook publication in one PostgreSQL transaction. The receiver verifies the request and records the event ID with its shipment.
+
+Use the controls to make the warehouse return HTTP 503, inspect retries, restore service, and replay a delivery. Replaying an accepted event leaves the shipment count unchanged. A rollback control demonstrates that a rejected business transaction produces neither an order nor a queued event.
+
+## Better Auth billing
+
+The [billing application](https://github.com/pplytas/good-webhooks/tree/main/examples/better-auth-billing) combines Better Auth endpoint management with PostgreSQL delivery. Sign in, register a personal endpoint, create invoice events, and inspect delivery attempts.
+
+The application derives the publisher's scope from the authenticated session. The browser uses the typed Good Webhooks client plugin to manage endpoints. A separate worker reads the same management records and sends signed events to the local receiver.
+
+## Run locally
+
+Clone the repository and enter the chosen example directory. Use Node.js 24, npm, and Docker with Compose:
+
+```sh
+npm ci
+docker compose up -d --wait
+npm run setup
+npm run dev
+```
+
+Open `http://127.0.0.1:4311` for order fulfillment or `http://127.0.0.1:4312` for billing. Their database and HTTP ports are separate, so both applications can run together.
+
+Each README includes a walkthrough, individual process commands, and verification instructions. Keep the generated `.env` file between restarts so existing endpoints remain decryptable. Setup applies migrations explicitly; starting the application does not change the schema.
+
+The examples bind to loopback and use explicit development settings for local receivers. Adapt authentication, authorization, secrets, storage, worker supervision, and retention to your deployment. See [worker operation](/operations/workers) and [compatibility](/operations/compatibility).

@@ -4,5 +4,7 @@ dist
 .source
 out
 pnpm-lock.yaml
+**/package-lock.json
+examples/*/public/*.js
 *.tgz
 next-env.d.ts

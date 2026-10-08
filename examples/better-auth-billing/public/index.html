@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ledger desk · Good Webhooks</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <script type="module" src="/client.js"></script>
+  </head>
+  <body>
+    <header class="page-header">
+      <div>
+        <a class="brand" href="/">Ledger desk<span>Billing with Good Webhooks</span></a>
+        <p>Create an invoice. Follow its delivery to your receiver.</p>
+      </div>
+      <div id="account" hidden>
+        <span id="account-name"></span><button id="sign-out" class="secondary">Sign out</button>
+      </div>
+    </header>
+    <main>
+      <div id="message" role="status" aria-live="polite"></div>
+      <section id="auth-panel" class="auth-layout">
+        <div class="intro">
+          <h1>Your billing workspace</h1>
+          <p>
+            Sign in to manage your own invoices and webhook endpoints. Each account has separate
+            delivery history.
+          </p>
+          <ol>
+            <li>Register a webhook endpoint.</li>
+            <li>Transfer its signing secret to the local receiver.</li>
+            <li>Create an invoice and inspect the delivery.</li>
+          </ol>
+          <p class="muted">
+            A local development example. Use a made-up email and a unique demo password.
+          </p>
+        </div>
+        <form id="auth-form" class="panel">
+          <h2 id="auth-heading">Create an account</h2>
+          <label id="name-label"
+            >Name<input
+              name="name"
+              autocomplete="name"
+              value="Demo owner"
+              required
+              maxlength="100" /></label
+          ><label
+            >Email<input
+              name="email"
+              type="email"
+              autocomplete="email"
+              placeholder="you@example.com"
+              required /></label
+          ><label
+            >Password<input
+              name="password"
+              type="password"
+              autocomplete="new-password"
+              minlength="8"
+              required /></label
+          ><button id="auth-submit">Create account</button
+          ><button type="button" id="auth-toggle" class="text-button">
+            Already have an account? Sign in
+          </button>
+        </form>
+      </section>
+      <div id="workspace" hidden>
+        <div class="workspace-heading">
+          <h1>Invoices &amp; webhooks</h1>
+          <span class="muted" id="refresh-status">Connecting…</span>
+        </div>
+        <div class="workspace-grid">
+          <div class="work-column">
+            <section class="panel">
+              <div class="section-heading">
+                <h2>Webhook endpoints</h2>
+                <span class="muted">Your account</span>
+              </div>
+              <p class="hint">
+                Send invoice events to a local receiver. Copy the secret before leaving this page.
+              </p>
+              <form id="endpoint-form">
+                <label
+                  >Endpoint name<input
+                    name="description"
+                    placeholder="Accounting integration"
+                    value="Accounting integration"
+                    required
+                    maxlength="120"
+                /></label>
+                <fieldset>
+                  <legend>Events</legend>
+                  <label class="check"
+                    ><input type="checkbox" name="created" checked />Invoice created</label
+                  ><label class="check"
+                    ><input type="checkbox" name="paid" checked />Invoice paid</label
+                  >
+                </fieldset>
+                <button>Create endpoint</button>
+              </form>
+              <div id="secret-panel" class="secret-panel" hidden>
+                <h3>Save this signing secret</h3>
+                <p>
+                  This secret appears once. Transfer it to the receiver before sending an invoice.
+                </p>
+                <label
+                  >Signing secret<input id="signing-secret" readonly spellcheck="false"
+                /></label>
+                <div class="actions">
+                  <button id="connect-receiver">Transfer to local receiver</button
+                  ><button id="copy-secret" class="secondary">Copy secret</button>
+                </div>
+                <p class="hint">
+                  The receiver stores an encrypted copy. This transfer is specific to this local
+                  demo.
+                </p>
+              </div>
+              <div id="endpoints" class="item-list"></div>
+            </section>
+            <section class="panel">
+              <h2>Create an invoice</h2>
+              <form id="invoice-form" class="invoice-form">
+                <label
+                  >Customer<input
+                    name="customer"
+                    value="Northwind Studio"
+                    required
+                    maxlength="120" /></label
+                ><label
+                  >Amount in EUR<input
+                    name="amount"
+                    type="number"
+                    min="0.01"
+                    max="1000000"
+                    step="0.01"
+                    value="42.00"
+                    required /></label
+                ><button>Create invoice</button>
+              </form>
+              <p class="hint">
+                An invoice creates an <code>invoice.created</code> event. Recording payment creates
+                <code>invoice.paid</code>.
+              </p>
+              <div id="invoices" class="table-scroll"></div>
+            </section>
+          </div>
+          <div class="delivery-column">
+            <section class="panel">
+              <div class="section-heading">
+                <h2>Delivery history</h2>
+                <span class="live-label">Refreshes automatically</span>
+              </div>
+              <p class="hint">
+                Select a delivery to inspect its HTTP attempts. Failed deliveries retry after 1
+                second and 3 seconds.
+              </p>
+              <div id="deliveries" class="table-scroll"></div>
+              <div id="attempts" class="attempts" hidden></div>
+            </section>
+            <section class="panel">
+              <h2>Receiver activity</h2>
+              <p class="hint">
+                Reject deliveries to exercise retries. Restore the receiver, then replay a failed
+                delivery. Replaying a success demonstrates deduplication.
+              </p>
+              <div id="receivers"></div>
+              <h3>Recorded invoices</h3>
+              <div id="outcomes" class="table-scroll"></div>
+              <h3>Recent requests</h3>
+              <div id="requests" class="request-list"></div>
+              <p class="hint">
+                “Duplicate” means the receiver acknowledged the event without applying the invoice
+                change again.
+              </p>
+            </section>
+          </div>
+        </div>
+      </div>
+      <footer>
+        This demo records invoice payments locally. No money moves. App, receiver, and worker run as
+        separate processes.
+      </footer>
+    </main>
+  </body>
+</html>
