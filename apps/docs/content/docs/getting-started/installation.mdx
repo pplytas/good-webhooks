@@ -13,7 +13,7 @@ Run this command from your application's directory:
 npm install good-webhooks@alpha
 ```
 
-The `alpha` tag selects the current alpha release. To pin this release explicitly, use `npm install --save-exact good-webhooks@0.1.0-alpha.1`. Commit your lockfile and review the [release notes](https://github.com/pplytas/good-webhooks/releases/tag/v0.1.0-alpha.1) before upgrading.
+The `alpha` tag selects the current alpha release. To save its exact version in `package.json`, use `npm install --save-exact good-webhooks@alpha`. Commit your lockfile and review the [release notes](https://github.com/pplytas/good-webhooks/releases) before upgrading.
 
 For standalone PostgreSQL management or built-in delivery, install the driver you use to supply a database connection. These guides use node-postgres and Zod for payload schemas:
 
@@ -69,12 +69,12 @@ mkdir -p artifacts
 pnpm --dir packages/good-webhooks pack --pack-destination ../../artifacts
 ```
 
-The archive is `artifacts/good-webhooks-0.1.0-alpha.1.tgz`. Packing runs the library build. It includes the compiled package and its SQL assets, without the documentation app.
+The archive is `artifacts/good-webhooks-0.1.0-alpha.2.tgz`. Packing runs the library build. It includes the compiled package and its SQL assets, without the documentation app.
 
 ## Install the local archive
 
 Run this command from your application's directory. Replace the absolute path with your checkout's path.
 
 ```sh
-npm install /absolute/path/to/good-webhooks/artifacts/good-webhooks-0.1.0-alpha.1.tgz
+npm install /absolute/path/to/good-webhooks/artifacts/good-webhooks-0.1.0-alpha.2.tgz
 ```

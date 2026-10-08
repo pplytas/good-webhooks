@@ -25,7 +25,7 @@ See the [documentation overview](apps/docs/content/docs/index.mdx) for guides, c
 npm install good-webhooks@alpha
 ```
 
-Follow the [installation guide](https://good-webhooks.vercel.app/getting-started/installation) for the dependencies your setup needs. Pin the exact alpha version in applications and read the [release notes](https://github.com/pplytas/good-webhooks/releases/tag/v0.1.0-alpha.1) before upgrading.
+Follow the [installation guide](https://good-webhooks.vercel.app/getting-started/installation) for the dependencies your setup needs. Pin the exact alpha version in applications and read the [release notes](https://github.com/pplytas/good-webhooks/releases) before upgrading.
 
 ## Work on the repository
 
@@ -84,7 +84,7 @@ pnpm --dir packages/good-webhooks pack
 In your application, install the resulting archive using npm or your preferred package manager:
 
 ```sh
-npm install /absolute/path/to/packages/good-webhooks/good-webhooks-0.1.0-alpha.1.tgz
+npm install /absolute/path/to/packages/good-webhooks/good-webhooks-0.1.0-alpha.2.tgz
 ```
 
 Follow the [installation guide](apps/docs/content/docs/getting-started/installation.mdx) for the dependencies your chosen setup needs. `pnpm test:package` verifies the archive with fresh npm consumers, both with and without Better Auth, including the published declarations and SQL exports. Registry publication is a separate release step.
