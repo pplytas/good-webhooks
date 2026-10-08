@@ -4,7 +4,7 @@ Build webhook delivery into your TypeScript application.
 
 Good Webhooks is an embedded TypeScript package for outbound webhooks. Use Better Auth for authenticated endpoint management, connect your own sender, or add the PostgreSQL publisher and worker.
 
-This is an unpublished v0. Use a local archive until the first registry release. Node.js 24 or later is required. The package ships ESM; Node.js 24 also supports loading this build with CommonJS `require()`.
+Good Webhooks is in alpha. Node.js 24 or later is required. The package ships ESM; Node.js 24 also supports loading this build with CommonJS `require()`.
 
 | Setup                                         | Entry points                                                    | Storage                                            |
 | --------------------------------------------- | --------------------------------------------------------------- | -------------------------------------------------- |
@@ -21,13 +21,21 @@ TypeScript consumers need TypeScript 5.9.3 or later, with NodeNext or Bundler re
 
 Read the [documentation](https://good-webhooks.vercel.app). The repository contains its [source](https://github.com/pplytas/good-webhooks/tree/main/apps/docs/content/docs). Run `pnpm dev` from a repository checkout to preview changes locally.
 
-- [Install a local build](https://github.com/pplytas/good-webhooks/blob/main/apps/docs/content/docs/getting-started/installation.mdx)
-- [Manage your first endpoint with Better Auth](https://github.com/pplytas/good-webhooks/blob/main/apps/docs/content/docs/better-auth/first-endpoint.mdx)
-- [Send your first webhook](https://github.com/pplytas/good-webhooks/blob/main/apps/docs/content/docs/getting-started/first-delivery.mdx)
-- [Connect a custom sender](https://github.com/pplytas/good-webhooks/blob/main/apps/docs/content/docs/management/custom-senders.mdx)
-- [API reference](https://github.com/pplytas/good-webhooks/blob/main/apps/docs/content/docs/reference/index.mdx)
+- [Install Good Webhooks](https://good-webhooks.vercel.app/getting-started/installation)
+- [Manage your first endpoint with Better Auth](https://good-webhooks.vercel.app/better-auth/first-endpoint)
+- [Send your first webhook](https://good-webhooks.vercel.app/getting-started/first-delivery)
+- [Connect a custom sender](https://good-webhooks.vercel.app/management/custom-senders)
+- [API reference](https://good-webhooks.vercel.app/reference)
 
 The [standalone example](examples/basic/demo.ts) exercises rollback, signed delivery, retry, replay, and receiver deduplication. The [repository README](https://github.com/pplytas/good-webhooks#readme) includes its database setup.
+
+## Install
+
+Install the alpha release in your application:
+
+```sh
+npm install good-webhooks@alpha
+```
 
 ## Install from a checkout
 

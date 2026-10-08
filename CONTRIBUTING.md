@@ -28,7 +28,7 @@ The test suite applies its own schema. Default PostgreSQL tables use the `webhoo
 
 Follow the [README example](README.md#try-the-example) to verify delivery, retry, replay, and durable receiver deduplication. Apply its separate receiver SQL before running the demo.
 
-CI runs the full suite and demo on PostgreSQL 16 and 17 with Node.js 24. It also installs the package archive and checks all entry points through ESM and CommonJS, standalone installation without Better Auth, the exported migrations, and public TypeScript declarations. It does not publish to npm. The root and docs manifests are private. Keep the library private until a separate publication decision.
+CI runs the full suite and demo on PostgreSQL 16 and 17 with Node.js 24. It also installs the package archive and checks all entry points through ESM and CommonJS, standalone installation without Better Auth, the exported migrations, and public TypeScript declarations. It does not publish to npm. The root and docs manifests remain private; only the library permits publication.
 
 `pnpm test:package` checks TypeScript 5.9.3 and the repository compiler with NodeNext and Bundler resolution. Standalone consumers check all declarations; Better Auth consumers retain inference checks with `skipLibCheck` for upstream types.
 
