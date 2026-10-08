@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.0-alpha.3 (2026-10-08)
+
+Fix delivery-history ordering and cursor pagination. `deliveries.list()` now sorts by the numeric delivery ID instead of its text representation. Previously, IDs such as `9` appeared before `43`, and cursor pages could skip deliveries across digit boundaries.
+
+Public APIs, dependencies, and database schema are unchanged. No migration is required. This corrects history inspection only; webhook dispatch still has no ordering guarantee.
+
 ## 0.1.0-alpha.2 (2026-10-08)
 
 Release-engineering update for GitHub Actions trusted publishing and npm provenance. Runtime behavior, public APIs, dependencies, and database schema are unchanged from `0.1.0-alpha.1`.
