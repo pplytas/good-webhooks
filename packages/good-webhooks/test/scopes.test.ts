@@ -260,7 +260,7 @@ describe('optional scope isolation', () => {
         secrets.set(`/${i}`, secret)
         eventIds.push((await client.publish(event)).eventId)
       }
-      expect(await app.worker.tick()).toMatchObject({
+      expect(await app.worker.runOnce()).toMatchObject({
         claimed: views.length,
         succeeded: views.length,
       })

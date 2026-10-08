@@ -16,6 +16,10 @@ _Avoid_: Global access, all customers
 The application that reports an event for delivery.
 _Avoid_: Worker, receiver
 
+**Worker**:
+The executor of pending webhook deliveries and their sending attempts, including retries.
+_Avoid_: Producer, receiver
+
 **Event**:
 An identified occurrence reported by a producer, with a type and associated data. It remains the same event when sent again.
 _Avoid_: Job, delivery, attempt

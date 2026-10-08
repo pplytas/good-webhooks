@@ -43,6 +43,28 @@ function consumerTypes(request: IncomingMessage) {
     },
   }
   const delivery = createDelivery({ database: new Pool(), source, events: appEvents })
+  app.worker.runOnce()
+  delivery.worker.runOnce({ signal: new AbortController().signal, shutdownGraceMs: 0 })
+  delivery.worker.run({
+    signal: new AbortController().signal,
+    shutdownGraceMs: 30_000,
+    async onError(error: unknown) {
+      void error
+    },
+  })
+  const errors: unknown[] = []
+  delivery.worker.run({
+    signal: new AbortController().signal,
+    onError: (error) => errors.push(error),
+  })
+  delivery.worker.run({
+    signal: new AbortController().signal,
+    onError: async (error) => errors.push(error),
+  })
+  // @ts-expect-error continuous processing requires a caller-owned stop signal
+  delivery.worker.run({ shutdownGraceMs: 30_000 })
+  // @ts-expect-error shutdown grace uses milliseconds as a number
+  app.worker.runOnce({ shutdownGraceMs: '30s' })
   delivery.publish({ type: 'user.created', data: { email: 'receiver@example.com' } })
   // @ts-expect-error a sender receives no management CRUD capability
   delivery.endpoints.create({ url: 'https://example.com/hook', eventTypes: ['user.created'] })
@@ -59,7 +81,7 @@ function consumerTypes(request: IncomingMessage) {
   // @ts-expect-error bound clients cannot select another scope
   scoped.forScope(owner)
   // @ts-expect-error bound clients do not expose global maintenance
-  scoped.worker.tick()
+  scoped.worker.runOnce()
   scoped.deliveries.list({ eventId: '00000000-0000-0000-0000-000000000001' })
   scoped.publish({ type: 'order.created', data: { id: 'o1', total: 1 } })
   scoped.endpoints.create({ url: 'https://example.com/hook', eventTypes: ['order.created'] })

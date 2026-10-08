@@ -87,7 +87,7 @@ async function finishDelivery(id: string): Promise<void> {
     if (detail.status === 'succeeded') return
     assert(!['failed', 'cancelled'].includes(detail.status), `Delivery ended as ${detail.status}`)
     await sleep(Math.max(10, Math.min(500, detail.nextAttemptAt.getTime() - Date.now())))
-    await webhooks.worker.tick()
+    await webhooks.worker.runOnce()
   }
   throw new Error('The demo delivery did not finish within 10 seconds.')
 }
@@ -140,7 +140,7 @@ try {
 
   const [delivery] = (await webhooks.deliveries.list({ eventId: publication.eventId })).items
   assert(delivery)
-  await webhooks.worker.tick()
+  await webhooks.worker.runOnce()
   const afterFailure = await webhooks.deliveries.get(delivery.id)
   assert.equal(afterFailure.status, 'pending')
   assert.equal(afterFailure.attempts[0]?.responseStatus, 503)

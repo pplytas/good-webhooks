@@ -1,6 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { once } from 'node:events'
-import { createServer as createHttpServer } from 'node:http'
+import { createServer as createHttpServer, type ServerResponse } from 'node:http'
 import { createServer as createTcpServer, type Server, type Socket } from 'node:net'
 import { fileURLToPath } from 'node:url'
 import { setTimeout as sleep } from 'node:timers/promises'
@@ -338,19 +338,22 @@ describe('worker process lifecycle', () => {
     await assertClosed('worker')
   })
 
-  it('stops during delivery and persists an unknown receiver outcome', async () => {
-    let received = false
+  it('finishes an active delivery on SIGTERM before closing the pool', async () => {
+    let response: ServerResponse | undefined
     const port = await listen(
-      createHttpServer((request) => {
+      createHttpServer((request, outgoing) => {
         request.resume()
-        received = true
+        response = outgoing
       }),
     )
     const { delivery } = await queued(`http://127.0.0.1:${port}/hooks`)
     const running = example('worker')
     await ready(running)
-    await waitUntil(() => received, 'the receiver to see an active delivery')
+    await waitUntil(() => response !== undefined, 'the receiver to see an active delivery')
     running.child.kill('SIGTERM')
+    // Let the child handle SIGTERM while the receiver still owns an active request.
+    await sleep(100)
+    response!.end('accepted during shutdown')
     expect(await running.result).toEqual({ code: 0, signal: null })
     expect(running.stderr).toBe('')
     expect(
@@ -360,8 +363,8 @@ describe('worker process lifecycle', () => {
         ])
       ).rows[0],
     ).toMatchObject({
-      status: 'pending',
-      last_error: 'Worker stopped; receiver outcome is unknown',
+      status: 'succeeded',
+      last_error: null,
     })
     expect(
       (
@@ -369,7 +372,7 @@ describe('worker process lifecycle', () => {
           delivery.id,
         ])
       ).rows,
-    ).toEqual([{ outcome: 'abandoned' }])
+    ).toEqual([{ outcome: 'succeeded' }])
     await assertClosed('worker')
   })
 })

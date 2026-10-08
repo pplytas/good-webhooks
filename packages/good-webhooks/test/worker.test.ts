@@ -99,7 +99,7 @@ afterEach(async () => {
 afterAll(closeDatabase)
 
 describe('worker delivery durability', () => {
-  it('skips locked delivery coordination and delivers another scope in the same tick', async () => {
+  it('skips locked delivery coordination and delivers another scope in the same batch', async () => {
     const received: string[] = []
     const url = await receiver((request, response) => {
       received.push(request.url!)
@@ -122,7 +122,7 @@ describe('worker delivery durability', () => {
         'SELECT endpoint_id FROM public.webhook_endpoint_state WHERE scope_key=$1 FOR UPDATE',
         [testScopeKey('scope-a')],
       )
-      const result = await createWorker(testConfig({ concurrency: 1 })).tick()
+      const result = await createWorker(testConfig({ concurrency: 1 })).runOnce()
       expect(result).toMatchObject({ claimed: 1, succeeded: 1 })
       expect(received).toEqual(['/webhook/scope-b'])
     } finally {
@@ -149,7 +149,7 @@ describe('worker delivery durability', () => {
       deliveries: [delivery],
       secret,
     } = await fixture(url)
-    const pending = createWorker(testConfig()).tick()
+    const pending = createWorker(testConfig()).runOnce()
     const request = await received.promise
     const started = await state(delivery!.id)
     expect(started.delivery.status).toBe('in_flight')
@@ -169,7 +169,7 @@ describe('worker delivery durability', () => {
     ])
   })
 
-  it('enforces an endpoint cap across competing workers and rejects overlapping ticks', async () => {
+  it('enforces an endpoint cap across competing workers and rejects overlapping batches', async () => {
     let active = 0
     let peak = 0
     const full = deferred()
@@ -185,10 +185,10 @@ describe('worker delivery durability', () => {
     })
     await fixture(url, 6, 2)
     const worker = createWorker(testConfig({ concurrency: 5 }))
-    const a = worker.tick()
+    const a = worker.runOnce()
     // Check overlap before either competing worker can finish without claiming work.
-    await expect(worker.tick()).rejects.toMatchObject({ code: 'INVALID_STATE' })
-    const b = createWorker(testConfig({ concurrency: 5 })).tick()
+    await expect(worker.runOnce()).rejects.toMatchObject({ code: 'INVALID_STATE' })
+    const b = createWorker(testConfig({ concurrency: 5 })).runOnce()
     await full.promise
     expect(
       (
@@ -201,7 +201,7 @@ describe('worker delivery durability', () => {
     const results = await Promise.all([a, b])
     expect(results.reduce((sum, result) => sum + result.claimed, 0)).toBe(2)
     expect(peak).toBe(2)
-    expect((await worker.tick()).claimed).toBe(2)
+    expect((await worker.runOnce()).claimed).toBe(2)
   })
 
   it('prioritizes the oldest due endpoint instead of its UUID', async () => {
@@ -214,7 +214,7 @@ describe('worker delivery durability', () => {
       [higher!.endpointId],
     )
     const worker = createWorker(testConfig({ concurrency: 1 }))
-    expect((await worker.tick()).succeeded).toBe(1)
+    expect((await worker.runOnce()).succeeded).toBe(1)
     expect((await state(higher!.deliveries[0]!.id)).delivery.status).toBe('succeeded')
     expect((await state(lower!.deliveries[0]!.id)).delivery.status).toBe('pending')
   })
@@ -229,7 +229,7 @@ describe('worker delivery durability', () => {
       [higher!.deliveries[0]!.id],
     )
     const worker = createWorker(testConfig({ concurrency: 2 }))
-    expect((await worker.tick()).succeeded).toBe(2)
+    expect((await worker.runOnce()).succeeded).toBe(2)
     expect((await state(higher!.deliveries[0]!.id)).delivery.status).toBe('succeeded')
     expect((await state(lower!.deliveries[0]!.id)).delivery.status).toBe('pending')
   })
@@ -267,7 +267,7 @@ describe('worker delivery durability', () => {
     await storage.recoverExpired()
     expect((await state(delivery!.id)).attempts[0].outcome).toBe('abandoned')
     await due()
-    expect((await createWorker(config).tick()).succeeded).toBe(1)
+    expect((await createWorker(config).runOnce()).succeeded).toBe(1)
     expect(ids).toEqual([delivery!.eventId, delivery!.eventId])
     expect((await state(delivery!.id)).attempts.map((a) => a.outcome)).toEqual([
       'abandoned',
@@ -309,7 +309,7 @@ describe('worker delivery durability', () => {
     const worker = createWorker(testConfig({ retryDelaysMs: [1000, 2000] }))
     for (const [index, delay] of [1000, 2000].entries()) {
       const before = Date.now()
-      expect((await worker.tick()).retried).toBe(1)
+      expect((await worker.runOnce()).retried).toBe(1)
       const current = await state(delivery!.id)
       expect(current.delivery.attempt_count).toBe(index + 1)
       const scheduled = current.delivery.next_attempt_at.getTime()
@@ -317,8 +317,8 @@ describe('worker delivery durability', () => {
       expect(scheduled).toBeLessThanOrEqual(Date.now() + delay * 1.2)
       await due()
     }
-    expect((await worker.tick()).failed).toBe(1)
-    expect((await worker.tick()).claimed).toBe(0)
+    expect((await worker.runOnce()).failed).toBe(1)
+    expect((await worker.runOnce()).claimed).toBe(0)
     const current = await state(delivery!.id)
     expect(current.delivery.status).toBe('failed')
     expect(current.attempts.map((a) => a.outcome)).toEqual(['retry', 'retry', 'failed'])
@@ -331,7 +331,7 @@ describe('worker delivery durability', () => {
       response.end()
     })
     await fixture(url)
-    expect((await createWorker(testConfig()).tick()).retried).toBe(1)
+    expect((await createWorker(testConfig()).runOnce()).retried).toBe(1)
   })
 
   it.each([301, 400, 401, 404, 422, 600])('fails permanently on HTTP %i', async (status) => {
@@ -340,7 +340,7 @@ describe('worker delivery durability', () => {
       response.end()
     })
     await fixture(url)
-    expect((await createWorker(testConfig()).tick()).failed).toBe(1)
+    expect((await createWorker(testConfig()).runOnce()).failed).toBe(1)
   })
 
   it('fails unsafe destinations permanently without opening a socket', async () => {
@@ -352,7 +352,7 @@ describe('worker delivery durability', () => {
     const {
       deliveries: [delivery],
     } = await fixture(url)
-    expect((await createWorker(testConfig({ allowLocalhost: false })).tick()).failed).toBe(1)
+    expect((await createWorker(testConfig({ allowLocalhost: false })).runOnce()).failed).toBe(1)
     expect(requests).toBe(0)
     expect((await state(delivery!.id)).delivery.last_error).toBe('unsafe_url')
   })
@@ -362,7 +362,7 @@ describe('worker delivery durability', () => {
     const {
       deliveries: [delivery],
     } = await fixture(url)
-    expect((await createWorker(testConfig({ timeoutMs: 50 })).tick()).retried).toBe(1)
+    expect((await createWorker(testConfig({ timeoutMs: 50 })).runOnce()).retried).toBe(1)
     expect((await state(delivery!.id)).attempts[0].error).toBe('timeout')
   })
 
@@ -374,7 +374,7 @@ describe('worker delivery durability', () => {
     const {
       deliveries: [delivery],
     } = await fixture(url)
-    expect(await createWorker(testConfig({ timeoutMs: 50 })).tick()).toMatchObject({
+    expect(await createWorker(testConfig({ timeoutMs: 50 })).runOnce()).toMatchObject({
       claimed: 1,
       succeeded: 0,
       retried: 1,
@@ -403,7 +403,7 @@ describe('worker delivery durability', () => {
     const {
       deliveries: [delivery],
     } = await fixture(url)
-    expect(await createWorker(testConfig()).tick()).toMatchObject({
+    expect(await createWorker(testConfig()).runOnce()).toMatchObject({
       claimed: 1,
       succeeded: 0,
       retried: 1,
@@ -483,7 +483,7 @@ describe('worker delivery durability', () => {
     } = await storage.claim()
     await pool.query("UPDATE public.webhook_deliveries SET created_at=now()-interval '2 minutes'")
     await expire(claim!)
-    expect((await createWorker(testConfig()).tick()).claimed).toBe(0)
+    expect((await createWorker(testConfig()).runOnce()).claimed).toBe(0)
     expect(requests).toBe(0)
     for (const delivery of deliveries)
       expect((await state(delivery.id)).delivery.status).toBe('failed')
@@ -499,15 +499,15 @@ describe('worker delivery durability', () => {
     })
     const { endpointId } = await fixture(url, 2, 1)
     const worker = createWorker(testConfig())
-    const first = worker.tick()
+    const first = worker.runOnce()
     await received.promise
     await createStore(testConfig()).pauseEndpoint('scope-a', endpointId)
     finish.resolve()
     expect((await first).succeeded).toBe(1)
-    expect((await worker.tick()).claimed).toBe(0)
+    expect((await worker.runOnce()).claimed).toBe(0)
     await createStore(testConfig()).resumeEndpoint('scope-a', endpointId)
     await due()
-    expect((await worker.tick()).succeeded).toBe(1)
+    expect((await worker.runOnce()).succeeded).toBe(1)
   })
 
   it('allows a prepared request to finish and cancels queued work after observing deletion', async () => {
@@ -519,12 +519,12 @@ describe('worker delivery durability', () => {
     })
     const { endpointId, deliveries } = await fixture(url, 2, 1)
     const worker = createWorker(testConfig())
-    const first = worker.tick()
+    const first = worker.runOnce()
     await received.promise
     await createStore(testConfig()).removeEndpoint('scope-a', endpointId)
     finish.resolve()
     expect((await first).succeeded).toBe(1)
-    expect((await worker.tick()).claimed).toBe(0)
+    expect((await worker.runOnce()).claimed).toBe(0)
     expect((await state(deliveries[0]!.id)).delivery.status).toBe('succeeded')
     expect((await state(deliveries[1]!.id)).delivery.status).toBe('cancelled')
     expect((await state(deliveries[0]!.id)).attempts[0].outcome).toBe('succeeded')
@@ -539,7 +539,7 @@ describe('worker delivery durability', () => {
         testConfig({
           source: testManagement({ encryptionKey: new Uint8Array(32).fill(2) }).source,
         }),
-      ).tick(),
+      ).runOnce(),
     ).rejects.toMatchObject({ errors: [expect.objectContaining({ code: 'INVALID_CONFIG' })] })
     const current = await state(delivery!.id)
     expect(current.delivery).toMatchObject({
@@ -558,7 +558,7 @@ describe('worker delivery durability', () => {
       corrupt.endpointId,
       'corrupted',
     ])
-    await expect(createWorker(testConfig()).tick()).rejects.toMatchObject({
+    await expect(createWorker(testConfig()).runOnce()).rejects.toMatchObject({
       errors: [expect.objectContaining({ code: 'INVALID_CONFIG' })],
     })
     expect((await state(healthy.deliveries[0]!.id)).delivery).toMatchObject({
@@ -607,12 +607,12 @@ describe('worker delivery durability', () => {
       [endpointId, encryptSecret(previous, TEST_ENCRYPTION_KEY)],
     )
     const worker = createWorker(testConfig())
-    await worker.tick()
+    await worker.runOnce()
     await pool.query(
       "UPDATE public.webhook_endpoints SET previous_secret_expires_at=now()-interval '1 second' WHERE id=$1",
       [endpointId],
     )
-    await worker.tick()
+    await worker.runOnce()
     expect(signatures.map((signature) => signature.split(' ').length)).toEqual([2, 1])
   })
 
@@ -626,7 +626,7 @@ describe('worker delivery durability', () => {
       "UPDATE public.webhook_deliveries SET status='failed', created_at=now()-interval '2 minutes'",
     )
     const replay = await createStore(testConfig()).replay('scope-a', delivery!.id)
-    expect((await createWorker(testConfig()).tick()).succeeded).toBe(1)
+    expect((await createWorker(testConfig()).runOnce()).succeeded).toBe(1)
     expect((await state(replay.id)).delivery.status).toBe('succeeded')
     expect(await createWorker(testConfig({ retentionMs: 60_000 })).prune()).toBe(1)
     expect((await pool.query('SELECT * FROM public.webhook_deliveries')).rows).toEqual([])
@@ -681,7 +681,7 @@ describe('worker delivery durability', () => {
 })
 
 describe('explicit worker lifecycle', () => {
-  it('validates the single polling option before starting the loop', async () => {
+  it('validates the polling interval before starting the loop', async () => {
     const signal = AbortSignal.abort()
     const worker = createWorker(testConfig())
     for (const pollIntervalMs of [1, 5, 60_001, NaN, 10.5]) {
@@ -694,36 +694,117 @@ describe('explicit worker lifecycle', () => {
     }
   })
 
+  it.each(['run', 'runOnce'] as const)(
+    'validates %s shutdown grace before accessing the database',
+    async (method) => {
+      const database = { query: vi.fn(), connect: vi.fn() }
+      const worker = createWorker(testConfig({ database }))
+      const signal = AbortSignal.abort()
+      for (const shutdownGraceMs of [-1, NaN, Infinity, 0.5, 2_147_483_648]) {
+        await expect(worker[method]({ signal, shutdownGraceMs })).rejects.toMatchObject({
+          code: 'INVALID_INPUT',
+        })
+      }
+      for (const shutdownGraceMs of [0, 30_000, 2_147_483_647]) {
+        await worker[method]({ signal, shutdownGraceMs })
+      }
+      expect(database.query).not.toHaveBeenCalled()
+      expect(database.connect).not.toHaveBeenCalled()
+    },
+  )
+
   it('does not connect or start polling on construction or with an aborted signal', async () => {
     const database = { query: vi.fn(), connect: vi.fn() }
     const worker = createWorker(testConfig({ database }))
     const controller = new AbortController()
     controller.abort()
-    expect(await worker.tick({ signal: controller.signal })).toMatchObject({ claimed: 0 })
+    expect(await worker.runOnce({ signal: controller.signal })).toMatchObject({ claimed: 0 })
     await worker.run({ signal: controller.signal })
     expect(database.query).not.toHaveBeenCalled()
     expect(database.connect).not.toHaveBeenCalled()
   })
 
-  it('aborts an active send, persists uncertainty, and leaves the pool usable', async () => {
-    const received = deferred()
-    const url = await receiver(() => received.resolve())
+  it.each(['run', 'runOnce'] as const)(
+    '%s lets an active request finish on shutdown without taking another batch',
+    async (method) => {
+      const received = deferred<ServerResponse>()
+      const url = await receiver((_request, response) => received.resolve(response))
+      const { deliveries } = await fixture(url, 3)
+      const controller = new AbortController()
+      const worker = createWorker(testConfig({ concurrency: 1 }))
+      const running = worker[method]({ signal: controller.signal })
+      const response = await received.promise
+      controller.abort()
+      await expect(worker.runOnce()).rejects.toMatchObject({ code: 'INVALID_STATE' })
+      response.end('accepted during shutdown')
+      await running
+      expect((await state(deliveries[0]!.id)).attempts).toMatchObject([
+        { outcome: 'succeeded', response_body: 'accepted during shutdown' },
+      ])
+      for (const delivery of deliveries.slice(1)) {
+        expect((await state(delivery.id)).delivery).toMatchObject({
+          status: 'pending',
+          attempt_count: 0,
+        })
+      }
+    },
+  )
+
+  it.each(['run', 'runOnce'] as const)(
+    '%s with zero grace aborts an active send, persists uncertainty, and leaves the pool usable',
+    async (method) => {
+      const received = deferred()
+      const url = await receiver(() => received.resolve())
+      const {
+        deliveries: [delivery],
+      } = await fixture(url)
+      const controller = new AbortController()
+      const worker = createWorker(testConfig())
+      const running = worker[method]({ signal: controller.signal, shutdownGraceMs: 0 })
+      await received.promise
+      await expect(worker.runOnce()).rejects.toMatchObject({ code: 'INVALID_STATE' })
+      await expect(worker.run({ signal: controller.signal })).rejects.toMatchObject({
+        code: 'INVALID_STATE',
+      })
+      controller.abort()
+      await running
+      expect((await state(delivery!.id)).delivery.status).toBe('pending')
+      expect((await state(delivery!.id)).attempts[0].outcome).toBe('abandoned')
+      expect((await pool.query('SELECT 1 AS alive')).rows[0].alive).toBe(1)
+    },
+  )
+
+  it('releases a reservation when shutdown arrives during its final database read', async () => {
     const {
       deliveries: [delivery],
-    } = await fixture(url)
+    } = await fixture('http://127.0.0.1:12345')
     const controller = new AbortController()
-    const worker = createWorker(testConfig())
-    const running = worker.run({ signal: controller.signal })
-    await received.promise
-    await expect(worker.tick()).rejects.toMatchObject({ code: 'INVALID_STATE' })
-    await expect(worker.run({ signal: controller.signal })).rejects.toMatchObject({
-      code: 'INVALID_STATE',
+    const database: Database = {
+      query: pool.query.bind(pool),
+      async connect() {
+        const client = await pool.connect()
+        return {
+          release: () => client.release(),
+          async query<R extends Record<string, unknown>>(text: string, values?: unknown[]) {
+            const result = await client.query<R>(text, values)
+            if (text.includes('SELECT clock_timestamp() AS now')) controller.abort()
+            return result
+          },
+        }
+      },
+    }
+    expect(
+      await createWorker(testConfig({ database })).runOnce({ signal: controller.signal }),
+    ).toMatchObject({ claimed: 0 })
+    expect(controller.signal.aborted).toBe(true)
+    const stopped = await state(delivery!.id)
+    expect(stopped.delivery).toMatchObject({
+      status: 'pending',
+      preparing: false,
+      attempt_count: 0,
+      claim_token: null,
     })
-    controller.abort()
-    await running
-    expect((await state(delivery!.id)).delivery.status).toBe('pending')
-    expect((await state(delivery!.id)).attempts[0].outcome).toBe('abandoned')
-    expect((await pool.query('SELECT 1 AS alive')).rows[0].alive).toBe(1)
+    expect(stopped.attempts).toEqual([])
   })
 
   it('reports operational errors through the callback without consuming attempts', async () => {

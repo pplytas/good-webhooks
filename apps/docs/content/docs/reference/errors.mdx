@@ -27,6 +27,6 @@ import type { WebhookErrorCode } from 'good-webhooks'
 
 Database errors, provider lookup failures, and unexpected validator failures can propagate as other error types. Code that handles `WebhookError` still needs a path for unexpected failures.
 
-An HTTP recipient failure normally becomes a delivery and attempt record. It does not reject `publish`, because publication queues work without sending it. Worker internal failures can reject `tick` with an `AggregateError`.
+An HTTP recipient failure normally becomes a delivery and attempt record. It does not reject `publish`, because publication queues work without sending it. Worker internal failures can reject `runOnce` with an `AggregateError`.
 
 The Better Auth plugin [maps expected management errors to HTTP responses](/reference/better-auth#route-errors). That mapping does not change the direct provider API.

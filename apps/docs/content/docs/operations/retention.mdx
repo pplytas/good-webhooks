@@ -3,7 +3,7 @@ title: Prune retained history
 description: Schedule bounded cleanup without treating retention as a deletion deadline.
 ---
 
-Run cleanup separately from delivery workers. Neither `worker.tick()` nor `worker.run()` calls `prune()`.
+Run cleanup separately from delivery workers. Neither `worker.runOnce()` nor `worker.run()` calls `prune()`.
 
 The default retention window is seven days. Expired events become eligible for deletion; retention is not a guaranteed deletion deadline.
 

@@ -85,7 +85,7 @@ it('delivers from a separate BA provider using SQLite management and only Postgr
       data: { invoiceId: 'invoice-1' },
     })
     expect(publication.deliveryCount).toBe(1)
-    expect((await engine.worker.tick()).claimed).toBe(0)
+    expect((await engine.worker.runOnce()).claimed).toBe(0)
     expect(received).toHaveLength(0)
     const rotated = await appAuth.api.rotateWebhookEndpointSecret({
       headers,
@@ -96,7 +96,7 @@ it('delivers from a separate BA provider using SQLite management and only Postgr
     await pool.query(
       "UPDATE public.webhook_deliveries SET next_attempt_at=now() WHERE status='pending'",
     )
-    expect((await engine.worker.tick()).succeeded).toBe(1)
+    expect((await engine.worker.runOnce()).succeeded).toBe(1)
     expect(JSON.parse(received[0]!).data).toEqual({ invoiceId: 'invoice-1' })
     const [delivery] = (await scoped.deliveries.list()).items
     expect((await scoped.deliveries.get(delivery!.id)).attempts).toHaveLength(1)

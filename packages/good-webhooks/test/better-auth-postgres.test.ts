@@ -189,7 +189,7 @@ for (const configuration of cases) {
         data: { invoiceId: 'invoice-1' },
       })
       expect(publication.deliveryCount).toBe(1)
-      expect((await engine.worker.tick()).succeeded).toBe(1)
+      expect((await engine.worker.runOnce()).succeeded).toBe(1)
       expect(received).toHaveLength(1)
       expect(JSON.parse(received[0]!).data).toEqual({ invoiceId: 'invoice-1' })
       const [delivery] = (await scoped.deliveries.list()).items

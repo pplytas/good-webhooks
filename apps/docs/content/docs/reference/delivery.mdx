@@ -36,7 +36,7 @@ The `delivery` object has the following fields. This table is generated from the
 | Field              | Default | Limits                                                             |
 | ------------------ | ------- | ------------------------------------------------------------------ |
 | `timeoutMs`        | `10000` | Integer from 10 through 120,000 ms.                                |
-| `concurrency`      | `10`    | Integer from 1 through 100 claims per tick.                        |
+| `concurrency`      | `10`    | Integer from 1 through 100 claims per batch.                       |
 | `leaseMs`          | `60000` | Integer from 100 through 3,600,000 ms, at least twice `timeoutMs`. |
 | `maxResponseBytes` | `4096`  | Integer from 0 through 65,536 captured response bytes.             |
 
@@ -99,25 +99,35 @@ deliverySettings.set(endpointId: string, settings: { maxInFlight: number }): Pro
 
 Stores sender-owned concurrency settings separately from endpoint records. `maxInFlight` defaults to 2 and accepts an integer from 1 through 50. Active and paused endpoints accept settings. Missing or deleted endpoints produce `NOT_FOUND`.
 
-These settings apply to workers sharing the same delivery database and schema. They are distinct from the `delivery.concurrency` limit on each tick.
+These settings apply to workers sharing the same delivery database and schema. They are distinct from the `delivery.concurrency` limit on each batch.
 
 ## worker
 
 ```ts
-worker.tick(options?: { signal?: AbortSignal }): Promise<WorkerResult>
+worker.runOnce(options?: {
+	signal?: AbortSignal
+	shutdownGraceMs?: number
+}): Promise<WorkerResult>
 worker.run(options: {
 	signal: AbortSignal
 	onError?: (error: unknown) => void
 	pollIntervalMs?: number
+	shutdownGraceMs?: number
 }): Promise<void>
 worker.prune(): Promise<number>
 ```
 
-`tick` recovers expired leases and processes one bounded batch. Its result contains `claimed`, `succeeded`, `retried`, `failed`, and `stale` counts. `stale` means the worker's claim no longer owns completion. Internal failures can reject with `AggregateError` after all sibling attempts settle.
+`runOnce` recovers expired leases and processes one bounded batch. It does not drain the queue. Its result contains `claimed`, `succeeded`, `retried`, `failed`, and `stale` counts. `stale` means the worker's claim no longer owns completion. Internal failures can reject with `AggregateError` after all sibling attempts settle.
 
-`run` polls until its signal aborts. `pollIntervalMs` defaults to 1,000 and accepts an integer from 10 through 60,000. Without `onError`, an internal tick failure stops the loop. With `onError`, the loop reports the error and continues unless the callback throws.
+`run` processes batches until its signal aborts. After a batch completes at least one prepared attempt as a success, retry, or terminal failure, the next batch starts immediately. Empty batches and stale-only results wait for `pollIntervalMs`. The interval defaults to 1,000 and accepts an integer from 10 through 60,000 milliseconds. Receiver retries keep their configured schedule. Recovery and reservation cleanup alone do not trigger an immediate batch.
 
-One worker instance cannot run overlapping ticks or mix `tick` with an active `run` loop. Separate instances coordinate through PostgreSQL leases. An abort can leave the receiver's outcome unknown and require another attempt. Workers own neither the host's process signal handlers nor its database pool.
+Without `onError`, an internal batch failure stops `run`. With `onError`, the loop awaits the callback, then waits for `pollIntervalMs` before continuing. A callback that throws or rejects stops the loop.
+
+Both methods accept `shutdownGraceMs`, an integer from 0 through 2,147,483,647 milliseconds. The default is 30,000. When the signal aborts, the worker stops taking new work and stops waiting for endpoint-provider results. Already prepared attempts can finish during the grace period. When the period expires, the worker requests cancellation of remaining sends. A value of `0` requests immediate cancellation. An already-aborted signal returns without database work.
+
+The grace period starts when the signal aborts. It does not extend delivery leases or bound database cleanup. Both methods await owned work and completion writes before returning. Underlying provider calls can continue after the worker stops waiting for them. The host controls database timeouts, pool closure, and the final process deadline. Forced cancellation can leave the receiver's outcome unknown and require another attempt.
+
+One worker instance cannot run overlapping `runOnce` calls or mix `runOnce` with an active `run` loop, including during shutdown. Separate instances coordinate through PostgreSQL leases. Workers own neither the host's process signal handlers nor its database pool.
 
 `prune` deletes at most 100 expired events and their dependent deliveries and attempts per call. Live leases or contended locks can defer deletion. It returns the number of removed events. It does not run automatically.
 
