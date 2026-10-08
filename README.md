@@ -62,7 +62,7 @@ Two interactive examples show the full path from a business action to a verified
 
 Each example has its own npm lockfile, PostgreSQL setup, browser UI, receiver, and separate worker process. Both install `good-webhooks@0.1.0-alpha.2` from npm and can run together. Follow the [examples guide](examples/README.md) to get started.
 
-## Try the command-line example
+## Try the example
 
 The [standalone demo](packages/good-webhooks/examples/basic/demo.ts) demonstrates rollback, signed delivery, retry, replay, and durable receiver deduplication. Start a disposable database:
 
