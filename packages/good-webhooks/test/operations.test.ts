@@ -250,8 +250,27 @@ describe('worker process lifecycle', () => {
   })
 
   it('handles a real idle-pool connection error and exits nonzero', async () => {
-    const running = example('worker')
+    // PostgreSQL can report idle between startup queries and batch transactions while
+    // the client is still checked out. Wait until the empty batch enters its 60s poll.
+    // Only this test's child observes that timer; the example stays unchanged.
+    const running = start([
+      '--input-type=module',
+      '--eval',
+      `
+        const startTimer = globalThis.setTimeout
+        globalThis.setTimeout = (...args) => {
+          const timer = startTimer(...args)
+          if (args[1] === 60_000) {
+            globalThis.setTimeout = startTimer
+            console.log('test.worker.idle')
+          }
+          return timer
+        }
+        await import('./examples/operations/worker.ts')
+      `,
+    ])
     await ready(running)
+    await waitUntil(() => running.stdout.includes('test.worker.idle'), 'the worker idle poll')
     let pid: number | undefined
     await waitUntil(async () => {
       const result = await pool.query<{ pid: number }>(
