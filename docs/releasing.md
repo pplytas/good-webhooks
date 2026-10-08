@@ -1,6 +1,6 @@
 # Release Good Webhooks
 
-The current candidate is `0.1.0-alpha.1`. It is unpublished, and the library manifest remains private. Preparing or merging a candidate does not publish it. The root and documentation packages always remain private.
+The current candidate is `0.1.0-alpha.1`. Its library manifest permits publication. Preparing or merging a candidate does not publish it. The root and documentation packages always remain private.
 
 ## Verify a candidate
 
@@ -24,7 +24,7 @@ A dry run proves package preparation. It does not authenticate to npm or establi
 
 ## Approve the first publication
 
-Registry publication is a separate decision. Before publishing, review the exact commit, archive, release notes, and npm account. Remove `private` only from `packages/good-webhooks/package.json` in that reviewed publication change, then merge it and verify its new main commit through CI and the release dry run. Keep `publishConfig.tag` set to `alpha`.
+Registry publication is a separate decision. Before publishing, review the exact commit, archive, release notes, and npm account. The publication change removes `private` only from `packages/good-webhooks/package.json`. Verify its merged main commit through CI and the release dry run. Keep `publishConfig.tag` set to `alpha`.
 
 An npm registry 404 does not reserve the name or prove that npm will accept it. The initial release requires an authenticated npm account with the right to publish `good-webhooks`. Never publish a placeholder package to claim the name.
 
