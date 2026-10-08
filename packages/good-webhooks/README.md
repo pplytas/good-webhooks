@@ -49,7 +49,7 @@ pnpm --dir packages/good-webhooks pack
 Then install the archive in your application:
 
 ```sh
-npm install /absolute/path/to/good-webhooks-0.1.0-alpha.1.tgz
+npm install /absolute/path/to/good-webhooks-0.1.0-alpha.2.tgz
 ```
 
 Your application supplies its database driver and payload validators. Apply the appropriate initial migration before using the PostgreSQL provider or delivery engine. Better Auth management uses Better Auth's schema workflow instead. The migration generator is available at `good-webhooks/migrations`.

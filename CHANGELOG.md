@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.0-alpha.2 (2026-10-08)
+
+Release-engineering update for GitHub Actions trusted publishing and npm provenance. Runtime behavior, public APIs, dependencies, and database schema are unchanged from `0.1.0-alpha.1`.
+
 ## 0.1.0-alpha.1 (2026-10-08)
 
 First public alpha release for embedded TypeScript webhook management and delivery.
