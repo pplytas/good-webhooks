@@ -15,9 +15,11 @@ This is an unpublished v0. Use a local archive until the first registry release.
 
 PostgreSQL setups require version 16 or later. Better Auth is an optional peer; standalone imports do not require it. The supported Better Auth range is `>=1.7.7 <1.8.0`, tested with 1.7.7.
 
+TypeScript consumers need TypeScript 5.9.3 or later, with NodeNext or Bundler resolution. Better Auth consumers use `skipLibCheck` for upstream declarations. See [compatibility and upgrades](https://good-webhooks.vercel.app/operations/compatibility).
+
 ## Documentation
 
-The repository contains the [documentation source](https://github.com/pplytas/good-webhooks/tree/main/apps/docs/content/docs). Run `pnpm dev` from a repository checkout to read the rendered site locally.
+Read the [documentation](https://good-webhooks.vercel.app). The repository contains its [source](https://github.com/pplytas/good-webhooks/tree/main/apps/docs/content/docs). Run `pnpm dev` from a repository checkout to preview changes locally.
 
 - [Install a local build](https://github.com/pplytas/good-webhooks/blob/main/apps/docs/content/docs/getting-started/installation.mdx)
 - [Manage your first endpoint with Better Auth](https://github.com/pplytas/good-webhooks/blob/main/apps/docs/content/docs/better-auth/first-endpoint.mdx)
@@ -39,7 +41,7 @@ pnpm --dir packages/good-webhooks pack
 Then install the archive in your application:
 
 ```sh
-npm install /absolute/path/to/good-webhooks-0.0.0.tgz
+npm install /absolute/path/to/good-webhooks-0.1.0-alpha.1.tgz
 ```
 
 Your application supplies its database driver and payload validators. Apply the appropriate initial migration before using the PostgreSQL provider or delivery engine. Better Auth management uses Better Auth's schema workflow instead. The migration generator is available at `good-webhooks/migrations`.

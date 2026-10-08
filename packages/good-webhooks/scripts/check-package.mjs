@@ -6,11 +6,36 @@ import { fileURLToPath } from 'node:url'
 
 const packageDirectory = fileURLToPath(new URL('..', import.meta.url))
 const manifest = JSON.parse(await readFile(join(packageDirectory, 'package.json'), 'utf8'))
+const minimumTypeScriptVersion = '5.9.3'
 const directory = await mkdtemp(join(tmpdir(), 'good-webhooks-consumer-'))
 const run = (command, args, cwd) =>
   execFileSync(command, args, { cwd, stdio: 'pipe', encoding: 'utf8' })
-const typecheck = (args = []) =>
-  run(join(directory, 'node_modules/.bin/tsc'), ['--noEmit', ...args], directory)
+const typecheck = (args = []) => {
+  // Install both compilers once and check the same archive and inference fixtures.
+  for (const compiler of ['typescript-minimum', 'typescript']) {
+    const executable = join(directory, 'node_modules', compiler, 'bin/tsc')
+    const version = run(process.execPath, [executable, '--version'], directory).trim()
+    for (const [module, moduleResolution] of [
+      ['NodeNext', 'NodeNext'],
+      ['ESNext', 'Bundler'],
+    ]) {
+      console.log(`${version}: ${moduleResolution}, ${args.length ? 'Better Auth' : 'standalone'}`)
+      run(
+        process.execPath,
+        [
+          executable,
+          '--noEmit',
+          '--module',
+          module,
+          '--moduleResolution',
+          moduleResolution,
+          ...args,
+        ],
+        directory,
+      )
+    }
+  }
+}
 async function consumerFixture(name, replacements) {
   let source = await readFile(join(packageDirectory, 'test', name), 'utf8')
   for (const [from, to] of Object.entries(replacements)) source = source.replaceAll(from, to)
@@ -55,6 +80,7 @@ for (const name of ['001-initial', 'management', 'delivery']) {
       '--no-audit',
       '--no-fund',
       `typescript@${manifest.devDependencies.typescript}`,
+      `typescript-minimum@npm:typescript@${minimumTypeScriptVersion}`,
       `@types/node@${manifest.devDependencies['@types/node']}`,
       `@types/pg@${manifest.devDependencies['@types/pg']}`,
       `pg@${manifest.devDependencies.pg}`,

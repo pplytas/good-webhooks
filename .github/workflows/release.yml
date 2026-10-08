@@ -1,0 +1,107 @@
+name: Release
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Exact alpha version from packages/good-webhooks/package.json
+        required: true
+        type: string
+      publish:
+        description: Publish to npm after the separate publication decision
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: npm-release
+  cancel-in-progress: false
+jobs:
+  prepare:
+    name: Verify release archive
+    if: github.repository == 'pplytas/good-webhooks' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      archive: ${{ steps.manifest.outputs.archive }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Require successful main CI for this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          conclusion=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$GITHUB_SHA&event=push&per_page=1" --jq '.workflow_runs[0].conclusion')
+          test "$conclusion" = success || { echo 'Wait for CI on this main commit to succeed, then retry.'; exit 1; }
+      - name: Check alpha version and publication decision
+        id: manifest
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+          PUBLISH: ${{ inputs.publish }}
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict'
+          import { readFileSync, appendFileSync } from 'node:fs'
+          const pkg = JSON.parse(readFileSync('packages/good-webhooks/package.json', 'utf8'))
+          assert.equal(pkg.name, 'good-webhooks')
+          assert.match(pkg.version, /^0\.\d+\.\d+-alpha\.\d+$/)
+          assert.equal(pkg.version, process.env.RELEASE_VERSION, 'The requested version must match the reviewed manifest.')
+          if (process.env.PUBLISH === 'true') {
+            assert.equal(pkg.private, undefined, 'Remove private in a reviewed publication change before publishing.')
+          }
+          appendFileSync(process.env.GITHUB_OUTPUT, `archive=good-webhooks-${pkg.version}.tgz\n`)
+          NODE
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - name: Rehearse the exact archive with fresh consumers
+        run: pnpm test:package
+      - name: Audit runtime dependencies
+        run: pnpm --filter good-webhooks audit --prod
+      - name: Dry-run publication without credentials
+        env:
+          ARCHIVE: ${{ steps.manifest.outputs.archive }}
+        run: npm publish "packages/good-webhooks/$ARCHIVE" --dry-run --ignore-scripts --access public --tag alpha
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-package
+          path: packages/good-webhooks/${{ steps.manifest.outputs.archive }}
+          if-no-files-found: error
+          retention-days: 7
+      - name: Record candidate
+        env:
+          ARCHIVE: ${{ steps.manifest.outputs.archive }}
+        run: |
+          echo "Verified $ARCHIVE from commit $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
+          shasum -a 256 "packages/good-webhooks/$ARCHIVE" >> "$GITHUB_STEP_SUMMARY"
+  publish:
+    name: Publish alpha
+    needs: prepare
+    if: inputs.publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+      - name: Use an npm CLI with trusted publishing support
+        run: npm install --global npm@11.19.0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-package
+      - name: Publish the verified archive through OIDC
+        env:
+          ARCHIVE: ${{ needs.prepare.outputs.archive }}
+        run: npm publish "$ARCHIVE" --ignore-scripts --access public --tag alpha --provenance

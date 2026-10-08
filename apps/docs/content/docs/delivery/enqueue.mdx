@@ -72,6 +72,8 @@ The example assumes an application-owned `invoices` table. Use the configured de
 
 Before commit, the returned publication is provisional and invisible to workers. Rolling back removes both the business write and queued delivery work.
 
+If recipients depend on business data, follow the [transactional recipient selection recipe](/delivery/transactions). It captures recipients using the same checked-out client before publication.
+
 Management lookup remains outside this transaction. This pattern does not create a transaction spanning Better Auth storage, a separate business database, and delivery storage. If those databases differ, use an application-owned durable outbox or another recovery workflow to bridge the commits.
 
 ## Limit endpoint concurrency
