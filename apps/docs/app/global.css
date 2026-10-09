@@ -14,7 +14,7 @@
   --color-fd-foreground: #09090b;
   --color-fd-card: #fafafa;
   --color-fd-muted: #f4f4f5;
-  --color-fd-muted-foreground: #71717a;
+  --color-fd-muted-foreground: #6b6b74;
   --color-fd-secondary: #f4f4f5;
   --color-fd-accent: #f4f4f5;
   --color-fd-border: #e4e4e7;
@@ -41,6 +41,11 @@
   --color-fd-muted: #18181b;
   --color-fd-secondary: #1f1f23;
   --color-fd-muted-foreground: #a1a1aa;
+}
+
+/* github-light-high-contrast comments (#66707b) reach only 3.7:1 on highlighted lines. Darken that one token. */
+.shiki span[style*='--shiki-light:#66707b' i] {
+  --shiki-light: #57606a !important;
 }
 
 h1,

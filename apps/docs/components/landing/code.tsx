@@ -12,6 +12,9 @@ export async function Code({
 }) {
   const rendered = await highlight(code, {
     lang,
+    // Keep in sync with rehypeCodeOptions in source.config.ts.
+    themes: { light: 'github-light-high-contrast', dark: 'github-dark-high-contrast' },
+    defaultColor: false,
     components: {
       // Shiki inlines the theme background; the code block supplies its own surface instead.
       pre: ({ style: _style, ...props }) => <Pre {...props} />,

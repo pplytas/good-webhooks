@@ -3,6 +3,12 @@ import { defineConfig, defineDocs } from 'fumadocs-mdx/config'
 import { createGenerator, createProject, remarkAutoTypeTable } from 'fumadocs-typescript'
 import { stringifyComponent } from './lib/markdown-export'
 
+// Keep in sync with components/landing/code.tsx. Verified for 4.5:1 on every code surface.
+const codeThemes = {
+  light: 'github-light-high-contrast',
+  dark: 'github-dark-high-contrast',
+} as const
+
 export const docs = defineDocs({
   dir: 'content/docs',
   docs: { postprocess: { includeProcessedMarkdown: { stringify: stringifyComponent } } },
@@ -33,9 +39,13 @@ function remarkTypeTables(): ReturnType<typeof remarkAutoTypeTable> {
         project.close()
       }
     }
-    const result = await remarkAutoTypeTable({ generator })(tree, file, (error) => {
-      if (error) throw error
-    })
+    const result = await remarkAutoTypeTable({ generator, shiki: { themes: codeThemes } })(
+      tree,
+      file,
+      (error) => {
+        if (error) throw error
+      },
+    )
     if (result instanceof Error) throw result
     return result
   }
@@ -43,6 +53,7 @@ function remarkTypeTables(): ReturnType<typeof remarkAutoTypeTable> {
 
 export default defineConfig({
   mdxOptions: {
+    rehypeCodeOptions: { themes: codeThemes },
     remarkPlugins: [remarkTypeTables],
   },
 })
