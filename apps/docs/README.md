@@ -17,7 +17,6 @@ The preview serves `out/` on `http://localhost:3000`. Set `PORT` to use another 
 - `app/(home)/page.tsx` is the landing page at `/`.
 - `app/docs/[[...slug]]/page.tsx` renders `content/docs/` under `/docs`. `content/docs/index.mdx` is the introduction.
 - `app/llms.txt`, `app/llms-full.txt`, and `app/llms.mdx/[[...slug]]` export Markdown for AI tools. Each docs page links to its own `.md` export through the copy and open actions.
-- `vercel.json` redirects the pre-`/docs` URLs. Add an entry when a page moves.
 - `lib/site.ts` reads the package version for the sidebar badge and npm link. `lib/layout.shared.tsx` holds the shared navigation.
 
 ## Authoring
