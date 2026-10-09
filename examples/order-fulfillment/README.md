@@ -1,6 +1,6 @@
 # Northstar Supply
 
-A small shop admin and warehouse receiver built with the published `good-webhooks@0.1.0-alpha.3` package. Place an order, watch its delivery, take the warehouse offline, and replay an event without creating a second shipment.
+A small shop admin and warehouse receiver built with the published `good-webhooks@0.1.0-alpha.4` package. Place an order, watch its delivery, take the warehouse offline, and replay an event without creating a second shipment.
 
 This is an independent npm application. It has its own lockfile and does not use the repository's package source or pnpm workspace. You can copy this directory elsewhere and run it.
 

@@ -1,6 +1,6 @@
 # Published-package integration assessment
 
-Both examples pin `good-webhooks@0.1.0-alpha.3` from npm with independent lockfiles. They were initially built against alpha.2 using public APIs. Longer manual use exposed a library defect in delivery-history ordering that the initial walkthroughs missed.
+Both examples pin `good-webhooks@0.1.0-alpha.4` from npm with independent lockfiles. They were initially built against alpha.2 using public APIs. Longer manual use exposed a library defect in delivery-history ordering that the initial walkthroughs missed.
 
 ## Delivery-history defect
 
