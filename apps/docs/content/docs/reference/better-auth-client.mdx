@@ -3,6 +3,8 @@ title: Better Auth client
 description: Client methods, event-name inference, and JSON result types.
 ---
 
+`good-webhooks/better-auth/client` gives a Better Auth client typed methods for the plugin's endpoint management routes.
+
 ```ts
 import { goodWebhooksClient } from 'good-webhooks/better-auth/client'
 ```
@@ -15,28 +17,54 @@ goodWebhooksClient<const EventTypes extends readonly string[] = readonly string[
 )
 ```
 
-Returns a Better Auth client plugin for `createAuthClient`. Its optional `eventTypes` tuple carries the server's event-name literals into client types. Omitting it leaves event names typed as `string`. It does not change the server's configured event names or authorize requests.
+```ts title="auth-client.ts"
+import { createAuthClient } from 'better-auth/client'
+import { goodWebhooksClient } from 'good-webhooks/better-auth/client'
 
-The dedicated client entrypoint has no runtime import of the server plugin, database driver, or delivery worker. It configures all Good Webhooks route methods as POST and preserves JSON values with `JSON.parse`, including descriptions that look like dates.
+const eventTypes = ['invoice.created', 'invoice.paid'] as const
+
+export const authClient = createAuthClient({
+  plugins: [goodWebhooksClient({ eventTypes })],
+})
+```
+
+Returns a Better Auth client plugin for `createAuthClient`.
+
+| Option       | Contract                                                                                                                                                                                                  |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `eventTypes` | Optional tuple that carries the server's event-name literals into client types. Omitting it leaves event names typed as `string`. It does not change the server's configured names or authorize requests. |
+
+The dedicated client entry point has no runtime import of the server plugin, database driver, or delivery worker. It configures all Good Webhooks route methods as POST and preserves JSON values with `JSON.parse`, including descriptions that look like dates.
 
 ## Client methods
 
+```ts
+import { authClient } from './auth-client.js'
+
+const { data, error } = await authClient.goodWebhooks.create({
+  url: 'https://receiver.example/webhooks',
+  eventTypes: ['invoice.paid'],
+})
+if (error) throw new Error(error.message)
+console.log(data.secret) // Show once. No later response contains it.
+```
+
 All methods return Better Auth's client result containing `data` and `error`. Request bodies and data shapes match the [server route reference](/docs/reference/better-auth#authenticated-routes).
 
-| Client method                                 | Server method                 |
-| --------------------------------------------- | ----------------------------- |
-| `authClient.goodWebhooks.create(input)`       | `createWebhookEndpoint`       |
-| `authClient.goodWebhooks.list(input)`         | `listWebhookEndpoints`        |
-| `authClient.goodWebhooks.get(input)`          | `getWebhookEndpoint`          |
-| `authClient.goodWebhooks.update(input)`       | `updateWebhookEndpoint`       |
-| `authClient.goodWebhooks.pause(input)`        | `pauseWebhookEndpoint`        |
-| `authClient.goodWebhooks.resume(input)`       | `resumeWebhookEndpoint`       |
-| `authClient.goodWebhooks.remove(input)`       | `removeWebhookEndpoint`       |
-| `authClient.goodWebhooks.rotateSecret(input)` | `rotateWebhookEndpointSecret` |
+| Client method                                 | Server method                 | `data`                 |
+| --------------------------------------------- | ----------------------------- | ---------------------- |
+| `authClient.goodWebhooks.create(input)`       | `createWebhookEndpoint`       | `{ endpoint, secret }` |
+| `authClient.goodWebhooks.list(input)`         | `listWebhookEndpoints`        | `WebhookEndpointDTO[]` |
+| `authClient.goodWebhooks.get(input)`          | `getWebhookEndpoint`          | `WebhookEndpointDTO`   |
+| `authClient.goodWebhooks.update(input)`       | `updateWebhookEndpoint`       | `WebhookEndpointDTO`   |
+| `authClient.goodWebhooks.pause(input)`        | `pauseWebhookEndpoint`        | `WebhookEndpointDTO`   |
+| `authClient.goodWebhooks.resume(input)`       | `resumeWebhookEndpoint`       | `WebhookEndpointDTO`   |
+| `authClient.goodWebhooks.remove(input)`       | `removeWebhookEndpoint`       | `WebhookEndpointDTO`   |
+| `authClient.goodWebhooks.rotateSecret(input)` | `rotateWebhookEndpointSecret` | `{ endpoint, secret }` |
 
-Each input accepts optional `scope`. Omission selects the signed-in user's personal scope. `scope: null` requests application scope and requires server policy. The client does not weaken server authorization.
+Each input accepts optional `scope`. Omission selects the signed-in user's personal scope. `scope: null` requests application scope and requires server policy. The client does not weaken server authorization. See [scope authorization](/docs/reference/better-auth#scope-authorization).
 
-Creation and rotation return `{ endpoint, secret }` in `data`. Other writes and `get` return one endpoint. `list` returns an array. Endpoint timestamps remain ISO strings.
+Endpoint timestamps remain ISO strings.
 
 ## Inference example
 

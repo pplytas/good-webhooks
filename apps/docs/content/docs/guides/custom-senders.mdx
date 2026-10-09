@@ -1,68 +1,82 @@
 ---
 title: Custom senders
-description: Keep your own delivery pipeline and use Good Webhooks management as its source of endpoints and secrets.
+description: Keep your own delivery pipeline and use Good Webhooks endpoint management as its source of recipients and signing secrets.
 ---
 
-Both management providers expose `management.source`, an `EndpointSource` with the two reads a sender needs. Nothing else in the package is required.
+Already have a queue that sends HTTP requests? Keep it, and use Good Webhooks only for endpoint management. Both providers expose `management.source`, an `EndpointSource` with the two reads a sender needs:
 
 ```ts
-interface EndpointSource {
-  matchRecipients(scope: ManagementScope, eventType: string): Promise<readonly string[]>
-  resolveEndpoint(scope: ManagementScope, id: string): Promise<EndpointResolution>
-}
+import type { EndpointSource } from 'good-webhooks/management'
 
-type EndpointResolution =
-  { status: 'active'; url: string; secrets: readonly string[] } | { status: 'paused' | 'deleted' }
+// interface EndpointSource {
+//   matchRecipients(scope, eventType): Promise<readonly string[]>
+//   resolveEndpoint(scope, endpointId): Promise<
+//     | { status: 'active'; url: string; secrets: readonly string[] }
+//     | { status: 'paused' | 'deleted' }
+//   >
+// }
 ```
 
-`scope` is `null` for application scope or `{ type, id }`. The source returns plaintext signing secrets, so it belongs in trusted server code only.
+`scope` is `null` for application scope or `{ type, id }`. The source returns plaintext signing secrets, so keep it in trusted server code.
 
-## Your sender's responsibilities
+## What your sender must do
+
+<Flow>
+  <FlowStep title="Capture recipients" actor="on publish">
+    Call `matchRecipients()` once and store the full list with the event.
+  </FlowStep>
+  <FlowStep title="Resolve" actor="before each attempt">
+    Call `resolveEndpoint()` for the current URL, status, and secrets.
+  </FlowStep>
+  <FlowStep title="Sign and send" actor="each attempt">
+    Standard Webhooks signature, safe connection, no redirects.
+  </FlowStep>
+</Flow>
 
 <Steps>
 <Step>
-### Capture recipients when you accept an event
+### Capture recipients once
 
-Call `matchRecipients()` once and store the complete returned list with the event. Include paused endpoints. On an idempotent repeat, reuse the stored list rather than looking up again.
+When you accept an event, call `matchRecipients()` and store the **complete** list with it, paused endpoints included. On a repeat of the same event, reuse the stored list instead of asking again.
 
-Propagate failures. A rejected lookup is not an empty recipient set, and a partial result from a failed batch is not a result.
+A rejected lookup is a failure, not "no recipients". Never store a partial list.
 
 </Step>
 <Step>
-### Resolve again before every attempt
+### Resolve before every attempt
 
 ```ts
 const endpoint = await source.resolveEndpoint(scope, endpointId)
 if (endpoint.status === 'active') {
   // Send to endpoint.url, signing with every secret in endpoint.secrets.
 } else if (endpoint.status === 'paused') {
-  // Keep the delivery queued within your expiry policy.
+  // Keep the delivery queued, within your expiry policy.
 } else {
-  // Cancel pending work for this deleted or missing endpoint.
+  // Deleted or missing: cancel this delivery.
 }
 ```
 
-Do this for retries as well as first attempts. The URL and secrets captured at publication can be stale.
+Do this for retries too. The URL and secrets from publish time may be stale.
 
 </Step>
 <Step>
 ### Sign and send safely
 
-Implement the [Standard Webhooks signing format](https://github.com/standard-webhooks/standard-webhooks/blob/main/spec/standard-webhooks.md). Keep the event ID and body stable across retries and replays. Sign with all returned secrets so receivers can verify during a rotation overlap.
-
-Before each connection, resolve the hostname, reject private and otherwise unsafe addresses, pin the validated address, keep TLS hostname checks, and refuse redirects. Registration-time checks do not protect against a DNS change later.
+- Sign with the [Standard Webhooks](https://github.com/standard-webhooks/standard-webhooks/blob/main/spec/standard-webhooks.md) format, once per secret in `secrets`, so receivers keep working during a rotation.
+- Keep the event ID and body identical across retries and replays.
+- Before each connection, resolve the hostname, reject private and otherwise unsafe addresses, connect to the checked address with TLS hostname checks, and refuse redirects. Checks at registration don't cover later DNS changes.
 
 </Step>
 </Steps>
 
-Durable queuing, bounded retries, attempt history, retention, and concurrency are yours too. If that list is longer than you want, [connect the built-in delivery engine](/docs/better-auth/delivery) to the same source instead.
+Durable queuing, bounded retries, attempt history, retention, and concurrency limits are also yours. If that list is longer than you want, connect the [built-in delivery](/docs/better-auth/delivery) to the same source instead.
 
-## Guarantees the source gives you
+## What the source guarantees
 
-- `matchRecipients()` returns every matching endpoint, or rejects. Concurrent edits may be observed before or after each edit; there is no scope-wide snapshot.
-- The Better Auth provider also checks that the owning user or organization still exists. A missing owner yields no recipients and resolves as `deleted`. A failed owner lookup rejects.
-- During a signing-secret rotation, `secrets` lists the new secret first and the previous one until the overlap ends.
+- `matchRecipients()` returns every matching endpoint, or rejects. Concurrent edits may or may not be seen; there's no scope-wide snapshot.
+- The Better Auth provider also checks that the owning user or organization still exists. A missing owner means no recipients, and `resolveEndpoint()` returns `deleted`. A failed owner lookup rejects.
+- During a signing-secret rotation, `secrets` lists the new secret first and the old one until the overlap ends.
 
-## Custom storage instead of a custom sender
+## Custom storage instead
 
-To keep the lifecycle API but store endpoints somewhere else, implement the [management repository contract](/docs/reference/management#managementrepository) and pass it to `createManagement()`. A sender only ever needs `EndpointSource`.
+To keep the endpoint lifecycle API but store endpoints somewhere else, implement the [`ManagementRepository` contract](/docs/reference/management#managementrepository) and pass it to `createManagement()`. A sender only ever needs `EndpointSource`.

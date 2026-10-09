@@ -3,12 +3,27 @@ title: Better Auth plugin
 description: Let signed-in users manage their own webhook endpoints through authenticated routes, stored in your existing Better Auth database.
 ---
 
-The `goodWebhooks` plugin adds one model and eight POST routes to a Better Auth instance. Users create, list, update, pause, resume, remove, and rotate endpoints in their personal scope. Organization scopes work with Better Auth's organization plugin and its permissions.
+The `goodWebhooks` plugin lets signed-in users manage their own webhook endpoints in your app. It adds one model and eight routes to your Better Auth instance, and stores endpoints with your existing database adapter.
 
-The plugin manages endpoints only. It sends nothing. Add the [PostgreSQL delivery engine](/docs/better-auth/delivery) or a [custom sender](/docs/guides/custom-senders) to deliver events.
+<Flow title="Creating an endpoint through the plugin">
+  <FlowStep title="Call" actor="browser">
+    `authClient.goodWebhooks.create({ url, eventTypes })`
+  </FlowStep>
+  <FlowStep title="Authorize" actor="plugin">
+    Checks the session, and the user's permission for the requested scope.
+  </FlowStep>
+  <FlowStep title="Store" actor="your database">
+    Saves the endpoint with an encrypted signing secret through your adapter.
+  </FlowStep>
+  <FlowStep title="Show once" actor="browser">
+    The response carries the signing secret. No later read does.
+  </FlowStep>
+</Flow>
+
+The plugin manages endpoints only; it sends nothing. To send events, add the [built-in delivery](/docs/better-auth/delivery) or a [custom sender](/docs/guides/custom-senders).
 
 <Callout>
-  New to Better Auth with this plugin? The [quick start](/docs/better-auth/quick-start) runs the
+  Want to see it work first? The [Better Auth quick start](/docs/better-auth/quick-start) runs the
   whole flow in one file with SQLite.
 </Callout>
 
@@ -56,8 +71,6 @@ Use [Better Auth's CLI](https://better-auth.com/docs/concepts/cli) with the vers
 npx @better-auth/cli migrate --config ./src/auth.ts   # built-in SQL adapters
 npx @better-auth/cli generate --config ./src/auth.ts  # Drizzle or Prisma, then run their migrations
 ```
-
-Use a CLI version that matches your installed Better Auth version.
 
 The plugin declares a `webhookEndpoint` model with a unique `allocationKey` index. Keep every generated field and that index; it enforces the per-scope endpoint limit under concurrent creates. MongoDB creates the index before writes.
 

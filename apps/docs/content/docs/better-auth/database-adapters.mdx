@@ -3,7 +3,9 @@ title: Database adapters
 description: Which Better Auth adapters the plugin is verified against, what the tests cover, and what they do not.
 ---
 
-The plugin stores endpoints through Better Auth's public adapter interface. Delivery never queries its table. The compatibility baseline is Better Auth **1.7.7** on Node.js 24.
+The plugin stores endpoints through Better Auth's public adapter interface, so it works with the adapter you already use. Delivery never queries the plugin's table directly. The baseline is Better Auth **1.7.7** on Node.js 24.
+
+**Short version:** SQLite, PostgreSQL, MySQL, MongoDB, SQL Server, libSQL, Cloudflare D1, Drizzle, and Prisma are all tested against real databases. SQL Server needs a UTF-8 collation.
 
 ## Verified profiles
 
@@ -34,7 +36,10 @@ Bun's SQLite, hosted D1, remote Turso, MongoDB replica-set transactions, and Dri
 
 ## How storage works
 
-Knowing this helps when you read the generated schema:
+You only need this when reading the generated schema or debugging an adapter.
+
+<Accordions>
+<Accordion title="Slots, scope digests, batched lookup, and guarded writes">
 
 - **Slots.** Each live endpoint occupies one of 1,000 deterministic slots per scope. A unique index on `allocationKey` makes creation atomic, even under concurrent creators. Deletion releases the slot in the same conditional write and keeps a tombstone.
 - **Scope digest.** Slot keys use a SHA-256 digest of the scope. Reads verify the full scope identity afterwards and fail closed on a mismatch. A case-insensitive database comparison is never treated as equality.
@@ -43,6 +48,9 @@ Knowing this helps when you read the generated schema:
 - **Subscription storage.** Two internal array fields hold up to 50 names each, so 100 subscriptions fit SQL Server's `varchar(8000)` array representation. This is a storage detail, not two public lists.
 
 Removing the unique index silently breaks the per-scope limit. Runtime validation does not replace correct migrations.
+
+</Accordion>
+</Accordions>
 
 ## Run the matrix yourself
 

@@ -3,7 +3,7 @@ title: Permissions
 description: How the plugin authorizes personal, organization, application, and custom scopes on every route.
 ---
 
-Every plugin route runs with Better Auth's session middleware and then checks the requested scope:
+Every plugin route requires a session, then checks whether the user may act in the requested [scope](/docs/concepts/scopes):
 
 | Requested `scope`              | Who may act                                                          |
 | ------------------------------ | -------------------------------------------------------------------- |
@@ -13,7 +13,14 @@ Every plugin route runs with Better Auth's session middleware and then checks th
 | `null` (application)           | Only if your `authorizeScope` policy allows it. Denied by default    |
 | any other `type`               | Only if your `authorizeScope` policy allows it. Denied by default    |
 
-Actions are `create`, `read`, `update`, and `delete`. Pause, resume, and rotate count as `update`.
+Each route maps to one action:
+
+| Route under `/good-webhooks/`                | Action   |
+| -------------------------------------------- | -------- |
+| `create`                                     | `create` |
+| `list`, `get`                                | `read`   |
+| `update`, `pause`, `resume`, `rotate-secret` | `update` |
+| `remove`                                     | `delete` |
 
 ## Organization endpoints
 

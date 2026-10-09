@@ -3,9 +3,22 @@ title: Transactional recipient selection
 description: Choose recipients from your own routing table inside the same PostgreSQL transaction that commits the business write.
 ---
 
-Use this recipe when **who receives an event depends on the payload** or on business data that is not committed yet. Instead of the normal subscription lookup, you query the recipient list on your transaction client, freeze it, and hand it to `publish()` through a one-off `EndpointSource`.
+Normally, an event goes to every endpoint subscribed to its type. Use this recipe when **who receives it depends on the payload** or on rows you haven't committed yet. For example: send `invoice.paid` only to endpoints that handle the invoice's currency.
 
-The business tables and the delivery tables must share one PostgreSQL database. This recipe uses only the public API and starts no worker.
+<Flow>
+  <FlowStep title="BEGIN" actor="your app">
+    Open a transaction on one client.
+  </FlowStep>
+  <FlowStep title="Write and route">
+    Update the invoice, then query your routing table on the same client.
+  </FlowStep>
+  <FlowStep title="publish()">
+    Pass the frozen recipient list through a one-off `EndpointSource`.
+  </FlowStep>
+  <FlowStep title="COMMIT">The invoice, the event, and its deliveries commit together.</FlowStep>
+</Flow>
+
+Your tables and the delivery tables must share one PostgreSQL database. The recipe uses only the public API and starts no worker.
 
 ## Routing rules in your schema
 

@@ -3,10 +3,27 @@ title: Core
 description: Compose endpoint management and PostgreSQL delivery.
 ---
 
+The root entry point combines endpoint management and PostgreSQL delivery in one client.
+
 ```ts
-import { createWebhooks, generateEncryptionKey, WebhookError } from 'good-webhooks'
-import type { WebhookOptions, Webhooks, WebhookClient } from 'good-webhooks'
+import {
+  createWebhooks,
+  createDelivery,
+  generateEncryptionKey,
+  verifyWebhook,
+  WebhookError,
+} from 'good-webhooks'
+import type {
+  WebhookOptions,
+  Webhooks,
+  WebhookClient,
+  EndpointInput,
+  EndpointPatch,
+  WebhookErrorCode,
+} from 'good-webhooks'
 ```
+
+The root also exports the shared types listed under [other root exports](#other-root-exports). For the step-by-step setup, see [installation](/docs/installation).
 
 ## createWebhooks
 
@@ -14,22 +31,47 @@ import type { WebhookOptions, Webhooks, WebhookClient } from 'good-webhooks'
 createWebhooks<const E extends EventDefinitions>(options: WebhookOptions<E>): Webhooks<E>
 ```
 
-Combines endpoint management with the [delivery engine](/docs/reference/delivery). Construction does not open connections, apply migrations, or start a worker.
+```ts title="webhooks.ts"
+import { createWebhooks } from 'good-webhooks'
+import { Pool } from 'pg'
+import { z } from 'zod'
 
-`WebhookOptions<E>` has all delivery options except `source`, plus the following fields.
+export const pool = new Pool({ connectionString: process.env.DATABASE_URL })
+
+export const webhooks = createWebhooks({
+  database: pool,
+  encryptionKey: process.env.WEBHOOK_ENCRYPTION_KEY!,
+  events: {
+    'invoice.paid': z.object({ invoiceId: z.string(), amount: z.number().int() }),
+  },
+})
+```
+
+`WebhookOptions<E>` accepts every [delivery option](/docs/reference/delivery#createdelivery) except `source`, plus these fields:
 
 | Field           | Type                   | Meaning                                                                                              |
 | --------------- | ---------------------- | ---------------------------------------------------------------------------------------------------- |
 | `encryptionKey` | `string \| Uint8Array` | Required for the default PostgreSQL management provider. Base64-encoded 32 bytes or a 32-byte array. |
 | `management`    | `EndpointManagement`   | Optional existing provider. Its source supplies recipients and current endpoint state.               |
 
-Without `management`, the constructor creates standalone PostgreSQL management using `database`, `schema`, configured event names, `encryptionKey`, and `allowLocalhost`. With `management`, that provider keeps its own database, schema, encryption, and URL-validation configuration. Core options do not reconfigure it.
+Construction does not open connections, apply migrations, or start a worker.
 
-The default provider has no `decryptionKeys` option through this constructor. A provider created with `createPostgresManagement` can supply old keys and then be passed as `management`.
+- **Without `management`**, the constructor creates standalone PostgreSQL management from `database`, `schema`, the configured event names, `encryptionKey`, and `allowLocalhost`. `schema` then applies to both the management and delivery tables.
+- **With `management`**, that provider keeps its own database, schema, encryption, and URL-validation configuration. Core options do not reconfigure it, and `encryptionKey` is unused.
+
+Invalid options throw `INVALID_CONFIG`: a missing event map, a malformed key, a database without `query()` and `connect()`, or any [delivery option](/docs/reference/delivery#createdelivery) out of range.
+
+<Accordions>
+<Accordion title="Rotating the storage encryption key with createWebhooks">
+
+The default provider has no `decryptionKeys` option through this constructor. Create a provider with [`createPostgresManagement`](/docs/reference/postgres), which accepts old keys, and pass it as `management`. See [key rotation](/docs/operations/key-rotation).
+
+</Accordion>
+</Accordions>
 
 ## Returned client
 
-The result exposes `publish`, `deliveries`, `deliverySettings`, and `worker` from the delivery engine, plus an endpoint client.
+The client exposes `publish`, `deliveries`, `deliverySettings`, and `worker` from the [delivery engine](/docs/reference/delivery), plus these members:
 
 | Member                                     | Behavior                                                                                         |
 | ------------------------------------------ | ------------------------------------------------------------------------------------------------ |
@@ -44,9 +86,43 @@ The result exposes `publish`, `deliveries`, `deliverySettings`, and `worker` fro
 | `check()`                                  | Checks the default management provider, if constructed here, then delivery schema compatibility. |
 | `forScope(scope)`                          | Returns the same publication, history, settings, and endpoint methods bound to one named scope.  |
 
-Endpoint methods use the [management contract and limits](/docs/reference/management). `EndpointInput<E>` and `EndpointPatch<E>` restrict subscriptions to event names in `E`. `removeScope` and `reencrypt` are direct provider operations, not members of this convenience endpoint client.
+### endpoints
 
-`forScope` snapshots its scope. It does not authorize a caller. It does not expose `worker` or `check`; those operate at installation level. When a provider is injected, `check()` does not call that provider's optional health checks. The host remains responsible for checking its management storage.
+```ts
+import { webhooks } from './webhooks.js'
+
+const { endpoint, secret } = await webhooks.endpoints.create({
+  url: 'https://receiver.example/webhooks',
+  eventTypes: ['invoice.paid'],
+})
+await webhooks.endpoints.rotateSecret(endpoint.id, { graceMs: 60 * 60 * 1000 })
+```
+
+Endpoint methods follow the [management contract and limits](/docs/reference/management#endpointmanagement), including its errors. `EndpointInput<E>` and `EndpointPatch<E>` restrict subscriptions to event names in `E`. `removeScope` and `reencrypt` are direct provider operations, not members of this client. The [endpoints guide](/docs/guides/endpoints) covers the lifecycle.
+
+### forScope
+
+```ts
+import { webhooks } from './webhooks.js'
+
+const customer = webhooks.forScope({ type: 'organization', id: 'org_123' })
+await customer.publish({ type: 'invoice.paid', data: { invoiceId: 'inv_1', amount: 4200 } })
+await customer.endpoints.list()
+```
+
+`forScope` validates and snapshots its scope, so later changes to the argument have no effect. An invalid scope throws `INVALID_INPUT`. It does not authorize a caller. See [scopes](/docs/concepts/scopes).
+
+The scoped client has no `worker` or `check`: those operate at installation level. `WebhookClient<E>` is its type.
+
+### check
+
+```ts
+import { webhooks } from './webhooks.js'
+
+await webhooks.check() // Throws SCHEMA_MISMATCH if tables are missing or outdated.
+```
+
+`check()` never applies migrations. When a provider is injected, it does not call that provider's optional health checks. The host stays responsible for checking its management storage.
 
 ## generateEncryptionKey
 
@@ -54,20 +130,31 @@ Endpoint methods use the [management contract and limits](/docs/reference/manage
 generateEncryptionKey(): string
 ```
 
-Returns 32 cryptographically random bytes encoded as base64. The key encrypts standalone management signing secrets at rest. It is distinct from the endpoint's `whsec_` signing secret.
+```ts
+import { generateEncryptionKey } from 'good-webhooks'
+
+console.log(generateEncryptionKey()) // Store once in your secret manager.
+```
+
+Returns 32 cryptographically random bytes encoded as base64. The key is the storage encryption key for standalone management signing secrets. It is distinct from the endpoint's `whsec_` signing secret. Keep it outside the database.
 
 ## Other root exports
 
-`createDelivery` and `DeliveryEngine` match the [delivery entrypoint](/docs/reference/delivery). `verifyWebhook` matches the [receiver entrypoint](/docs/reference/verify). `parseWebhook` is available only from `good-webhooks/verify`.
+| Export           | Documented at                                    |
+| ---------------- | ------------------------------------------------ |
+| `createDelivery` | [Delivery entry point](/docs/reference/delivery) |
+| `verifyWebhook`  | [Receiver entry point](/docs/reference/verify)   |
+| `WebhookError`   | [Errors](/docs/reference/errors)                 |
 
-`WebhookError` and `WebhookErrorCode` describe [expected operation failures](/docs/reference/errors).
+`parseWebhook` is available only from `good-webhooks/verify`.
 
-The root also exports these types.
+The root also exports these types:
 
 | Group       | Types                                                                                                                                   |
 | ----------- | --------------------------------------------------------------------------------------------------------------------------------------- |
 | Events      | `EventDefinitions`, `EventName`, `JsonValue`, `PublishInput`, `PublishOptions`, `PublishResult`                                         |
 | Database    | `SqlClient`, `DatabaseClient`, `Database`                                                                                               |
 | Endpoints   | `Endpoint`, `EndpointStatus`, `EndpointWithSecret`, `EndpointInput`, `EndpointPatch`                                                    |
-| Delivery    | `Delivery`, `DeliveryDetail`, `DeliveryStatus`, `DeliveryQuery`, `Attempt`, `Page`, `WorkerResult`, `DeliveryOptions`                   |
+| Delivery    | `Delivery`, `DeliveryDetail`, `DeliveryStatus`, `DeliveryQuery`, `Attempt`, `Page`, `WorkerResult`, `DeliveryOptions`, `DeliveryEngine` |
 | Composition | `WebhookOptions`, `Webhooks`, `WebhookClient`, `EndpointManagement`, `EndpointSource`, `EndpointResolution`, `ManagementScope`, `Scope` |
+| Errors      | `WebhookErrorCode`                                                                                                                      |

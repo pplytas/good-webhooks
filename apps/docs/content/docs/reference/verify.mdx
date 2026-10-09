@@ -3,20 +3,90 @@ title: Receiver verification
 description: Authenticate raw request bytes and decode a typed webhook event.
 ---
 
+`good-webhooks/verify` authenticates a webhook request from its raw bytes and decodes it into a typed event.
+
 ```ts
 import { verifyWebhook, parseWebhook, WebhookError } from 'good-webhooks/verify'
 import type { ParsedWebhook, WebhookErrorCode } from 'good-webhooks/verify'
 ```
 
-This entrypoint does not load database or worker code. It remains a Node.js API.
+This entry point does not load database or worker code. It remains a Node.js API. The [receiving guide](/docs/guides/receive) shows complete handlers for Next.js, Hono, Express, and `node:http`.
+
+## parseWebhook
+
+```ts
+parseWebhook<const E extends EventDefinitions>(
+	input: Parameters<typeof verifyWebhook>[0] & { events: E },
+): Promise<ParsedWebhook<E>>
+```
+
+```ts
+import { parseWebhook } from 'good-webhooks/verify'
+import { z } from 'zod'
+
+const events = {
+  'invoice.paid': z.object({ invoiceId: z.string(), amount: z.number().int() }),
+}
+
+export async function POST(request: Request) {
+  const event = await parseWebhook({
+    body: new Uint8Array(await request.arrayBuffer()),
+    headers: request.headers,
+    secret: process.env.WEBHOOK_SECRET!,
+    events,
+  })
+  if (event.type === 'invoice.paid') console.log(event.data.amount)
+  return new Response(null, { status: 204 })
+}
+```
+
+Verifies the signature, validates the Good Webhooks JSON envelope, and decodes its payload with the selected Standard Schema validator. It accepts every [`verifyWebhook` input](#verifywebhook) plus `events`, which maps accepted event names to receiver validators.
+
+`ParsedWebhook<E>` is a discriminated union by event `type`. Each member contains `id: string`, its event-name literal, `occurredAt: string`, and `data` with that validator's output type.
+
+| Rule         | Contract                                                                                                                                |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
+| Body size    | At most 512 KiB, checked before verification. Larger bodies produce `PAYLOAD_INVALID`.                                                  |
+| Envelope     | A JSON object with `id`, `type`, `occurredAt`, and `data`.                                                                              |
+| `id`         | Must match the authenticated `webhook-id` header.                                                                                       |
+| `type`       | Must be a key of `events`. Unknown event types produce `PAYLOAD_INVALID`.                                                               |
+| `occurredAt` | A canonical ISO timestamp.                                                                                                              |
+| `data`       | Must fit the sender's JSON limits: 256 KiB, maximum depth 64, finite numbers, and plain JSON values. Then the validator must accept it. |
+
+Receiver validators accept transmitted JSON and can decode it into local values such as `Date`. Expected error messages do not expose payload values.
+
+<Accordions>
+<Accordion title="When a validator throws">
+
+A validator that throws, or returns a result that is not a Standard Schema result, makes `parseWebhook` reject with an ordinary `Error` whose `cause` is the original failure. This is a receiver bug, not a bad request: respond `500`. A `WebhookError` thrown by your validator is wrapped the same way.
+
+</Accordion>
+</Accordions>
 
 ## verifyWebhook
 
 ```ts
-verifyWebhook(input): void
+verifyWebhook(input: {
+  body: string | Uint8Array
+  headers: Headers | Record<string, string | string[] | undefined>
+  secret: string | readonly string[]
+  now?: Date
+  toleranceSeconds?: number
+}): void
 ```
 
-Verifies Standard Webhooks HMAC-SHA256 signatures against the exact body bytes and checks timestamp tolerance. Successful verification returns `undefined`; it does not parse JSON or record the event ID.
+```ts
+import { verifyWebhook } from 'good-webhooks/verify'
+
+export async function POST(request: Request) {
+  const body = await request.text()
+  verifyWebhook({ body, headers: request.headers, secret: process.env.WEBHOOK_SECRET! })
+  const payload: unknown = JSON.parse(body) // Parse only after verification.
+  return new Response(null, { status: 204 })
+}
+```
+
+Verifies [Standard Webhooks](https://www.standardwebhooks.com) HMAC-SHA256 signatures against the exact body bytes and checks timestamp tolerance. Successful verification returns `undefined`. It does not parse JSON or record the event ID.
 
 The input table below is generated from the public function signature. `VerifyOptions` is a documentation alias, not a named package export.
 
@@ -30,37 +100,32 @@ The input table below is generated from the public function signature. `VerifyOp
 | `now`              | Optional valid `Date`, defaulting to the current time.                                                              |
 | `toleranceSeconds` | Optional nonnegative safe integer, default `300`. Applies to timestamps in the past and future.                     |
 
-Relevant header names are case-insensitive: `webhook-id`, `webhook-timestamp`, and `webhook-signature`. Duplicate relevant names or array-valued relevant headers are rejected. IDs contain 1 through 255 visible ASCII characters without dots or commas. Timestamps are nonnegative integer Unix seconds. The signature header is limited to 4,096 characters.
+| Header              | Rule                                                             |
+| ------------------- | ---------------------------------------------------------------- |
+| `webhook-id`        | 1 through 255 visible ASCII characters without dots or commas.   |
+| `webhook-timestamp` | Nonnegative integer Unix seconds.                                |
+| `webhook-signature` | At most 4,096 characters. Space-separated `v1,<base64>` entries. |
 
-Signing secrets have a `whsec_` prefix and canonical base64 encoding of 24 through 64 bytes. Good Webhooks generates 32-byte secrets. Verification succeeds when a `v1` signature matches any supplied secret.
+Header names are case-insensitive. Duplicate relevant names or array-valued relevant headers are rejected.
 
-`verifyWebhook` has no request-body size limit. The host must limit uploads before buffering. Receiver deduplication remains the host's responsibility.
+Signing secrets have a `whsec_` prefix and canonical base64 encoding of 24 through 64 bytes. Good Webhooks generates 32-byte secrets. Verification succeeds when a `v1` signature matches any supplied secret, so pass `[newSecret, oldSecret]` during [secret rotation](/docs/operations/key-rotation).
 
-## parseWebhook
-
-```ts
-parseWebhook<const E extends EventDefinitions>(
-	input: Parameters<typeof verifyWebhook>[0] & { events: E },
-): Promise<ParsedWebhook<E>>
-```
-
-Verifies the signature, validates the Good Webhooks JSON envelope, and decodes its payload with the selected Standard Schema validator. `events` maps accepted event names to receiver validators.
-
-The envelope must have `id`, `type`, `occurredAt`, and `data`. The body `id` must match the authenticated `webhook-id`. `occurredAt` must be a canonical ISO timestamp. Unknown event types and invalid payloads produce `PAYLOAD_INVALID`.
-
-Input is limited to 512 KiB before parsing. The transmitted `data` must also fit the sender's JSON limits: 256 KiB, maximum depth 64, finite numbers, and plain JSON values. Receiver validators accept transmitted JSON and can decode it into local values such as `Date`.
-
-`ParsedWebhook<E>` is a discriminated union by event `type`. Each member contains `id: string`, its event-name literal, `occurredAt: string`, and `data` with that validator's output type.
+<Callout type="warn" title="Limits you own">
+  `verifyWebhook` has no request-body size limit. Limit uploads before buffering. Receiver
+  deduplication of `webhook-id` is also your responsibility. See [process each event
+  once](/docs/guides/receive#process-each-event-once).
+</Callout>
 
 ## Failures
+
+Both functions throw `WebhookError` for expected failures. The [receiving guide](/docs/guides/receive) maps each code to an HTTP response.
 
 | Failure                                                                 | Result                                                           |
 | ----------------------------------------------------------------------- | ---------------------------------------------------------------- |
 | Invalid body type, signing secret, clock, or tolerance                  | `INVALID_INPUT`                                                  |
 | Missing or malformed signature headers, or signature mismatch           | `SIGNATURE_INVALID`                                              |
 | Timestamp outside tolerance                                             | `SIGNATURE_EXPIRED`                                              |
+| Body over 512 KiB                                                       | `PAYLOAD_INVALID` from `parseWebhook`                            |
 | Invalid UTF-8, JSON, envelope, unknown event, or rejected event payload | `PAYLOAD_INVALID` from `parseWebhook`                            |
 | Missing event map or invalid selected validator                         | `INVALID_CONFIG` from `parseWebhook`                             |
 | Validator throws or returns an invalid result                           | Ordinary `Error` with a cause, not an expected request rejection |
-
-`parseWebhook` does not expose payload values in expected error messages. The [receiving guide](/docs/guides/receive) describes request handling and durable deduplication.
