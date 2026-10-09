@@ -1,8 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.1.0-alpha.4 (2026-10-09)
 
-The package ships an [Agent Skill](https://agentskills.io) in `skills/good-webhooks/` that matches the installed version, and a shorter README. Runtime behavior, public APIs, dependencies, and database schema are unchanged.
+Agent and documentation update. The package now ships an [Agent Skill](https://agentskills.io) in `skills/good-webhooks/` with setup steps, code templates, and common-mistake rules that match the installed version. Install it with `npx skills add pplytas/good-webhooks`, or copy it from `node_modules/good-webhooks/skills/`. The npm README is rewritten around one example.
+
+Runtime behavior, public APIs, dependencies, and database schema are unchanged from `0.1.0-alpha.3`. No migration is required.
 
 ## 0.1.0-alpha.3 (2026-10-08)
 

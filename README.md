@@ -94,7 +94,7 @@ pnpm --dir packages/good-webhooks pack
 In your application, install the resulting archive using npm or your preferred package manager:
 
 ```sh
-npm install /absolute/path/to/packages/good-webhooks/good-webhooks-0.1.0-alpha.3.tgz
+npm install /absolute/path/to/packages/good-webhooks/good-webhooks-0.1.0-alpha.4.tgz
 ```
 
 Follow the [installation guide](apps/docs/content/docs/installation.mdx) for the dependencies your chosen setup needs. `pnpm test:package` verifies the archive with fresh npm consumers, both with and without Better Auth, including the published declarations and SQL exports. Registry publication is a separate release step.
