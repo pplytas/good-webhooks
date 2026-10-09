@@ -1,0 +1,186 @@
+---
+title: Quick start
+description: Send a signed webhook from a fresh application to a local receiver in about five minutes.
+---
+
+You will create an endpoint, publish an `invoice.paid` event, run the worker once, and verify the signed request in a receiver running in the same process.
+
+You need Node.js 24, npm, and Docker. For Better Auth management instead, follow the [Better Auth quick start](/docs/better-auth/quick-start).
+
+<Steps>
+<Step>
+### Create a project
+
+```sh
+mkdir good-webhooks-quickstart && cd good-webhooks-quickstart
+npm init -y
+```
+
+```package-install
+good-webhooks@alpha pg zod
+```
+
+</Step>
+<Step>
+### Start PostgreSQL
+
+A disposable database on a non-default port:
+
+```sh
+docker run --name good-webhooks-quickstart \
+  -e POSTGRES_PASSWORD=webhooks_dev_only \
+  -e POSTGRES_DB=webhooks \
+  -p 127.0.0.1:55439:5432 \
+  -d postgres:16
+export DATABASE_URL='postgres://postgres:webhooks_dev_only@127.0.0.1:55439/webhooks'
+```
+
+Wait until this prints `accepting connections`:
+
+```sh
+docker exec good-webhooks-quickstart pg_isready -U postgres -d webhooks
+```
+
+</Step>
+<Step>
+### Apply the migration
+
+The package generates its SQL. Apply it once to the fresh database:
+
+```sh
+node --input-type=module -e 'import { getPostgresMigration } from "good-webhooks/migrations"; process.stdout.write(getPostgresMigration())' > 001-webhooks.sql
+docker exec -i good-webhooks-quickstart psql -U postgres -d webhooks \
+  --single-transaction -v ON_ERROR_STOP=1 < 001-webhooks.sql
+```
+
+In a real application, your migration runner applies this file. See [migrations](/docs/operations/migrations).
+
+</Step>
+<Step>
+### Write the sender and receiver
+
+Save this as `quick-start.mts`. Node.js 24 runs TypeScript directly.
+
+```ts title="quick-start.mts"
+import { once } from 'node:events'
+import { createServer } from 'node:http'
+import { Pool } from 'pg'
+import { z } from 'zod'
+import { createWebhooks, generateEncryptionKey } from 'good-webhooks'
+import { parseWebhook, WebhookError } from 'good-webhooks/verify'
+
+// 1. Define events once. The publisher and the receiver share this map.
+const events = {
+  'invoice.paid': z.object({ invoiceId: z.string(), amount: z.number().int().nonnegative() }),
+}
+
+const pool = new Pool({ connectionString: process.env.DATABASE_URL })
+const webhooks = createWebhooks({
+  database: pool,
+  events,
+  encryptionKey: generateEncryptionKey(), // Persist this in a real app.
+  allowLocalhost: true, // Development only.
+})
+
+// 2. A receiver that verifies the signature before trusting the body.
+let secret = ''
+const receiver = createServer(async (request, response) => {
+  const chunks: Buffer[] = []
+  for await (const chunk of request) chunks.push(chunk)
+  try {
+    const event = await parseWebhook({
+      body: Buffer.concat(chunks),
+      headers: request.headers,
+      secret,
+      events,
+    })
+    console.log(`Received ${event.type} for ${event.data.invoiceId}: ${event.data.amount}`)
+    response.writeHead(200).end()
+  } catch (error) {
+    const rejected = error instanceof WebhookError && error.code !== 'INVALID_CONFIG'
+    response.writeHead(rejected ? 400 : 500).end()
+  }
+})
+receiver.listen(0, '127.0.0.1')
+await once(receiver, 'listening')
+const { port } = receiver.address() as { port: number }
+
+try {
+  await webhooks.check()
+
+  // 3. Register the destination. Hand the secret to the receiver.
+  const created = await webhooks.endpoints.create({
+    url: `http://127.0.0.1:${port}/webhooks`,
+    eventTypes: ['invoice.paid'],
+  })
+  secret = created.secret
+
+  // 4. Publish. This commits the event and one delivery per matching endpoint.
+  const publication = await webhooks.publish({
+    type: 'invoice.paid',
+    data: { invoiceId: 'inv_123', amount: 4200 },
+  })
+  console.log(`Published ${publication.eventId} to ${publication.deliveryCount} endpoint(s)`)
+
+  // 5. Send it. In production a long-running worker calls run() instead.
+  const result = await webhooks.worker.runOnce()
+  console.log(`Worker finished: ${result.succeeded} succeeded, ${result.failed} failed`)
+
+  await webhooks.endpoints.remove(created.endpoint.id)
+} finally {
+  receiver.close()
+  await pool.end()
+}
+```
+
+</Step>
+<Step>
+### Run it
+
+```sh
+node quick-start.mts
+```
+
+```text
+Published 7a0c3f3e-… to 1 endpoint(s)
+Received invoice.paid for inv_123: 4200
+Worker finished: 1 succeeded, 0 failed
+```
+
+The receiver authenticated the raw request bytes against the endpoint secret, then decoded the payload with the shared Zod schema.
+
+</Step>
+<Step>
+### Clean up
+
+```sh
+docker rm -f good-webhooks-quickstart
+```
+
+</Step>
+</Steps>
+
+## What to change for a real application
+
+- **Persist the encryption key.** `generateEncryptionKey()` once, store it in your secret manager, and pass the same value to every process. See [workers](/docs/operations/workers).
+- **Drop `allowLocalhost`.** It permits HTTP loopback destinations for development only.
+- **Run the worker as its own process.** Use `worker.run({ signal })` with graceful shutdown. See [workers](/docs/operations/workers).
+- **Deduplicate in the receiver.** Commit the event ID with the business change so retries and replays cannot repeat it. See [receive webhooks](/docs/guides/receive).
+- **Publish inside your transaction.** Pass your open client so a rolled-back order never produces an event. See [publish events](/docs/guides/publish).
+
+## Next steps
+
+<Cards>
+  <Card title="Publish events" href="/docs/guides/publish">
+    Idempotency keys, scopes, and transactional publication.
+  </Card>
+  <Card title="Receive webhooks" href="/docs/guides/receive">
+    Bounded bodies, error mapping, and durable deduplication.
+  </Card>
+  <Card title="Run workers" href="/docs/operations/workers">
+    A supervised worker with bounded shutdown.
+  </Card>
+  <Card title="Complete examples" href="/docs/examples">
+    Order fulfillment and billing apps with retries and replay.
+  </Card>
+</Cards>

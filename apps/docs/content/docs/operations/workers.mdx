@@ -1,88 +1,86 @@
 ---
 title: Run workers
-description: Start delivery explicitly, supervise failures, and bound shutdown and database waits.
+description: Start delivery explicitly, supervise it, and shut it down without losing in-flight work.
 ---
 
-Your application owns worker processes, database connections, and supervision. Constructing a delivery instance starts no work. Apply [the required migrations](/operations/migrations) before starting a worker.
+Nothing sends until a worker runs. You own the process, its database pool, and its supervision. Apply [migrations](/docs/operations/migrations) before starting one.
 
-## Prepare persistent configuration
-
-The repository has a complete standalone worker entrypoint. From a checkout, build the library:
-
-```sh
-pnpm --filter good-webhooks build
-```
-
-Set these values for the producer and worker:
-
-```sh
-export DATABASE_URL='postgres://your-user:your-password@your-host/your-database'
-export WEBHOOK_ENCRYPTION_KEY='your-persisted-base64-key'
-export WEBHOOK_SCHEMA='public'
-```
-
-Use the key that encrypted the registered endpoints. Do not generate a new key on startup. The example requires the database URL and key instead of falling back to a temporary configuration.
-
-`WEBHOOK_SCHEMA` must match the migrations, producer, worker, and cleanup process. Replace the example event definitions with your application's event map before deploying the example.
-
-For Better Auth management, follow the [separate worker setup](/better-auth/add-delivery#start-a-separate-worker). That worker needs the same management database and compatible auth encryption keys as the app, plus delivery storage.
-
-## Start the standalone worker
-
-```sh
-node packages/good-webhooks/examples/operations/worker.ts
-```
-
-After its schema check, the process emits `webhooks.worker.started` and awaits `worker.run()`. `SIGTERM` and `SIGINT` request shutdown. A normal exit waits for active work, closes the pool, and emits `webhooks.worker.stopped`.
-
-<include cwd lang="ts" meta='title="examples/operations/worker.ts"'>
-  ../../packages/good-webhooks/examples/operations/worker.ts
-</include>
-
-Configuration errors, schema failures, unexpected worker errors, and database errors produce `webhooks.worker.failed` and a nonzero exit status after cleanup. A well-formed but incorrect encryption key fails when the worker first resolves encrypted endpoint material, not necessarily at startup.
-
-The entrypoint omits `onError`, so unexpected errors reject `run()` and stop the process. Configure restart backoff in your supervisor. If you supply `onError` to log and continue instead, monitor whether the worker continues making delivery progress. Receiver failures already use the delivery retry policy.
-
-## Choose one batch or continuous processing
-
-Within your own process, use either method:
+## One batch or a loop
 
 ```ts
-await delivery.worker.runOnce()
+// One bounded batch. Call it from a scheduler if work remains.
+const result = await webhooks.worker.runOnce()
+result.succeeded // also claimed, retried, failed, stale
 
-// In a long-running worker process:
+// Continuous processing until the signal aborts.
 const stop = new AbortController()
-await delivery.worker.run({
+await webhooks.worker.run({
   signal: stop.signal,
   pollIntervalMs: 1000,
   shutdownGraceMs: 30_000,
 })
 ```
 
-Use `runOnce()` for one bounded batch. Repeat the call through your scheduler if more work remains. Use `run()` for continuous processing until its signal aborts or an unhandled error occurs.
+`run()` starts the next batch immediately after a batch completes at least one attempt. After an empty batch, or an error handled by `onError`, it waits `pollIntervalMs`. Receiver retries keep their own schedule regardless of polling.
 
-`run()` starts another batch immediately after it completes a prepared attempt as a success, retry, or terminal failure. Set `pollIntervalMs` to control the wait after an empty batch, a stale-only result, or an error handled by `onError`. Receiver retries keep their configured schedule.
+Workers process every scope in their delivery database and schema. Several workers coordinate through PostgreSQL leases and share per-endpoint concurrency limits. No database transaction is held open during an HTTP request.
 
-Workers process every scope in their configured delivery database and schema. Multiple workers share PostgreSQL leases and per-endpoint concurrency limits. They hold no database transaction open during an HTTP request.
+## A supervised worker process
 
-## Bound database waits and shutdown
+The package ships a complete entrypoint. It validates configuration, listens for signals, checks the schema, runs, and exits nonzero on failure after closing its pool.
 
-The example configuration sets a five-second connection timeout, a ten-second statement timeout, and a client query timeout one second longer. It also limits idle transactions. Configure overrides through `WEBHOOK_DB_CONNECT_TIMEOUT_MS` and `WEBHOOK_DB_STATEMENT_TIMEOUT_MS`.
+<include cwd lang="ts" meta='title="examples/operations/worker.ts"'>
+  ../../packages/good-webhooks/examples/operations/worker.ts
+</include>
+
+Configure it through the environment:
+
+| Variable                          | Required | Purpose                                                      |
+| --------------------------------- | -------- | ------------------------------------------------------------ |
+| `DATABASE_URL`                    | yes      | PostgreSQL connection string                                 |
+| `WEBHOOK_ENCRYPTION_KEY`          | yes      | The key that encrypted the registered endpoints              |
+| `WEBHOOK_SCHEMA`                  |          | Must match the migrations and the producer. Default `public` |
+| `WEBHOOK_POLL_INTERVAL_MS`        |          | Wait after an empty batch. Default 1000                      |
+| `WEBHOOK_DB_CONNECT_TIMEOUT_MS`   |          | Default 5000                                                 |
+| `WEBHOOK_DB_STATEMENT_TIMEOUT_MS` |          | Default 10000. The client query timeout is one second longer |
+| `WEBHOOK_ALLOW_LOCALHOST`         |          | `true` permits loopback HTTP receivers. Development only     |
+
+Run it from a checkout with `node packages/good-webhooks/examples/operations/worker.ts`, or copy it and replace the event map with yours.
+
+<Callout type="warn">
+  Never generate a fresh encryption key on startup. A wrong but well-formed key fails when the
+  worker first decrypts an endpoint secret, not necessarily at startup.
+</Callout>
+
+For Better Auth management, the worker also constructs the auth instance and provider. See [add delivery to Better Auth](/docs/better-auth/delivery#run-a-separate-worker).
+
+## Handle failures
+
+Without `onError`, an internal failure rejects `run()` and the process exits. Let your supervisor restart it with backoff. If you pass `onError` to log and continue, watch that deliveries keep making progress. Receiver failures are not internal failures; they follow the retry policy.
+
+Errors are emitted as JSON lines (`webhooks.worker.started`, `webhooks.worker.failed`, `webhooks.worker.stopped`) without configuration, payloads, or secrets.
+
+## Shut down cleanly
+
+Abort the signal to stop. The worker then:
+
+1. stops claiming new work and stops waiting on endpoint-provider lookups,
+2. lets already-prepared attempts finish for up to `shutdownGraceMs` (default 30 seconds),
+3. cancels remaining sends and records their outcome,
+4. returns after owned work and completion writes finish.
+
+Await the worker before closing the pool. Then give your supervisor a final deadline that covers the grace period, database writes, pool closure, and your own cleanup. The grace period is not a process exit deadline.
+
+A cancelled HTTP request may still have been processed by the receiver. Such attempts are retried, which is one more reason [receivers deduplicate](/docs/guides/receive#commit-before-you-acknowledge).
+
+## Bound database waits
+
+The example configuration sets connection and statement timeouts, an idle-in-transaction timeout, and ten pool connections per process:
 
 <include cwd lang="ts" meta='title="examples/operations/config.ts"'>
   ../../packages/good-webhooks/examples/operations/config.ts
 </include>
 
-Budget pool connections across all producers, workers, and cleanup jobs. The example permits ten pool connections per process.
+Budget pool connections across producers, workers, and cleanup jobs. A client-side timeout does not guarantee server-side cancellation, and pool closure waits for checked-out clients.
 
-Pass an `AbortSignal` to stop the worker. On abort, `run()` and `runOnce()` stop taking new work and stop waiting for endpoint-provider results. Already prepared attempts have up to `shutdownGraceMs` to finish before the worker requests cancellation of remaining sends. The default is 30,000 milliseconds, measured from the abort. Set `shutdownGraceMs: 0` for immediate cancellation. The grace period does not extend delivery leases.
-
-Await the worker before closing its pool. Both methods wait for owned work and completion writes, which can outlast the grace period. A client query timeout does not guarantee server-side cancellation. Pool closure can wait for checked-out clients, and underlying provider calls can continue after the worker stops waiting for them.
-
-Set a final supervisor shutdown deadline that allows for the grace period, database operations, pool closure, and any other application cleanup. The worker's grace period is not a process exit deadline.
-
-Forced cancellation interrupts active HTTP requests. It does not prove that a receiver did not process them. Interrupted attempts can have an unknown receiver outcome and can be retried. Receivers need durable deduplication.
-
-For local development only, `WEBHOOK_ALLOW_LOCALHOST=true` permits loopback HTTP receivers. It does not permit arbitrary private networks.
-
-Worker execution never prunes history. Schedule [bounded cleanup runs](/operations/retention) separately.
+Workers never prune history. Schedule [cleanup](/docs/operations/retention) separately.

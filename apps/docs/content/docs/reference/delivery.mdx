@@ -58,7 +58,7 @@ publish(input: PublishInput<E>, options?: PublishOptions): Promise<PublishResult
 
 Payload normalization sorts object keys. It rejects nonfinite numbers, cycles, non-JSON values, nonplain objects, nesting beyond 64 levels, and JSON larger than 256 KiB. A publication validator can transform input, but its output must meet those JSON limits.
 
-The event and original deliveries commit atomically within delivery storage. A caller-owned transaction remains uncommitted when `publish` returns. The [transaction and recipient guarantees](/concepts/delivery-guarantees) also apply to duplicate publication.
+The event and original deliveries commit atomically within delivery storage. A caller-owned transaction remains uncommitted when `publish` returns. The [transaction and recipient guarantees](/docs/concepts/delivery-guarantees) also apply to duplicate publication.
 
 Errors include `INVALID_INPUT`, `IDEMPOTENCY_CONFLICT`, and `TRANSACTION_REQUIRED`. Validator-thrown errors and source or database failures can propagate.
 

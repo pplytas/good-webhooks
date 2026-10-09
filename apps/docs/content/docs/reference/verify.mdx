@@ -63,4 +63,4 @@ Input is limited to 512 KiB before parsing. The transmitted `data` must also fit
 | Missing event map or invalid selected validator                         | `INVALID_CONFIG` from `parseWebhook`                             |
 | Validator throws or returns an invalid result                           | Ordinary `Error` with a cause, not an expected request rejection |
 
-`parseWebhook` does not expose payload values in expected error messages. The [receiving guide](/delivery/receiving) describes request handling and durable deduplication.
+`parseWebhook` does not expose payload values in expected error messages. The [receiving guide](/docs/guides/receive) describes request handling and durable deduplication.

@@ -14,7 +14,7 @@ import type {
 } from 'good-webhooks/better-auth'
 ```
 
-The documented and tested baseline is Better Auth `1.7.7` on Node.js 24. The optional peer range is `>=1.7.7 <1.8.0`. Database support depends on the host adapter and its migration workflow. The [adapter compatibility page](/better-auth/database-adapters) lists tested combinations and limits.
+The documented and tested baseline is Better Auth `1.7.7` on Node.js 24. The optional peer range is `>=1.7.7 <1.8.0`. Database support depends on the host adapter and its migration workflow. The [adapter compatibility page](/docs/better-auth/database-adapters) lists tested combinations and limits.
 
 ## goodWebhooks
 
@@ -53,7 +53,7 @@ Each route lives under Better Auth's configured base path. Every route uses sens
 | `removeWebhookEndpoint`       | `/good-webhooks/remove`        | `id`                                        | `WebhookEndpointDTO`   | `delete` |
 | `rotateWebhookEndpointSecret` | `/good-webhooks/rotate-secret` | `id`, `graceMs?`                            | `{ endpoint, secret }` | `update` |
 
-`scope` accepts `{ type, id }`, `null`, or omission. Bodies reject unknown fields. Creation and updates use the [management input limits](/reference/management). An update accepts `description: null` to clear the value. Rotation accepts an integer `graceMs` from 0 through 86,400,000, defaulting to 86,400,000.
+`scope` accepts `{ type, id }`, `null`, or omission. Bodies reject unknown fields. Creation and updates use the [management input limits](/docs/reference/management). An update accepts `description: null` to clear the value. Rotation accepts an integer `graceMs` from 0 through 86,400,000, defaulting to 86,400,000.
 
 `WebhookEndpointDTO<EventType>` contains `id`, `url`, nullable `description`, `eventTypes`, `status`, `createdAt`, and `updatedAt`. Its timestamps are ISO strings, unlike trusted provider results, which contain `Date` values. Ordinary route results contain no signing material. Creation and rotation return the new secret separately.
 
@@ -109,4 +109,4 @@ Returns the same trusted management provider installed by `goodWebhooks`. A miss
 
 This helper needs neither a session nor an HTTP listener. Direct calls bypass route authorization. It uses Better Auth's adapter and encryption helpers with the auth instance's secret configuration. App and worker must share compatible configuration, storage, and decryption keys.
 
-The provider exposes every [EndpointManagement operation](/reference/management), including `removeScope` and `reencrypt`, plus `source` for a sender. There are no HTTP routes for `removeScope` or `reencrypt`.
+The provider exposes every [EndpointManagement operation](/docs/reference/management), including `removeScope` and `reencrypt`, plus `source` for a sender. There are no HTTP routes for `removeScope` or `reencrypt`.

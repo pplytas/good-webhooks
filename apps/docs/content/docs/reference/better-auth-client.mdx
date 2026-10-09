@@ -21,7 +21,7 @@ The dedicated client entrypoint has no runtime import of the server plugin, data
 
 ## Client methods
 
-All methods return Better Auth's client result containing `data` and `error`. Request bodies and data shapes match the [server route reference](/reference/better-auth#authenticated-routes).
+All methods return Better Auth's client result containing `data` and `error`. Request bodies and data shapes match the [server route reference](/docs/reference/better-auth#authenticated-routes).
 
 | Client method                                 | Server method                 |
 | --------------------------------------------- | ----------------------------- |
@@ -40,7 +40,7 @@ Creation and rotation return `{ endpoint, secret }` in `data`. Other writes and 
 
 ## Inference example
 
-This compile-only example checks the public server and client types. It omits the database and session setup required by a running application. The [first endpoint tutorial](/better-auth/first-endpoint) provides that setup.
+This compile-only example checks the public server and client types. It omits the database and session setup required by a running application. The [Better Auth quick start](/docs/better-auth/quick-start) provides that setup.
 
 <include cwd lang="ts" meta='title="Typed Better Auth client"'>
   ./examples/typed-api.ts#better-auth

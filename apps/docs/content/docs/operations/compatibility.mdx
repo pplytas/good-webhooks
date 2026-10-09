@@ -1,37 +1,30 @@
 ---
-title: Compatibility and upgrades
-description: Supported runtimes, TypeScript versions, alpha upgrades, and database compatibility.
+title: Compatibility
+description: Supported runtimes and databases, what the alpha promises, and how to upgrade.
 ---
-
-Good Webhooks is available on npm under the `alpha` tag. Follow the [installation guide](/getting-started/installation) to add it to your application.
 
 ## Supported configurations
 
-| Component             | Supported configuration | Verification                                                               |
-| --------------------- | ----------------------- | -------------------------------------------------------------------------- |
-| Node.js               | 24 or later             | Node.js 24 in CI, ESM and CommonJS consumers                               |
-| TypeScript            | 5.9.3 or later          | 5.9.3 and the repository's 7.0.2 compiler, NodeNext and Bundler resolution |
-| PostgreSQL components | PostgreSQL 16 and 17    | Full integration suite on both versions                                    |
-| Better Auth           | `>=1.7.7 <1.8.0`        | Better Auth 1.7.7 and its [adapter matrix](/better-auth/database-adapters) |
+| Component   | Supported        | Verified in CI                                                         |
+| ----------- | ---------------- | ---------------------------------------------------------------------- |
+| Node.js     | 24 or later      | Node.js 24, ESM and CommonJS consumers                                 |
+| TypeScript  | 5.9.3 or later   | 5.9.3 and 7.0, with NodeNext and Bundler resolution                    |
+| PostgreSQL  | 16 and 17        | Full integration suite on both                                         |
+| Better Auth | `>=1.7.7 <1.8.0` | 1.7.7 across the [adapter matrix](/docs/better-auth/database-adapters) |
 
-TypeScript 5.9.3 is the oldest supported compiler. Earlier versions may work but are not checked. Standalone declaration checks run with `strict: true` and `skipLibCheck: false`. The Better Auth checks preserve application-level inference and rejection tests but use `skipLibCheck: true` for upstream declarations.
+Standalone consumers are checked with `strict: true` and `skipLibCheck: false`. Better Auth consumers use `skipLibCheck` for upstream declarations while keeping application-level inference checks. Other JavaScript runtimes are not verified.
 
-The repository's compiler version is a contributor requirement, not the minimum compiler for applications. The package ships JavaScript and declarations. Node.js 24 executes the shipped ESM and supports its CommonJS imports. Other JavaScript runtimes are not currently verified.
+## Alpha policy
 
-## Upgrade an alpha
+- Pin the exact version and commit your lockfile.
+- Any alpha may change the public API, behavior, or storage. Each release's notes say what changed and how to migrate.
+- Only the latest alpha receives fixes.
+- Test producers, workers, and receivers together before rolling out.
 
-Pin the exact alpha version in applications and commit the lockfile. Alpha releases can change the public API, behavior, and storage requirements. Read each release's notes before upgrading, and test the application's producers, workers, and receivers together. The latest alpha receives fixes; older alpha releases have no separate maintenance branches.
+## Package versions and schema versions
 
-Published breaking changes must include migration guidance in the release notes. Package versions and database schema versions are separate. A package upgrade does not imply a database migration, and installing a package never applies SQL automatically.
+They are independent. Installing a package never runs SQL. The current delivery schema version is `3`, and `check()` refuses to start against any other. A future schema change ships its own upgrade SQL and a rollout order; do not assume old and new workers can share a changed schema or that downgrading is safe.
 
-## Upgrade storage
+## What stays constant
 
-The initial alpha uses delivery schema version 3. The current SQL files initialize fresh installations. They do not upgrade older unpublished prototypes or their data.
-
-For a future published schema change, use the version-specific upgrade instructions and migration SQL provided with that release. Apply the migration through your application's migration runner. Back up the database and follow the documented producer and worker rollout order. Do not assume that old and new workers can share a changed schema or that a downgrade is safe.
-
-Call `check()` before starting PostgreSQL delivery. It rejects incompatible delivery storage and never changes the schema. Keep all processes on compatible package versions and the same configuration for their respective components. See [migrations](/operations/migrations).
-
-## Delivery contract
-
-Delivery is at least once, with no ordering guarantee. Keep receiver verification and deduplication in place across upgrades. Store signing and encryption secrets independently of deployments, and retain keys needed by existing endpoints. See [delivery guarantees](/concepts/delivery-guarantees) and [key rotation](/operations/key-rotation).
+Delivery is at least once with no ordering guarantee. Signing follows Standard Webhooks. Receivers keep verifying and deduplicating across upgrades. Store signing and encryption keys outside the deployment and retain whatever existing endpoints need.

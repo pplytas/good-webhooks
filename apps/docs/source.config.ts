@@ -2,7 +2,10 @@ import path from 'node:path'
 import { defineConfig, defineDocs } from 'fumadocs-mdx/config'
 import { createGenerator, createProject, remarkAutoTypeTable } from 'fumadocs-typescript'
 
-export const docs = defineDocs({ dir: 'content/docs' })
+export const docs = defineDocs({
+  dir: 'content/docs',
+  docs: { postprocess: { includeProcessedMarkdown: true } },
+})
 
 function remarkTypeTables(): ReturnType<typeof remarkAutoTypeTable> {
   return async (tree, file) => {

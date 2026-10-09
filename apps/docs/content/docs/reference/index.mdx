@@ -1,21 +1,53 @@
 ---
 title: API reference
-description: Public imports and contracts for the current Good Webhooks v0.
+description: Every public entry point, what it exports, and where its contract is documented.
 ---
 
-The package exposes eight code entrypoints and three SQL assets. Better Auth is an optional peer. Standalone code does not require it.
+The package has eight code entry points and three SQL assets. Better Auth is an optional peer; nothing else imports it.
 
-| Import                                                              | Public API                                                                                                      |
-| ------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| [`good-webhooks`](/reference/core)                                  | `createWebhooks`, `createDelivery`, `generateEncryptionKey`, `verifyWebhook`, `WebhookError`, and shared types. |
-| [`good-webhooks/delivery`](/reference/delivery)                     | `createDelivery` and delivery construction types.                                                               |
-| [`good-webhooks/management`](/reference/management)                 | `createManagement` and the management, repository, cipher, and sender contracts.                                |
-| [`good-webhooks/management/postgres`](/reference/postgres)          | `createPostgresManagement`, `createPostgresManagementRepository`, and provider options.                         |
-| [`good-webhooks/better-auth`](/reference/better-auth)               | `goodWebhooks`, `createBetterAuthManagement`, authorization types, and endpoint DTOs.                           |
-| [`good-webhooks/better-auth/client`](/reference/better-auth-client) | `goodWebhooksClient`.                                                                                           |
-| [`good-webhooks/verify`](/reference/verify)                         | `verifyWebhook`, `parseWebhook`, `ParsedWebhook`, and verification errors.                                      |
-| [`good-webhooks/migrations`](/reference/migrations)                 | `getPostgresMigration` and `PostgresMigrationOptions`.                                                          |
+<Cards>
+  <Card title="good-webhooks" href="/docs/reference/core">
+    `createWebhooks`, `generateEncryptionKey`, `WebhookError`, and the shared types.
+  </Card>
+  <Card title="good-webhooks/delivery" href="/docs/reference/delivery">
+    `createDelivery`, publication, history, replay, settings, and the worker.
+  </Card>
+  <Card title="good-webhooks/management" href="/docs/reference/management">
+    The `EndpointManagement`, `EndpointSource`, repository, and cipher contracts.
+  </Card>
+  <Card title="good-webhooks/management/postgres" href="/docs/reference/postgres">
+    `createPostgresManagement` and its storage encryption options.
+  </Card>
+  <Card title="good-webhooks/better-auth" href="/docs/reference/better-auth">
+    The server plugin, its routes, scope authorization, and the trusted provider.
+  </Card>
+  <Card title="good-webhooks/better-auth/client" href="/docs/reference/better-auth-client">
+    The client plugin and its typed methods.
+  </Card>
+  <Card title="good-webhooks/verify" href="/docs/reference/verify">
+    `parseWebhook` and `verifyWebhook` for receivers.
+  </Card>
+  <Card title="good-webhooks/migrations" href="/docs/reference/migrations">
+    `getPostgresMigration` and the shipped SQL files.
+  </Card>
+  <Card title="Errors" href="/docs/reference/errors">
+    Every `WebhookError` code and what it means.
+  </Card>
+</Cards>
 
-The SQL assets are `good-webhooks/migrations/001-initial.sql`, `good-webhooks/migrations/management.sql`, and `good-webhooks/migrations/delivery.sql`. All target fresh storage in `public`.
+## Conventions
 
-Most runtime calls are asynchronous. Constructors validate options but do not apply migrations or start workers. Expected operation failures use [`WebhookError`](/reference/errors). Database failures and other unexpected failures can propagate without that class.
+- Constructors validate options and return. They never open connections, apply migrations, or start workers.
+- Expected failures throw [`WebhookError`](/docs/reference/errors) with a stable `code`. Database and provider failures can propagate as other error types.
+- Trusted provider results use `Date` values. Better Auth route responses use ISO strings.
+- Scope arguments are `null` for application scope or `{ type, id }` for a named scope. Selecting a scope never authorizes the caller.
+
+## SQL assets
+
+| Export                                     | Creates                                    |
+| ------------------------------------------ | ------------------------------------------ |
+| `good-webhooks/migrations/001-initial.sql` | Management and delivery tables in `public` |
+| `good-webhooks/migrations/management.sql`  | `webhook_endpoints` only                   |
+| `good-webhooks/migrations/delivery.sql`    | Delivery tables only                       |
+
+Generate the same SQL for another schema with [`getPostgresMigration()`](/docs/reference/migrations).

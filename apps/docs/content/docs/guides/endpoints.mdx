@@ -1,0 +1,115 @@
+---
+title: Manage endpoints
+description: Create, update, pause, resume, rotate, and retire endpoints with the standalone PostgreSQL provider or the combined API.
+---
+
+Endpoint management records where events go. It stores URLs, subscriptions, status, and encrypted signing secrets. For user-facing management through authenticated routes, use the [Better Auth plugin](/docs/better-auth) instead.
+
+## Two ways in
+
+<Tabs items={['Combined API', 'Standalone provider']}>
+<Tab>
+
+`createWebhooks()` exposes an endpoint client bound to a scope. The root client uses application scope; `forScope()` selects a named one.
+
+```ts
+const webhooks = createWebhooks({ database, encryptionKey, events })
+const tenant = webhooks.forScope({ type: 'organization', id: orgId })
+
+const { endpoint, secret } = await tenant.endpoints.create({
+  url: 'https://receiver.example/webhooks',
+  description: 'Invoice notifications',
+  eventTypes: ['invoice.paid'],
+})
+```
+
+</Tab>
+<Tab>
+
+`createPostgresManagement()` stores endpoints without delivery tables. It is what you use with a [custom sender](/docs/guides/custom-senders) or when management and delivery live in different databases.
+
+```ts
+import { createPostgresManagement } from 'good-webhooks/management/postgres'
+
+const management = createPostgresManagement({
+  database,
+  eventTypes: ['invoice.created', 'invoice.paid'],
+  encryptionKey: process.env.WEBHOOK_ENCRYPTION_KEY!,
+})
+await management.check()
+
+const { endpoint, secret } = await management.create(
+  { type: 'organization', id: orgId },
+  { url: 'https://receiver.example/webhooks', eventTypes: ['invoice.paid'] },
+)
+```
+
+Apply the management-only migration first:
+
+```sh
+node --input-type=module -e 'import { getPostgresMigration } from "good-webhooks/migrations"; process.stdout.write(getPostgresMigration({ component: "management" }))' > 001-webhook-management.sql
+psql "$DATABASE_URL" --single-transaction -v ON_ERROR_STOP=1 -f 001-webhook-management.sql
+```
+
+</Tab>
+</Tabs>
+
+Both need a storage encryption key. Generate it once and keep it in your secret manager:
+
+```sh
+node --input-type=module -e 'import { generateEncryptionKey } from "good-webhooks"; console.log(generateEncryptionKey())'
+```
+
+<Callout type="warn">
+  Every process that reads these endpoints needs the same key. A new key on each start makes
+  existing secrets unreadable.
+</Callout>
+
+## Hand over the secret
+
+`create()` and `rotateSecret()` return the plaintext signing secret once. No other call returns it. Send it to the receiver's operator over a secure channel. The receiver uses it with [`parseWebhook()`](/docs/guides/receive).
+
+## Lifecycle
+
+```ts
+await tenant.endpoints.update(id, { eventTypes: ['invoice.created', 'invoice.paid'] })
+await tenant.endpoints.pause(id)
+await tenant.endpoints.resume(id)
+await tenant.endpoints.rotateSecret(id, { graceMs: 3_600_000 })
+await tenant.endpoints.remove(id)
+```
+
+| Action         | What happens                                                                                   |
+| -------------- | ---------------------------------------------------------------------------------------------- |
+| `update`       | Changes URL, description, or subscriptions. A new URL is validated again                       |
+| `pause`        | Keeps subscriptions and queued work. The worker holds deliveries until resume or expiry        |
+| `resume`       | Validates the URL and lets eligible queued deliveries send                                     |
+| `rotateSecret` | Returns a new secret. Both secrets sign requests during the overlap (default and max 24 hours) |
+| `remove`       | Permanent. Clears stored secrets and cancels queued work. Leaves a tombstone                   |
+
+Management returns as soon as the record changes. A request the worker already prepared can still arrive after a pause or removal.
+
+## Limits
+
+- 1,000 live endpoints per scope.
+- 1 to 100 subscribed event types per endpoint, each a configured name.
+- URLs up to 2,048 characters, HTTPS, no credentials, no unsafe IP literals. The PostgreSQL provider also resolves DNS at registration.
+- Descriptions up to 2,000 characters.
+
+## When a tenant leaves
+
+Standalone management has no identity system. Call `management.removeScope(scope)` from your own deletion workflow to retire every endpoint in that scope. The combined `createWebhooks()` client does not expose this method: construct `createPostgresManagement()` with the same database, schema, and key, or pass that provider to `createWebhooks({ management })` and keep a reference to it.
+
+## Next steps
+
+<Cards>
+  <Card title="Custom senders" href="/docs/guides/custom-senders">
+    Feed these endpoints to your own delivery pipeline.
+  </Card>
+  <Card title="Key rotation" href="/docs/operations/key-rotation">
+    Rotate signing secrets and storage keys safely.
+  </Card>
+  <Card title="Management reference" href="/docs/reference/management">
+    The full contract, including limits and errors.
+  </Card>
+</Cards>

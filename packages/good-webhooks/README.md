@@ -15,17 +15,17 @@ Good Webhooks is in alpha. Node.js 24 or later is required. The package ships ES
 
 PostgreSQL setups require version 16 or later. Better Auth is an optional peer; standalone imports do not require it. The supported Better Auth range is `>=1.7.7 <1.8.0`, tested with 1.7.7.
 
-TypeScript consumers need TypeScript 5.9.3 or later, with NodeNext or Bundler resolution. Better Auth consumers use `skipLibCheck` for upstream declarations. See [compatibility and upgrades](https://good-webhooks.vercel.app/operations/compatibility).
+TypeScript consumers need TypeScript 5.9.3 or later, with NodeNext or Bundler resolution. Better Auth consumers use `skipLibCheck` for upstream declarations. See [compatibility and upgrades](https://good-webhooks.vercel.app/docs/operations/compatibility).
 
 ## Documentation
 
 Read the [documentation](https://good-webhooks.vercel.app). The repository contains its [source](https://github.com/pplytas/good-webhooks/tree/main/apps/docs/content/docs). Run `pnpm dev` from a repository checkout to preview changes locally.
 
-- [Install Good Webhooks](https://good-webhooks.vercel.app/getting-started/installation)
-- [Manage your first endpoint with Better Auth](https://good-webhooks.vercel.app/better-auth/first-endpoint)
-- [Send your first webhook](https://good-webhooks.vercel.app/getting-started/first-delivery)
-- [Connect a custom sender](https://good-webhooks.vercel.app/management/custom-senders)
-- [API reference](https://good-webhooks.vercel.app/reference)
+- [Install Good Webhooks](https://good-webhooks.vercel.app/docs/installation)
+- [Better Auth quick start](https://good-webhooks.vercel.app/docs/better-auth/quick-start)
+- [Quick start](https://good-webhooks.vercel.app/docs/quick-start)
+- [Connect a custom sender](https://good-webhooks.vercel.app/docs/guides/custom-senders)
+- [API reference](https://good-webhooks.vercel.app/docs/reference)
 
 The [standalone example](examples/basic/demo.ts) exercises rollback, signed delivery, retry, replay, and receiver deduplication. The [repository README](https://github.com/pplytas/good-webhooks#readme) includes its database setup.
 

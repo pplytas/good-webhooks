@@ -1,51 +1,90 @@
 ---
-title: Good Webhooks
-description: Build webhook delivery into your TypeScript application.
+title: Introduction
+description: Good Webhooks is a TypeScript library for outbound webhooks that lives in your application and your PostgreSQL database.
 ---
 
-Good Webhooks provides endpoint management and signed webhook delivery for Node.js applications. Use them together, or connect endpoint management to your own sender.
+Good Webhooks gives your application three things that usually get rebuilt from scratch:
 
-<Callout>
-  Good Webhooks is in alpha. [Install it from npm](/getting-started/installation) and review the
-  [compatibility policy](/operations/compatibility) before upgrading.
+- **Endpoint management.** Your users register destinations, choose event types, pause, resume, and rotate secrets. Through a [Better Auth plugin](/docs/better-auth) or a standalone PostgreSQL provider.
+- **Publication.** You publish typed events. Payloads are validated, idempotency keys are honored, and publication can run inside your own database transaction.
+- **Delivery.** A worker you start sends signed [Standard Webhooks](https://www.standardwebhooks.com) requests, retries transient failures, records every attempt, and replays on demand.
+
+Receivers verify requests with one function from `good-webhooks/verify`, or with any Standard Webhooks library.
+
+```ts title="app.ts"
+import { createWebhooks } from 'good-webhooks'
+import { z } from 'zod'
+
+const webhooks = createWebhooks({
+  database: pool,
+  encryptionKey: process.env.WEBHOOK_ENCRYPTION_KEY!,
+  events: {
+    'invoice.paid': z.object({ invoiceId: z.string(), amount: z.number().int() }),
+  },
+})
+
+await webhooks.publish({
+  type: 'invoice.paid',
+  data: { invoiceId: 'inv_123', amount: 4200 },
+  idempotencyKey: 'invoice.paid:inv_123',
+})
+```
+
+<Callout type="warn" title="Alpha software">
+  The API can change between alpha releases. Pin the exact version and read the [release
+  notes](https://github.com/pplytas/good-webhooks/releases) before upgrading. See the [compatibility
+  policy](/docs/operations/compatibility).
 </Callout>
 
-## Choose your setup
+## Why not build it yourself?
 
-| Management                               | Sender                          | Start here                                                                                                                |
-| ---------------------------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| Better Auth, using your existing adapter | Good Webhooks, using PostgreSQL | [Create your first endpoint](/better-auth/first-endpoint), then [connect delivery](/better-auth/add-delivery).            |
-| Better Auth, using your existing adapter | Your own sender                 | [Create your first endpoint](/better-auth/first-endpoint), then follow the [sender contract](/management/custom-senders). |
-| Standalone PostgreSQL                    | Good Webhooks, using PostgreSQL | [Send your first webhook](/getting-started/first-delivery).                                                               |
-| Standalone PostgreSQL                    | Your own sender                 | [Manage endpoints](/management/endpoints), then follow the [sender contract](/management/custom-senders).                 |
+Most teams start with a `fetch()` in a request handler. The problems show up later: a customer's endpoint goes down and events are lost, a deploy sends duplicates, a secret leaks into logs, a rotated secret breaks a customer overnight, or a URL points at an internal service.
 
-Better Auth management does not require delivery storage. Its authenticated routes register destinations and subscriptions in the host adapter. A separate worker sends events when you use Good Webhooks delivery.
+Good Webhooks handles the parts that are easy to get wrong and leaves the parts that belong to you:
+
+| Good Webhooks owns                                       | Your application owns                              |
+| -------------------------------------------------------- | -------------------------------------------------- |
+| Endpoint lifecycle, encrypted secrets, URL safety checks | Who is allowed to manage which endpoints           |
+| Payload validation, idempotency, recipient selection     | When to publish and in which transaction           |
+| Signing, retries, attempt history, replay                | Starting and supervising the worker process        |
+| Migration SQL and schema checks                          | Running migrations and owning database connections |
+| Signature verification and payload parsing on receivers  | Deduplication and business processing              |
+
+Nothing runs implicitly. Constructors open no connections, apply no migrations, and start no workers.
+
+## Pick your setup
+
+Management and delivery are independent. Combine them however your stack needs.
+
+| You want                                                | Start here                                                |
+| ------------------------------------------------------- | --------------------------------------------------------- |
+| Everything on PostgreSQL, no auth framework             | [Quick start](/docs/quick-start)                          |
+| Signed-in users managing their own endpoints            | [Better Auth plugin](/docs/better-auth)                   |
+| Better Auth for management, Good Webhooks for delivery  | [Add delivery to Better Auth](/docs/better-auth/delivery) |
+| Either management provider feeding your existing sender | [Custom senders](/docs/guides/custom-senders)             |
 
 ## Requirements
 
-- Node.js 24 or later.
-- PostgreSQL 16 or later for built-in delivery or standalone PostgreSQL management. CI covers PostgreSQL 16 and 17.
-- Better Auth 1.7.7 for the documented integration baseline. The optional peer range is `>=1.7.7 <1.8.0`. Check the [tested adapter profiles](/better-auth/database-adapters).
-- A host-owned migration workflow, database connections, and worker lifecycle.
+- Node.js 24 or later. The package ships ESM and also loads through CommonJS `require()`.
+- PostgreSQL 16 or 17 for delivery or standalone management.
+- Better Auth `>=1.7.7 <1.8.0` if you use the plugin. It is an optional peer dependency.
+- TypeScript 5.9.3 or later for typed consumers.
 
-Adapter compatibility does not establish support for edge runtimes. This package targets Node.js.
+Edge runtimes are not supported. The package targets Node.js.
 
-## Find the next step
+## Next steps
 
 <Cards>
-  <Card title="Run a complete application" href="/examples">
-    Explore order fulfillment and Better Auth billing with real deliveries, retries, and replay.
+  <Card title="Installation" href="/docs/installation">
+    Add the package and the dependencies your setup needs.
   </Card>
-  <Card title="Understand the architecture" href="/concepts/architecture">
-    See what management, delivery, and your application each own.
+  <Card title="Quick start" href="/docs/quick-start">
+    Send a signed webhook to a local receiver in one file.
   </Card>
-  <Card title="Receive a webhook" href="/delivery/receiving">
-    Verify the raw request body, decode the event, and handle duplicates.
+  <Card title="How it works" href="/docs/concepts/architecture">
+    What management, delivery, and your application each own.
   </Card>
-  <Card title="Operate a worker" href="/operations/workers">
-    Start delivery explicitly and shut down without losing queued work.
-  </Card>
-  <Card title="Look up an API" href="/reference">
-    Browse public imports, options, results, and errors.
+  <Card title="Complete examples" href="/docs/examples">
+    Two runnable applications with retries, replay, and real sessions.
   </Card>
 </Cards>

@@ -1,25 +1,49 @@
 ---
-title: Complete applications
-description: Run interactive order fulfillment and Better Auth billing integrations using the published package.
+title: Examples
+description: Two complete applications that install the published package and show the full path from a business action to a verified webhook.
 ---
 
-Run a complete application to follow a business action through publication, signed delivery, verification, and receiver work. Both examples install `good-webhooks@0.1.0-alpha.3` from npm and use real PostgreSQL storage.
+Both applications live in the repository under [`examples/`](https://github.com/pplytas/good-webhooks/tree/main/examples). They are independent npm projects that install `good-webhooks` from npm, so you can copy either one into your own repository.
+
+<Cards>
+  <Card
+    title="Order fulfillment"
+    href="https://github.com/pplytas/good-webhooks/tree/main/examples/order-fulfillment"
+    external
+  >
+    A shop sends orders to a warehouse. Transactional publication, retries against a failing
+    receiver, replay, and shipment deduplication.
+  </Card>
+  <Card
+    title="Better Auth billing"
+    href="https://github.com/pplytas/good-webhooks/tree/main/examples/better-auth-billing"
+    external
+  >
+    Users sign in, register their own endpoints, and receive invoice events. Real sessions, per-user
+    scopes, and a separate worker.
+  </Card>
+</Cards>
 
 ## Order fulfillment
 
-[Northstar Supply](https://github.com/pplytas/good-webhooks/tree/main/examples/order-fulfillment) is a shop connected to a warehouse. Place an order in the browser and watch the worker deliver it. The shop commits its order and webhook publication in one PostgreSQL transaction. The receiver verifies the request and records the event ID with its shipment.
+Northstar Supply is a shop connected to a warehouse. Place an order in the browser and watch the worker deliver it.
 
-Use the controls to make the warehouse return HTTP 503, inspect retries, restore service, and replay a delivery. Replaying an accepted event leaves the shipment count unchanged. A rollback control demonstrates that a rejected business transaction produces neither an order nor a queued event.
+- The shop commits the order row and the webhook publication in **one PostgreSQL transaction**.
+- The warehouse receiver verifies the signature and records the event ID with its shipment.
+- Controls let you make the warehouse return `503`, inspect retries, restore it, and **replay** a delivery. Replaying an accepted event leaves the shipment count unchanged.
+- A rollback control shows that a failed business transaction produces neither an order nor a queued event.
 
 ## Better Auth billing
 
-The [billing application](https://github.com/pplytas/good-webhooks/tree/main/examples/better-auth-billing) combines Better Auth endpoint management with PostgreSQL delivery. Sign in, register a personal endpoint, create invoice events, and inspect delivery attempts.
+A billing application that combines Better Auth endpoint management with PostgreSQL delivery.
 
-The application derives the publisher's scope from the authenticated session. The browser uses the typed Good Webhooks client plugin to manage endpoints. A separate worker reads the same management records and sends signed events to the local receiver.
+- Sign in, register a personal endpoint, create invoice events, and inspect delivery attempts.
+- The browser uses the typed client plugin. The server derives the publisher's scope from the session.
+- A separate worker process reads the same management records and sends signed events to the local receiver.
 
 ## Run locally
 
-Clone the repository and enter the chosen example directory. Use Node.js 24, npm, and Docker with Compose:
+Use Node.js 24, npm, and Docker with Compose. In the example directory:
 
 ```sh
 npm ci
@@ -28,8 +52,23 @@ npm run setup
 npm run dev
 ```
 
-Open `http://127.0.0.1:4311` for order fulfillment or `http://127.0.0.1:4312` for billing. Their database and HTTP ports are separate, so both applications can run together.
+Open `http://127.0.0.1:4311` for order fulfillment or `http://127.0.0.1:4312` for billing. The two applications use separate ports and databases, so they can run at the same time.
 
-Each README includes a walkthrough, individual process commands, and verification instructions. Keep the generated `.env` file between restarts so existing endpoints remain decryptable. Setup applies migrations explicitly; starting the application does not change the schema.
+<Callout>
+  Keep the generated `.env` file between restarts. It holds the encryption key that protects
+  registered endpoint secrets. Setup applies migrations explicitly; starting the app never changes
+  the schema.
+</Callout>
 
-The examples bind to loopback and use explicit development settings for local receivers. Adapt authentication, authorization, secrets, storage, worker supervision, and retention to your deployment. See [worker operation](/operations/workers) and [compatibility](/operations/compatibility).
+Each README includes a walkthrough, per-process commands, and test instructions. The examples bind to loopback and permit local HTTP receivers. Before deploying an adapted version, configure authentication, secrets, migrations, worker supervision, and retention for your environment.
+
+## Smaller checked examples
+
+The library package ships short, type-checked examples that the docs include verbatim:
+
+| Example                                                                                                                    | Shows                                                  |
+| -------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| [`examples/basic`](https://github.com/pplytas/good-webhooks/tree/main/packages/good-webhooks/examples/basic)               | Rollback, retry, replay, and receiver deduplication    |
+| [`examples/transactions`](https://github.com/pplytas/good-webhooks/tree/main/packages/good-webhooks/examples/transactions) | Payload-dependent recipient selection in a transaction |
+| [`examples/better-auth`](https://github.com/pplytas/good-webhooks/tree/main/packages/good-webhooks/examples/better-auth)   | Auth instance, delivery engine, and worker split       |
+| [`examples/operations`](https://github.com/pplytas/good-webhooks/tree/main/packages/good-webhooks/examples/operations)     | Supervised worker and bounded cleanup entrypoints      |

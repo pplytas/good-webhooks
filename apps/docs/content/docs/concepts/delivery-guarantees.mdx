@@ -1,47 +1,53 @@
 ---
 title: Delivery guarantees
-description: Recipient selection, transactions, retries, and endpoint changes.
+description: What an accepted publication promises, what it does not, and how endpoint changes interact with queued work.
 ---
 
-An accepted publication fixes an event's recipient IDs. It does not guarantee that every recipient processes the event, or that a receiver sees only one request.
+Short version: **at least once, no ordering**. An accepted publication durably records the event and its recipient set. The worker will keep trying each delivery within its retry budget. A receiver may see the same event more than once and must deduplicate by `webhook-id`.
 
-## Complete lookup, one accepted recipient set
+## Publication
 
-Publication asks the source for every matching endpoint in the selected scope, including paused endpoints. A provider must not silently truncate that result. It must include matching endpoints that remain unchanged throughout the lookup.
+When `publish()` returns without a transaction option, the event and one pending delivery per recipient are committed in PostgreSQL. When you pass your own transaction, they are written but not committed until you commit.
 
-Concurrent edits can produce a set that reflects different moments. The provider contract does not require a simultaneous snapshot of all management records. The sender commits the resulting recipient IDs together with the event and pending deliveries before reporting success.
+Recipient selection happens once, at publication:
 
-An idempotent repeat with the same event type and validated payload returns the accepted event and original delivery count. It does not select recipients again. The accepted repeat can succeed while management storage is unavailable. Reusing the key with different content fails with `IDEMPOTENCY_CONFLICT`.
+- The source returns **every** matching endpoint in the scope, including paused ones. A provider must not truncate the result or turn a lookup failure into an empty set.
+- Concurrent endpoint edits may land before or after the lookup. The contract does not promise a scope-wide snapshot.
+- The recipient IDs are committed with the event. Later subscription changes do not alter them.
 
-Idempotency belongs to a scope and lasts while the event remains in storage. Pruning the event removes that record of its key.
+### Idempotency
 
-## Database transactions
+Repeating `publish()` with the same scope, `idempotencyKey`, event type, and validated payload returns the original event with `duplicate: true`. Recipients are not selected again, so the repeat succeeds even if management storage is down. The same key with different content throws `IDEMPOTENCY_CONFLICT`.
 
-By default, publication commits its own PostgreSQL transaction. A successful business write in another transaction or database is not automatically atomic with publication.
+Keys stay reserved while the event is retained. [Pruning](/docs/operations/retention) releases them. If your business needs longer deduplication, keep your own record.
 
-The optional `transaction` argument lets publication use a caller-owned PostgreSQL transaction that can access the configured delivery tables. The caller starts, commits, or rolls back that transaction. Good Webhooks uses a savepoint to isolate a failed publication operation. A successful return inside this transaction means the writes are prepared in that transaction, not yet committed.
+## Delivery
 
-Management lookup is still a separate provider call. Passing a delivery transaction does not place management reads inside the same transaction or turn separate databases into one atomic operation.
+The worker retries network failures and `408`, `425`, `429`, and `5xx` responses on the configured schedule, up to the attempt and age limits. Other `4xx` responses fail the delivery without a retry. Redirects are never followed.
 
-## Endpoint changes and queued work
+A receiver can process a request and then lose the response. The next attempt repeats the same event ID and body with a fresh timestamp and signature. This is why [receivers must deduplicate](/docs/guides/receive#commit-before-you-acknowledge).
 
-Management records lifecycle changes without waiting for queue cleanup. The sender resolves current endpoint state before preparing each attempt.
+Deliveries to different endpoints, retries, parallel workers, and replays can all reorder arrival. Do not rely on order.
 
-| Change                | Effect                                                                                                                          |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| Pause                 | Subscriptions remain eligible for publication. The worker holds queued work until the endpoint resumes or the delivery expires. |
-| Resume                | Eligible queued deliveries can send again.                                                                                      |
-| Delete                | Stored signing secrets are cleared. The worker cancels pending work when it observes deletion.                                  |
-| Change URL            | A later attempt resolves the current URL.                                                                                       |
-| Change subscriptions  | Later publications use the changed subscriptions. Already accepted recipient IDs stay fixed.                                    |
-| Rotate signing secret | A later attempt resolves the current usable secrets.                                                                            |
+## Endpoint changes while work is queued
 
-A successful pause or delete response cannot recall an HTTP request already prepared for sending. A receiver may still observe that request. Source lookup failures also remain failures. A database outage must not be treated as deletion or an empty recipient set.
+Management records a change immediately. The worker resolves current endpoint state before every attempt, so the change takes effect at the next attempt:
 
-## Duplicates and ordering
+| Change                | Effect on queued deliveries                                                          |
+| --------------------- | ------------------------------------------------------------------------------------ |
+| Pause                 | Held until the endpoint resumes or the delivery exceeds its age limit                |
+| Resume                | Eligible deliveries send again                                                       |
+| Delete                | Pending work is cancelled when the worker observes the deletion. Secrets are cleared |
+| Change URL            | The next attempt uses the new URL                                                    |
+| Change subscriptions  | Future publications use the new list. Already accepted recipients stay fixed         |
+| Rotate signing secret | The next attempt signs with the current secrets (both during the overlap)            |
 
-The worker retries transient HTTP failures and inconclusive attempts within configured limits. A receiver can process a request and then lose its response. The next attempt can therefore repeat the same event.
+A request already prepared when you pause or delete can still arrive. A management call cannot recall it.
 
-Receivers need durable deduplication using `webhook-id`, committed with their business effects. Verification only authenticates the bytes and timestamp. It does not record processed IDs.
+Provider failures are not endpoint changes. If the source cannot be reached, the delivery is deferred without consuming a receiver attempt, and the failure is reported to the worker host. An outage is never treated as a deletion or an empty recipient set.
 
-Delivery order is not guaranteed. Parallel workers, per-endpoint concurrency, and retries can change arrival order. A replay retains the original event ID and body, so receiver deduplication can deliberately suppress it. See [retries and replay](/operations/retries-and-replay) for the operational controls.
+## Transactions
+
+`publish(input, { transaction })` runs inside a PostgreSQL transaction you own. Good Webhooks uses a savepoint so a failed publication does not poison your transaction. A successful return means the rows are written in that transaction, not committed.
+
+The transaction covers delivery storage only. Management lookup is a separate provider call, and a Better Auth or second-database write is not made atomic with it. See [publish events](/docs/guides/publish#publish-inside-your-transaction).

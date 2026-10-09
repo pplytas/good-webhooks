@@ -1,3 +1,67 @@
 @import 'tailwindcss';
-@import 'fumadocs-ui/css/neutral.css';
+@import 'fumadocs-ui/css/black.css';
 @import 'fumadocs-ui/css/preset.css';
+
+@theme {
+  --font-sans: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-mono), ui-monospace, 'SFMono-Regular', Menlo, monospace;
+}
+
+/* Monochrome, like nuqs and Better Auth: pure white and near-black surfaces, black primary,
+   hairline borders. Color appears only in syntax highlighting and status callouts. */
+:root {
+  --color-fd-background: #ffffff;
+  --color-fd-foreground: #09090b;
+  --color-fd-card: #fafafa;
+  --color-fd-muted: #f4f4f5;
+  --color-fd-muted-foreground: #71717a;
+  --color-fd-secondary: #f4f4f5;
+  --color-fd-accent: #f4f4f5;
+  --color-fd-border: #e4e4e7;
+  --color-fd-primary: #09090b;
+  --color-fd-primary-foreground: #fafafa;
+  --color-fd-ring: #a1a1aa;
+}
+
+.dark {
+  --color-fd-background: #09090b;
+  --color-fd-foreground: #fafafa;
+  --color-fd-card: #0f0f11;
+  --color-fd-muted: #18181b;
+  --color-fd-muted-foreground: #a1a1aa;
+  --color-fd-secondary: #18181b;
+  --color-fd-accent: #1f1f23;
+  --color-fd-border: #27272a;
+  --color-fd-primary: #fafafa;
+  --color-fd-primary-foreground: #09090b;
+  --color-fd-ring: #52525b;
+}
+
+.dark #nd-sidebar {
+  --color-fd-muted: #18181b;
+  --color-fd-secondary: #1f1f23;
+  --color-fd-muted-foreground: #a1a1aa;
+}
+
+h1,
+h2,
+h3 {
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+
+.prose :where(code):not(pre code) {
+  font-size: 0.875em;
+}
+
+/* Hairline grid used by landing sections, after Better Auth's numbered feature cells. */
+.grid-cells {
+  display: grid;
+  border: 1px solid var(--color-fd-border);
+  background: var(--color-fd-border);
+  gap: 1px;
+}
+
+.grid-cells > * {
+  background: var(--color-fd-background);
+}

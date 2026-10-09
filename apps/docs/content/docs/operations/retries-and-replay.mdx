@@ -1,52 +1,57 @@
 ---
-title: Inspect and replay deliveries
-description: Diagnose receiver failures and replay retained events without changing their identity.
+title: Retries and replay
+description: Inspect delivery history, tell receiver failures from provider failures, and replay an event without changing its identity.
 ---
 
-Use the delivery instance in the endpoint's scope. History and replay are trusted server methods, not Better Auth plugin routes.
+History and replay are server operations on the delivery instance in the endpoint's scope. They are not exposed as Better Auth routes.
 
-## Find a delivery
+## Retry policy
 
-Filter by a publication's `eventId`, an `endpointId`, or a status:
+| Response                                  | Outcome                              |
+| ----------------------------------------- | ------------------------------------ |
+| `2xx`                                     | Succeeded                            |
+| Network error, `408`, `425`, `429`, `5xx` | Retried on the schedule              |
+| Any other `4xx`                           | Failed, no retry                     |
+| `3xx`                                     | Failed. Redirects are never followed |
+
+Defaults: delays of 1s, 5s, 30s, 2m, 10m, and 30m (seven attempts in total), and a maximum delivery age of 24 hours. Configure both through `retry` on the factory. A retry keeps the event ID and body and gets a fresh timestamp and signature.
+
+Two things look like failures but are not receiver failures:
+
+- **Paused endpoint.** The delivery waits until resume or expiry.
+- **Provider lookup failure.** The delivery is deferred without consuming an attempt, and the error goes to the worker's `onError`.
+
+## Inspect deliveries
 
 ```ts
-const page = await webhooks.deliveries.list({ eventId: publication.eventId, limit: 25 })
+const page = await tenant.deliveries.list({ eventId: publication.eventId, limit: 25 })
 for (const item of page.items) {
-  const detail = await webhooks.deliveries.get(item.id)
-  console.log(detail.status, detail.attempts)
+  const detail = await tenant.deliveries.get(item.id)
+  console.log(detail.status, detail.lastStatus, detail.attempts.length)
 }
 ```
 
-Pass `page.nextCursor` as `before` for the next page. Results use descending delivery IDs. A detail read returns status and attempt history from one database snapshot.
+Filter by `eventId`, `endpointId`, or `status`. Results are newest first; pass `page.nextCursor` as `before` for the next page. `get()` includes the attempt list with status codes, captured response bodies (up to `maxResponseBytes`), and errors.
 
-Treat recorded response bodies and event payloads as sensitive application data. They may contain receiver diagnostics or business values.
+Response bodies and payloads can contain customer data. Treat history as sensitive.
 
-## Distinguish receiver failures from provider failures
+## Replay
 
-A `2xx` response succeeds. The worker retries network failures, `408`, `425`, `429`, and `5xx` responses within the configured attempt and age limits. Other responses fail without a retry. Redirects are never followed.
-
-The defaults allow seven total attempts over a maximum age of 24 hours. A retry keeps the same event ID and body but gets a fresh attempt timestamp and signature.
-
-A failed management-provider lookup defers the delivery without consuming a receiver attempt and reports the failure to the worker host. A paused endpoint also defers its work. These are different from a receiver returning an error.
-
-See the [delivery reference](/reference/delivery) for retry delays, limits, and configuration.
-
-## Replay an original delivery
-
-After correcting the cause of a failure, replay the original delivery:
+After fixing the cause, replay the original delivery:
 
 ```ts
-const detail = await webhooks.deliveries.get(deliveryId)
+const detail = await tenant.deliveries.get(deliveryId)
 if (detail.replayOf === null && ['succeeded', 'failed'].includes(detail.status)) {
-  const replay = await webhooks.deliveries.replay(detail.id)
-  console.log(replay.id, replay.eventId)
+  const replay = await tenant.deliveries.replay(detail.id)
 }
 ```
 
-Replay requires an active endpoint and a retained event. Only original `succeeded` or `failed` deliveries are eligible. A replay cannot itself be replayed. Only one pending or in-flight replay per original is allowed.
+Rules:
 
-Replay creates a new delivery ID while preserving the event ID and body. The worker uses the endpoint's current URL and signing material. It still needs to run before the replay reaches the receiver.
+- Only original `succeeded` or `failed` deliveries are eligible. A replay cannot be replayed.
+- One pending or in-flight replay per original at a time, otherwise `REPLAY_IN_PROGRESS`.
+- The endpoint must be active and the event still [retained](/docs/operations/retention).
+- The replay gets a new delivery ID and a fresh retry budget, the same event ID and body, and the endpoint's current URL and secrets.
+- The worker still has to run.
 
-The receiver must [deduplicate by event ID](/delivery/receiving#commit-receiver-work-before-acknowledging-it). Replaying a successful event should not repeat already committed business work.
-
-Pruning history removes replay data and releases publication idempotency keys. Keep a separate business policy if those keys must remain reserved longer than webhook history.
+Because the event ID is unchanged, a [deduplicating receiver](/docs/guides/receive#commit-before-you-acknowledge) ignores a replay of an event it already processed. That is the intended way to replay safely.

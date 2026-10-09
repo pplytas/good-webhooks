@@ -10,12 +10,12 @@ Good Webhooks is in alpha. The package requires Node.js 24 or later. The built-i
 
 TypeScript consumers need TypeScript 5.9.3 or later. Read the [compatibility policy](apps/docs/content/docs/operations/compatibility.mdx) for tested configurations and alpha upgrades.
 
-| Setup                                              | Start here                                                                           |
-| -------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| Better Auth endpoint management                    | [Create your first endpoint](apps/docs/content/docs/better-auth/first-endpoint.mdx)  |
-| Better Auth management with Good Webhooks delivery | [Add delivery](apps/docs/content/docs/better-auth/add-delivery.mdx)                  |
-| Standalone management and delivery                 | [Send your first webhook](apps/docs/content/docs/getting-started/first-delivery.mdx) |
-| Management with your own sender                    | [Custom senders](apps/docs/content/docs/management/custom-senders.mdx)               |
+| Setup                                              | Start here                                                                    |
+| -------------------------------------------------- | ----------------------------------------------------------------------------- |
+| Better Auth endpoint management                    | [Better Auth quick start](apps/docs/content/docs/better-auth/quick-start.mdx) |
+| Better Auth management with Good Webhooks delivery | [Add delivery](apps/docs/content/docs/better-auth/delivery.mdx)               |
+| Standalone management and delivery                 | [Quick start](apps/docs/content/docs/quick-start.mdx)                         |
+| Management with your own sender                    | [Custom senders](apps/docs/content/docs/guides/custom-senders.mdx)            |
 
 See the [documentation overview](apps/docs/content/docs/index.mdx) for guides, concepts, operations, and API reference. Preview the rendered site locally with the commands below.
 
@@ -25,7 +25,7 @@ See the [documentation overview](apps/docs/content/docs/index.mdx) for guides, c
 npm install good-webhooks@alpha
 ```
 
-Follow the [installation guide](https://good-webhooks.vercel.app/getting-started/installation) for the dependencies your setup needs. Pin the exact alpha version in applications and read the [release notes](https://github.com/pplytas/good-webhooks/releases) before upgrading.
+Follow the [installation guide](https://good-webhooks.vercel.app/docs/installation) for the dependencies your setup needs. Pin the exact alpha version in applications and read the [release notes](https://github.com/pplytas/good-webhooks/releases) before upgrading.
 
 ## Work on the repository
 
@@ -36,7 +36,7 @@ pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-Open `http://localhost:3000`. The documentation uses stock Fumadocs layouts and exports a static site. To build and preview the export:
+Open `http://localhost:3000`. The documentation is a Fumadocs site with a landing page at `/` and docs under `/docs`, exported as static HTML. To build and preview the export:
 
 ```sh
 pnpm build
@@ -97,6 +97,6 @@ In your application, install the resulting archive using npm or your preferred p
 npm install /absolute/path/to/packages/good-webhooks/good-webhooks-0.1.0-alpha.3.tgz
 ```
 
-Follow the [installation guide](apps/docs/content/docs/getting-started/installation.mdx) for the dependencies your chosen setup needs. `pnpm test:package` verifies the archive with fresh npm consumers, both with and without Better Auth, including the published declarations and SQL exports. Registry publication is a separate release step.
+Follow the [installation guide](apps/docs/content/docs/installation.mdx) for the dependencies your chosen setup needs. `pnpm test:package` verifies the archive with fresh npm consumers, both with and without Better Auth, including the published declarations and SQL exports. Registry publication is a separate release step.
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) before proposing changes. Maintainers use the [release guide](docs/releasing.md) to verify a candidate before publishing. Report vulnerabilities through the [security policy](SECURITY.md). Licensed under [MIT](LICENSE).

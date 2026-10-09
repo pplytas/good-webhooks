@@ -1,0 +1,150 @@
+---
+title: Better Auth plugin
+description: Let signed-in users manage their own webhook endpoints through authenticated routes, stored in your existing Better Auth database.
+---
+
+The `goodWebhooks` plugin adds one model and eight POST routes to a Better Auth instance. Users create, list, update, pause, resume, remove, and rotate endpoints in their personal scope. Organization scopes work with Better Auth's organization plugin and its permissions.
+
+The plugin manages endpoints only. It sends nothing. Add the [PostgreSQL delivery engine](/docs/better-auth/delivery) or a [custom sender](/docs/guides/custom-senders) to deliver events.
+
+<Callout>
+  New to Better Auth with this plugin? The [quick start](/docs/better-auth/quick-start) runs the
+  whole flow in one file with SQLite.
+</Callout>
+
+<Steps>
+<Step>
+### Install
+
+```package-install
+good-webhooks@alpha better-auth@1.7.7
+```
+
+The tested range is `>=1.7.7 <1.8.0`.
+
+</Step>
+<Step>
+### Add the server plugin
+
+```ts title="auth.ts"
+import { betterAuth } from 'better-auth'
+import { goodWebhooks } from 'good-webhooks/better-auth'
+import { eventTypes } from './event-types.js'
+
+export const auth = betterAuth({
+  database, // your existing database or adapter
+  secret: process.env.BETTER_AUTH_SECRET!,
+  plugins: [goodWebhooks({ eventTypes })], // [!code highlight]
+})
+```
+
+```ts title="event-types.ts"
+export const eventTypes = ['invoice.created', 'invoice.paid'] as const
+```
+
+Keep the tuple in its own module so the browser can import it without pulling in server code. The `as const` is what carries the literal names into the client types. Management needs only names; payload validators belong to the sender.
+
+Mount `auth.handler` the way your framework already does. The routes appear under the handler's base path, for example `POST /api/auth/good-webhooks/create`.
+
+</Step>
+<Step>
+### Generate and apply the schema
+
+Use [Better Auth's CLI](https://better-auth.com/docs/concepts/cli) with the version that matches your installation:
+
+```sh
+npx @better-auth/cli migrate --config ./src/auth.ts   # built-in SQL adapters
+npx @better-auth/cli generate --config ./src/auth.ts  # Drizzle or Prisma, then run their migrations
+```
+
+Use a CLI version that matches your installed Better Auth version.
+
+The plugin declares a `webhookEndpoint` model with a unique `allocationKey` index. Keep every generated field and that index; it enforces the per-scope endpoint limit under concurrent creates. MongoDB creates the index before writes.
+
+<Callout type="warn">
+  Do not apply Good Webhooks' `management.sql` here. That file is for the standalone PostgreSQL
+  provider. Plugin initialization never applies migrations.
+</Callout>
+
+</Step>
+<Step>
+### Add the client plugin
+
+```ts title="auth-client.ts"
+import { createAuthClient } from 'better-auth/client'
+import { goodWebhooksClient } from 'good-webhooks/better-auth/client'
+import { eventTypes } from './event-types.js'
+
+export const authClient = createAuthClient({
+  plugins: [goodWebhooksClient({ eventTypes })],
+})
+```
+
+The client entrypoint has no runtime dependency on the server plugin, a database driver, or the worker.
+
+</Step>
+<Step>
+### Use it
+
+<Tabs items={['Browser', 'Server']}>
+<Tab>
+
+```ts
+const { data, error } = await authClient.goodWebhooks.create({
+  url: 'https://receiver.example/webhooks',
+  eventTypes: ['invoice.paid'],
+})
+data?.secret // show once, then never again
+data?.endpoint.id
+
+const endpoints = await authClient.goodWebhooks.list({})
+```
+
+</Tab>
+<Tab>
+
+Server-side calls go through `auth.api` with the request's session headers:
+
+```ts
+const created = await auth.api.createWebhookEndpoint({
+  headers: request.headers,
+  body: { url: 'https://receiver.example/webhooks', eventTypes: ['invoice.paid'] },
+})
+```
+
+</Tab>
+</Tabs>
+
+An omitted `scope` means the signed-in user. Create and rotate responses include the signing secret; every other response omits it. Route responses use ISO timestamp strings.
+
+</Step>
+</Steps>
+
+## Options
+
+| Option             | Default           | Purpose                                                                                               |
+| ------------------ | ----------------- | ----------------------------------------------------------------------------------------------------- |
+| `eventTypes`       | required          | Configured event names. Pass a literal tuple for typed clients                                        |
+| `authorizeScope`   | deny              | Policy for application scope and custom scope types. See [permissions](/docs/better-auth/permissions) |
+| `allowLocalhost`   | `false`           | Permit HTTP loopback URLs in development                                                              |
+| `schema.modelName` | `webhookEndpoint` | Rename the model. Not a PostgreSQL namespace                                                          |
+| `schema.fields`    |                   | Rename individual fields                                                                              |
+
+Regenerate and apply the schema after changing `schema`. Where the model lives (database, schema, collection) is decided by your Better Auth database or ORM configuration, not by the plugin.
+
+## Next steps
+
+<Cards>
+  <Card title="Permissions" href="/docs/better-auth/permissions">
+    Organization roles, application scope, and custom scope policies.
+  </Card>
+  <Card title="Add delivery" href="/docs/better-auth/delivery">
+    Publish and send events with the PostgreSQL engine.
+  </Card>
+  <Card title="Database adapters" href="/docs/better-auth/database-adapters">
+    Which adapters are verified and how.
+  </Card>
+  <Card title="Plugin reference" href="/docs/reference/better-auth">
+    Routes, bodies, results, and error mapping.
+  </Card>
+</Cards>

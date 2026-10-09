@@ -1,38 +1,80 @@
 ---
-title: Architecture
-description: Endpoint management and delivery have separate responsibilities and storage.
+title: How it works
+description: Endpoint management and delivery are separate components with separate storage. Your application composes them.
 ---
 
-Good Webhooks separates the registration of destinations from the work of sending events. This lets an application use Better Auth for management while choosing its own sender, or use the built-in PostgreSQL delivery engine.
+Good Webhooks separates **who receives events** from **how events are sent**. That split is why you can manage endpoints through Better Auth and still deliver with the PostgreSQL worker, or keep your own sender and only borrow endpoint management.
+
+```text
+                  ┌──────────────────────┐
+  your app ─────▶ │ Endpoint management  │  Better Auth plugin, or
+  (authorized)    │ URLs, subscriptions, │  standalone PostgreSQL provider
+                  │ encrypted secrets    │
+                  └──────────┬───────────┘
+                             │ EndpointSource
+                             │ matchRecipients() / resolveEndpoint()
+                             ▼
+  your app ─────▶ ┌──────────────────────┐        ┌───────────┐
+  publish()       │ Delivery engine      │ ─────▶ │ Receiver  │
+                  │ events, deliveries,  │ signed │ verify +  │
+  your process ─▶ │ attempts (PostgreSQL)│  POST  │ dedupe    │
+  worker.run()    └──────────────────────┘        └───────────┘
+```
 
 ## Endpoint management
 
-Management owns an endpoint's URL, scope, subscriptions, lifecycle state, and encrypted signing secrets. It creates no events, deliveries, or attempts.
+Management owns an endpoint's URL, [scope](/docs/concepts/scopes), subscribed event types, status (`active`, `paused`, `deleted`), and encrypted signing secrets. It never creates events, deliveries, or attempts.
 
-The [Better Auth plugin](/better-auth/first-endpoint) stores endpoints through the host's adapter and adds authenticated HTTP routes. The [standalone PostgreSQL provider](/management/endpoints) stores endpoints in `webhook_endpoints`. Both use the same lifecycle API.
+Two providers implement the same lifecycle API:
 
-An `EndpointSource` exposes the two operations a sender needs. `matchRecipients` selects matching endpoint IDs during publication. `resolveEndpoint` obtains current state, URL, and signing secrets before an attempt. The source is a trusted server capability because it returns plaintext signing material.
+- The [Better Auth plugin](/docs/better-auth) stores endpoints through the host's adapter and adds authenticated HTTP routes.
+- The [standalone PostgreSQL provider](/docs/guides/endpoints) stores endpoints in a `webhook_endpoints` table.
+
+Both expose an `EndpointSource` with the two reads a sender needs:
+
+| Method                         | Called when                  | Returns                                           |
+| ------------------------------ | ---------------------------- | ------------------------------------------------- |
+| `matchRecipients(scope, type)` | An event is published        | Every matching endpoint ID, including paused ones |
+| `resolveEndpoint(scope, id)`   | Before each delivery attempt | Current status, URL, and usable signing secrets   |
+
+The source returns plaintext signing material. Treat it as a trusted server capability and keep it away from request handlers that serve untrusted callers.
 
 ## Delivery
 
-The [delivery engine](/reference/delivery) validates event payloads, records accepted events and their deliveries in PostgreSQL, and sends signed HTTP requests. Workers own retries, attempt history, and queue cleanup. The host starts workers explicitly.
+The [delivery engine](/docs/reference/delivery) validates payloads, records events and deliveries in PostgreSQL, and sends signed HTTP requests from a worker you start.
 
-The producer reports an **event**. The sender creates one **delivery** for each selected endpoint. A delivery can require several **attempts**. A retry is another attempt within the same delivery. A replay creates another delivery for the original event.
+The vocabulary matters for the rest of the docs:
 
-Delivery storage is separate from management storage. They can use one PostgreSQL database and schema, different schemas, or different databases. Better Auth management can also use a supported non-PostgreSQL adapter while delivery uses PostgreSQL.
+| Term         | Meaning                                                                            |
+| ------------ | ---------------------------------------------------------------------------------- |
+| **Event**    | One published fact with a UUID, a type, a timestamp, and validated data            |
+| **Delivery** | One event bound for one endpoint. Publication creates one per matching recipient   |
+| **Attempt**  | One HTTP request for a delivery. Retries are further attempts of the same delivery |
+| **Replay**   | A new delivery for the original event, with the same event ID and body             |
+
+Delivery storage is separate from management storage. They can share a database and schema, use different schemas, or live in different databases. Better Auth management can use SQLite, MySQL, or MongoDB while delivery uses PostgreSQL.
 
 ## Composition
 
-`createWebhooks` combines both interfaces. Without a `management` option, it creates standalone PostgreSQL management with the same database and schema as delivery. With an injected provider, it uses that provider's source and exposes its endpoint operations.
+`createWebhooks()` wires both halves together. Without a `management` option it creates standalone PostgreSQL management on the same database and schema as delivery. With an injected provider it uses that provider's source and exposes its endpoint operations.
 
-`createDelivery` accepts only the sender dependencies, including an `EndpointSource`. This is enough for an independent worker process.
+`createDelivery()` takes only the sender dependencies, including an `EndpointSource`. That is all a separate worker process needs.
 
-| The library owns                                                 | Your application owns                                                   |
-| ---------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| Endpoint lifecycle and the sender contract                       | Authorization before trusted server calls                               |
-| Event validation, queue records, signatures, and retry decisions | Business transaction boundaries and publication timing                  |
-| Worker execution when called                                     | Worker startup, error reporting, shutdown, and database pool lifetime   |
-| Migration SQL generation and compatibility checks                | Migration execution and upgrade planning                                |
-| Signature verification and payload parsing                       | Request limits, durable receiver deduplication, and business processing |
+```ts
+import { createDelivery } from 'good-webhooks/delivery'
+import { createBetterAuthManagement } from 'good-webhooks/better-auth'
 
-Constructors do not start listeners, apply migrations, or start workers. See [delivery guarantees](/concepts/delivery-guarantees) for the boundaries of accepted publication and HTTP delivery.
+const management = await createBetterAuthManagement(auth)
+const delivery = createDelivery({ database: pool, events, source: management.source })
+```
+
+## What nothing does on its own
+
+Constructors validate options and return. They do not open connections, apply migrations, start listeners, or start workers. Your application:
+
+- runs [migrations](/docs/operations/migrations) with its own runner,
+- owns the PostgreSQL pool and closes it on shutdown,
+- starts the [worker](/docs/operations/workers) and schedules [cleanup](/docs/operations/retention),
+- authorizes callers before handing them a [scoped client](/docs/concepts/scopes).
+
+See [delivery guarantees](/docs/concepts/delivery-guarantees) for what an accepted publication does and does not promise.
