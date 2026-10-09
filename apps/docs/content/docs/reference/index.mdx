@@ -3,7 +3,23 @@ title: API reference
 description: Every public entry point, what it exports, and where its contract is documented.
 ---
 
-The package has eight code entry points and three SQL assets. Better Auth is an optional peer; nothing else imports it.
+The package has eight code entry points and three SQL assets; this section holds the exact contract for each.
+
+```ts
+import { createWebhooks, generateEncryptionKey, WebhookError } from 'good-webhooks'
+import { createDelivery } from 'good-webhooks/delivery'
+import { createManagement } from 'good-webhooks/management'
+import {
+  createPostgresManagement,
+  createPostgresManagementRepository,
+} from 'good-webhooks/management/postgres'
+import { goodWebhooks, createBetterAuthManagement } from 'good-webhooks/better-auth'
+import { goodWebhooksClient } from 'good-webhooks/better-auth/client'
+import { parseWebhook, verifyWebhook } from 'good-webhooks/verify'
+import { getPostgresMigration } from 'good-webhooks/migrations'
+```
+
+Better Auth is an optional peer; only the two `better-auth` entry points import it.
 
 <Cards>
   <Card title="good-webhooks" href="/docs/reference/core">
@@ -35,12 +51,22 @@ The package has eight code entry points and three SQL assets. Better Auth is an 
   </Card>
 </Cards>
 
+## Which process imports what
+
+| Process                      | Imports                                                                          |
+| ---------------------------- | -------------------------------------------------------------------------------- |
+| Producer and worker          | `good-webhooks`, or `good-webhooks/delivery` with a separate management provider |
+| Endpoint management only     | `good-webhooks/management/postgres` or `good-webhooks/better-auth`               |
+| Browser (Better Auth client) | `good-webhooks/better-auth/client`                                               |
+| Receiver                     | `good-webhooks/verify`. It loads no database or worker code                      |
+| Migration tooling            | `good-webhooks/migrations` or the `.sql` assets                                  |
+
 ## Conventions
 
 - Constructors validate options and return. They never open connections, apply migrations, or start workers.
 - Expected failures throw [`WebhookError`](/docs/reference/errors) with a stable `code`. Database and provider failures can propagate as other error types.
 - Trusted provider results use `Date` values. Better Auth route responses use ISO strings.
-- Scope arguments are `null` for application scope or `{ type, id }` for a named scope. Selecting a scope never authorizes the caller.
+- Scope arguments are `null` for application scope or `{ type, id }` for a named scope. Selecting a scope never authorizes the caller. See [scopes](/docs/concepts/scopes).
 
 ## SQL assets
 

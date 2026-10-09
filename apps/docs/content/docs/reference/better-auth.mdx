@@ -3,6 +3,8 @@ title: Better Auth server
 description: Authenticated endpoint routes and the trusted management provider.
 ---
 
+`good-webhooks/better-auth` adds authenticated endpoint management routes to Better Auth and exposes the same storage as a trusted provider.
+
 ```ts
 import { goodWebhooks, createBetterAuthManagement } from 'good-webhooks/better-auth'
 import type {
@@ -14,7 +16,7 @@ import type {
 } from 'good-webhooks/better-auth'
 ```
 
-The documented and tested baseline is Better Auth `1.7.7` on Node.js 24. The optional peer range is `>=1.7.7 <1.8.0`. Database support depends on the host adapter and its migration workflow. The [adapter compatibility page](/docs/better-auth/database-adapters) lists tested combinations and limits.
+The documented and tested baseline is Better Auth `1.7.7` on Node.js 24. The optional peer range is `>=1.7.7 <1.8.0`. Database support depends on the host adapter and its migration workflow. The [adapter compatibility page](/docs/better-auth/database-adapters) lists tested combinations and limits. For setup steps, see the [Better Auth plugin guide](/docs/better-auth).
 
 ## goodWebhooks
 
@@ -22,6 +24,18 @@ The documented and tested baseline is Better Auth `1.7.7` on Node.js 24. The opt
 goodWebhooks<const EventTypes extends readonly string[]>(
 	options: GoodWebhooksOptions<EventTypes>,
 )
+```
+
+```ts title="auth.ts"
+import { betterAuth } from 'better-auth'
+import { goodWebhooks } from 'good-webhooks/better-auth'
+import { database } from './database.js' // Your existing database or adapter.
+
+export const auth = betterAuth({
+  database,
+  secret: process.env.BETTER_AUTH_SECRET!,
+  plugins: [goodWebhooks({ eventTypes: ['invoice.created', 'invoice.paid'] as const })],
+})
 ```
 
 Returns the `good-webhooks` Better Auth server plugin. It adds one management model and eight authenticated POST routes. It does not publish events, create delivery storage, or start a worker.
@@ -34,13 +48,28 @@ Returns the `good-webhooks` Better Auth server plugin. It adds one management mo
 | `schema.fields`    | Optional mapping from logical fields to physical field names.                                           |
 | `authorizeScope`   | Optional policy required for application and custom scopes. Cannot override user or organization rules. |
 
+### Storage model
+
 Schema field names are `scopeKey`, `allocationKey`, `creationToken`, `url`, `description`, `eventTypes`, `additionalEventTypes`, `status`, `encryptedSecret`, `previousEncryptedSecret`, `previousSecretExpiresAt`, `revision`, `createdAt`, and `updatedAt`.
 
 The plugin declares a unique `allocationKey` index for the per-scope endpoint limit. Generated fields and indexes are part of the storage contract. The host runs Better Auth's migration or schema-generation workflow. Standalone `management.sql` does not create this model.
 
+Signing secrets are encrypted with the auth instance's secret configuration. Unlike the [PostgreSQL provider](/docs/reference/postgres#destination-checks), this provider does not resolve hostnames at registration. The worker still checks each destination before connecting.
+
 ## Authenticated routes
 
-Each route lives under Better Auth's configured base path. Every route uses sensitive session middleware and disables response storage. Server calls use `auth.api.<method>({ body, headers })` with the caller's session headers.
+```ts
+import { auth } from './auth.js'
+
+export async function createEndpoint(request: Request) {
+  return auth.api.createWebhookEndpoint({
+    headers: request.headers,
+    body: { url: 'https://receiver.example/webhooks', eventTypes: ['invoice.paid'] },
+  })
+}
+```
+
+Each route lives under Better Auth's configured base path. Every route uses sensitive session middleware and disables response storage. Server calls use `auth.api.<method>({ body, headers })` with the caller's session headers. Browsers use the [client plugin](/docs/reference/better-auth-client).
 
 | Server method                 | POST path                      | Body besides `scope?`                       | Result                 | Action   |
 | ----------------------------- | ------------------------------ | ------------------------------------------- | ---------------------- | -------- |
@@ -53,7 +82,7 @@ Each route lives under Better Auth's configured base path. Every route uses sens
 | `removeWebhookEndpoint`       | `/good-webhooks/remove`        | `id`                                        | `WebhookEndpointDTO`   | `delete` |
 | `rotateWebhookEndpointSecret` | `/good-webhooks/rotate-secret` | `id`, `graceMs?`                            | `{ endpoint, secret }` | `update` |
 
-`scope` accepts `{ type, id }`, `null`, or omission. Bodies reject unknown fields. Creation and updates use the [management input limits](/docs/reference/management). An update accepts `description: null` to clear the value. Rotation accepts an integer `graceMs` from 0 through 86,400,000, defaulting to 86,400,000.
+`scope` accepts `{ type, id }`, `null`, or omission. Bodies reject unknown fields. Creation and updates use the [management input limits](/docs/reference/management#inputs-and-limits). An update accepts `description: null` to clear the value. Rotation accepts an integer `graceMs` from 0 through 86,400,000, defaulting to 86,400,000.
 
 `WebhookEndpointDTO<EventType>` contains `id`, `url`, nullable `description`, `eventTypes`, `status`, `createdAt`, and `updatedAt`. Its timestamps are ISO strings, unlike trusted provider results, which contain `Date` values. Ordinary route results contain no signing material. Creation and rotation return the new secret separately.
 
@@ -66,8 +95,6 @@ Each route lives under Better Auth's configured base path. Every route uses sens
 | `organization`  | Requires the organization plugin, current membership, and the requested `webhookEndpoint` action. |
 | `null`          | Application scope. Requires `authorizeScope` to allow the exact action.                           |
 | Another type    | Requires `authorizeScope` to allow that scope and action.                                         |
-
-The organization plugin's configured creator role has full endpoint access. Other roles need explicit grants. A role named `admin` does not receive grants by name alone. Organization-owned API keys are not an authentication path for these routes. User API-key session impersonation is not a promised compatibility path in this version.
 
 ```ts
 type ManagementAction = 'create' | 'read' | 'update' | 'delete'
@@ -82,9 +109,26 @@ interface ScopeAuthorization {
 type ScopePolicy = (input: ScopeAuthorization) => boolean | Promise<boolean>
 ```
 
-The policy defaults to denial for application and custom scopes. It does not run as an override for user or organization authorization.
+```ts
+import { goodWebhooks, type ScopePolicy } from 'good-webhooks/better-auth'
+
+const authorizeScope: ScopePolicy = ({ scope, action, user }) =>
+  scope === null && action === 'read' && user.emailVerified
+
+export const plugin = goodWebhooks({ eventTypes: ['invoice.paid'] as const, authorizeScope })
+```
+
+The policy defaults to denial for application and custom scopes. It does not run as an override for user or organization authorization. The [permissions guide](/docs/better-auth/permissions) shows organization access control.
+
+<Accordions>
+<Accordion title="Organization roles, API keys, and owner deletion">
+
+The organization plugin's configured creator role has full endpoint access. Other roles need explicit grants. A role named `admin` does not receive grants by name alone. Organization-owned API keys are not an authentication path for these routes. User API-key session impersonation is not a promised compatibility path in this version.
 
 Deleting a user retires their personal endpoints. Deleting an organization through the organization endpoint retires its endpoints. Trusted sender lookups also check owner existence. Removing a member revokes that member's management access without retiring the organization's endpoints.
+
+</Accordion>
+</Accordions>
 
 ## Route errors
 
@@ -105,8 +149,16 @@ Better Auth validates request bodies and handles errors outside this mapping. Th
 createBetterAuthManagement(auth: { $context: Promise<object> }): Promise<EndpointManagement>
 ```
 
+```ts
+import { createBetterAuthManagement } from 'good-webhooks/better-auth'
+import { auth } from './auth.js'
+
+const management = await createBetterAuthManagement(auth)
+await management.removeScope({ type: 'organization', id: 'org_123' })
+```
+
 Returns the same trusted management provider installed by `goodWebhooks`. A missing plugin produces `INVALID_CONFIG`.
 
-This helper needs neither a session nor an HTTP listener. Direct calls bypass route authorization. It uses Better Auth's adapter and encryption helpers with the auth instance's secret configuration. App and worker must share compatible configuration, storage, and decryption keys.
+This helper needs neither a session nor an HTTP listener. Direct calls bypass route authorization. It uses Better Auth's adapter and encryption helpers with the auth instance's secret configuration. App and worker must share compatible configuration, storage, and decryption keys. See [add delivery to Better Auth](/docs/better-auth/delivery).
 
-The provider exposes every [EndpointManagement operation](/docs/reference/management), including `removeScope` and `reencrypt`, plus `source` for a sender. There are no HTTP routes for `removeScope` or `reencrypt`.
+The provider exposes every [EndpointManagement operation](/docs/reference/management#endpointmanagement), including `removeScope` and `reencrypt`, plus `source` for a sender. There are no HTTP routes for `removeScope` or `reencrypt`.

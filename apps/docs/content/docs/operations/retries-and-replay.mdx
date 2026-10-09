@@ -23,10 +23,16 @@ Two things look like failures but are not receiver failures:
 
 ## Inspect deliveries
 
+History and replay work on the client for the endpoint's scope:
+
 ```ts
-const page = await tenant.deliveries.list({ eventId: publication.eventId, limit: 25 })
+import { webhooks } from './webhooks.js'
+
+const customer = webhooks.forScope({ type: 'organization', id: organizationId })
+
+const page = await customer.deliveries.list({ eventId: publication.eventId, limit: 25 })
 for (const item of page.items) {
-  const detail = await tenant.deliveries.get(item.id)
+  const detail = await customer.deliveries.get(item.id)
   console.log(detail.status, detail.lastStatus, detail.attempts.length)
 }
 ```
@@ -37,12 +43,27 @@ Response bodies and payloads can contain customer data. Treat history as sensiti
 
 ## Replay
 
+<Flow>
+  <FlowStep title="Fix the cause" actor="you">
+    The receiver is back, or its bug is fixed.
+  </FlowStep>
+  <FlowStep title="replay()" actor="your app">
+    Creates a new delivery of the same event.
+  </FlowStep>
+  <FlowStep title="Send" actor="worker">
+    Same event ID and body, fresh retry budget.
+  </FlowStep>
+  <FlowStep title="Dedupe" actor="receiver">
+    Already processed? The receiver skips it.
+  </FlowStep>
+</Flow>
+
 After fixing the cause, replay the original delivery:
 
 ```ts
-const detail = await tenant.deliveries.get(deliveryId)
+const detail = await customer.deliveries.get(deliveryId)
 if (detail.replayOf === null && ['succeeded', 'failed'].includes(detail.status)) {
-  const replay = await tenant.deliveries.replay(detail.id)
+  const replay = await customer.deliveries.replay(detail.id)
 }
 ```
 
@@ -54,4 +75,4 @@ Rules:
 - The replay gets a new delivery ID and a fresh retry budget, the same event ID and body, and the endpoint's current URL and secrets.
 - The worker still has to run.
 
-Because the event ID is unchanged, a [deduplicating receiver](/docs/guides/receive#commit-before-you-acknowledge) ignores a replay of an event it already processed. That is the intended way to replay safely.
+Because the event ID is unchanged, a [deduplicating receiver](/docs/guides/receive#process-each-event-once) ignores a replay of an event it already processed. That is the intended way to replay safely.

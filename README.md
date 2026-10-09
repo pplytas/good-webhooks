@@ -36,7 +36,7 @@ pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-Open `http://localhost:3000`. The documentation is a Fumadocs site with a landing page at `/` and docs under `/docs`, exported as static HTML. To build and preview the export:
+Open `http://localhost:3000`. The documentation is a Fumadocs site on Next.js with a landing page at `/` and docs under `/docs`. To build, check, and run the production build:
 
 ```sh
 pnpm build

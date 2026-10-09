@@ -29,7 +29,7 @@ const deliveryOnly = getPostgresMigration({ component: 'delivery', schema: 'noti
 Or from the shell:
 
 ```sh
-node --input-type=module -e 'import { getPostgresMigration } from "good-webhooks/migrations"; process.stdout.write(getPostgresMigration())' > 001-webhooks.sql
+node -e 'import("good-webhooks/migrations").then(m => process.stdout.write(m.getPostgresMigration()))' > 001-webhooks.sql
 psql "$DATABASE_URL" --single-transaction -v ON_ERROR_STOP=1 -f 001-webhooks.sql
 ```
 
@@ -42,8 +42,11 @@ The shipped files are also package exports, resolvable with `import.meta.resolve
 Whatever schema you generate for must be the schema you configure at runtime:
 
 ```ts
+import { createWebhooks } from 'good-webhooks'
+import { getPostgresMigration } from 'good-webhooks/migrations'
+
 const schema = 'notifications'
-const sql = getPostgresMigration({ schema })
+const sql = getPostgresMigration({ schema }) // apply with your migration tool
 
 const webhooks = createWebhooks({ database: pool, schema, encryptionKey, events })
 ```

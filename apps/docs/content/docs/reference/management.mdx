@@ -3,19 +3,70 @@ title: Management contracts
 description: Shared endpoint lifecycle, sender reads, and custom storage interfaces.
 ---
 
+`good-webhooks/management` defines the endpoint management contract that every provider implements, and `createManagement` builds one over your own storage.
+
 ```ts
 import { createManagement } from 'good-webhooks/management'
 import type {
   EndpointManagement,
   EndpointSource,
+  EndpointResolution,
+  ManagementScope,
+  ManagementOptions,
   ManagementRepository,
   SecretCipher,
+  StoredEndpoint,
+  StoredEndpointPatch,
+  ManagedEndpoint,
+  CreateManagedEndpoint,
+  UpdateManagedEndpoint,
+  ManagedEndpointWithSecret,
 } from 'good-webhooks/management'
 ```
 
+Most applications use a ready provider: [PostgreSQL](/docs/reference/postgres) or [Better Auth](/docs/reference/better-auth). The [endpoints guide](/docs/guides/endpoints) covers the lifecycle; [custom senders](/docs/guides/custom-senders) covers building on these contracts.
+
 ## EndpointManagement
 
-All direct calls are trusted server operations. The first argument is `ManagementScope`, either `null` for application scope or `{ type, id }` for a named scope. `type` accepts 1 through 64 characters and `id` accepts 1 through 200. Both must be nonblank and contain no null bytes.
+```ts
+interface EndpointManagement {
+  readonly source: EndpointSource
+  create(scope: ManagementScope, input: CreateManagedEndpoint): Promise<ManagedEndpointWithSecret>
+  list(scope: ManagementScope): Promise<ManagedEndpoint[]>
+  get(scope: ManagementScope, id: string): Promise<ManagedEndpoint>
+  update(scope: ManagementScope, id: string, patch: UpdateManagedEndpoint): Promise<ManagedEndpoint>
+  pause(scope: ManagementScope, id: string): Promise<ManagedEndpoint>
+  resume(scope: ManagementScope, id: string): Promise<ManagedEndpoint>
+  remove(scope: ManagementScope, id: string): Promise<ManagedEndpoint>
+  rotateSecret(
+    scope: ManagementScope,
+    id: string,
+    options?: { graceMs?: number },
+  ): Promise<ManagedEndpointWithSecret>
+  removeScope(scope: ManagementScope): Promise<void>
+  reencrypt(scope: ManagementScope): Promise<number>
+}
+```
+
+```ts
+import { createPostgresManagement } from 'good-webhooks/management/postgres'
+import { Pool } from 'pg'
+
+const management = createPostgresManagement({
+  database: new Pool({ connectionString: process.env.DATABASE_URL }),
+  eventTypes: ['invoice.paid'],
+  encryptionKey: process.env.WEBHOOK_ENCRYPTION_KEY!,
+})
+
+const scope = { type: 'organization', id: 'org_123' }
+const { endpoint, secret } = await management.create(scope, {
+  url: 'https://receiver.example/webhooks',
+  eventTypes: ['invoice.paid'],
+})
+await management.pause(scope, endpoint.id)
+```
+
+All direct calls are trusted server operations. They do not authorize the caller. The first argument is `ManagementScope`: `null` for application scope or `{ type, id }` for a named scope. See [scopes](/docs/concepts/scopes).
 
 | Method                              | Result and behavior                                                                                                                          |
 | ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -28,18 +79,46 @@ All direct calls are trusted server operations. The first argument is `Managemen
 | `remove(scope, id)`                 | `Promise<ManagedEndpoint>`. Sets status to `'deleted'` and clears signing secrets. Removing an already deleted record is idempotent.         |
 | `rotateSecret(scope, id, options?)` | `Promise<ManagedEndpointWithSecret>`. Changes the signing secret. `options.graceMs` defaults to 86,400,000 and accepts 0 through 86,400,000. |
 | `removeScope(scope)`                | `Promise<void>`. Deletes the scope's currently registered endpoints.                                                                         |
-| `reencrypt(scope)`                  | `Promise<number>`. Rewrites live signing-secret ciphertext using the current storage key and returns the count.                              |
-| `source`                            | Trusted sender reads described below.                                                                                                        |
+| `reencrypt(scope)`                  | `Promise<number>`. Rewrites live signing-secret ciphertext using the current storage encryption key and returns the count.                   |
+| `source`                            | Trusted sender reads. See [EndpointSource](#endpointsource).                                                                                 |
 
-`CreateManagedEndpoint` has `url`, optional `description`, and `eventTypes`. `UpdateManagedEndpoint` makes those fields optional and accepts `null` to clear the description. Each scope permits at most 1,000 nondeleted endpoints. An endpoint subscribes to 1 through 100 configured event names. Duplicate subscriptions are collapsed.
+### Inputs and limits
 
-Endpoint IDs accepted by management contain 1 through 255 characters, must be nonblank, and cannot contain null bytes. Descriptions accept at most 2,000 characters without null bytes. URLs accept at most 2,048 characters and must pass the configured destination validation.
+`CreateManagedEndpoint` has `url`, optional `description`, and `eventTypes`. `UpdateManagedEndpoint` makes those fields optional and accepts `description: null` to clear the description.
 
-`ManagedEndpoint` is the shared `Endpoint` shape: `id`, `url`, nullable `description`, `eventTypes`, `status`, `createdAt`, and `updatedAt`. Timestamps are `Date` values. Ordinary results contain neither plaintext signing secrets nor ciphertext.
+| Value        | Limit                                                                                              |
+| ------------ | -------------------------------------------------------------------------------------------------- |
+| Scope `type` | 1 through 64 characters, nonblank, no null bytes.                                                  |
+| Scope `id`   | 1 through 200 characters, nonblank, no null bytes.                                                 |
+| Endpoint ID  | 1 through 255 characters, nonblank, no null bytes.                                                 |
+| URL          | At most 2,048 characters. Must pass the configured destination validation, otherwise `UNSAFE_URL`. |
+| Description  | At most 2,000 characters, no null bytes.                                                           |
+| `eventTypes` | 1 through 100 configured event names. Duplicates are collapsed.                                    |
+| Endpoints    | At most 1,000 nondeleted endpoints per scope.                                                      |
+| `graceMs`    | Integer from 0 through 86,400,000. Default 86,400,000.                                             |
+
+### Results
+
+`ManagedEndpoint` is the shared `Endpoint` shape: `id`, `url`, nullable `description`, `eventTypes`, `status`, `createdAt`, and `updatedAt`. Timestamps are `Date` values. Ordinary results contain neither plaintext signing secrets nor ciphertext. Only `create` and `rotateSecret` return the new `secret`.
+
+### Errors
+
+| Error           | When                                                                                                          |
+| --------------- | ------------------------------------------------------------------------------------------------------------- |
+| `INVALID_INPUT` | An argument breaks a limit above, or names an event outside the configured list.                              |
+| `UNSAFE_URL`    | The URL fails destination validation.                                                                         |
+| `NOT_FOUND`     | No endpoint with this ID in the scope, or the scope's owner no longer exists.                                 |
+| `INVALID_STATE` | The endpoint is deleted, the scope is full, a signing-secret overlap is active, or the record keeps changing. |
+
+<Accordions>
+<Accordion title="Lifecycle rules for deleted endpoints and rotation">
 
 Deleted endpoints cannot be updated, paused, resumed, or rotated. A second rotation during an active overlap fails unless `graceMs: 0` explicitly replaces all current signing material. Re-encryption preserves signing values and includes paused endpoints.
 
-Expected errors include `INVALID_INPUT`, `UNSAFE_URL`, `NOT_FOUND`, and `INVALID_STATE`. Conflicting updates retry with revision checks and eventually produce `INVALID_STATE` if the record keeps changing.
+Conflicting updates retry with revision checks and eventually produce `INVALID_STATE` if the record keeps changing. See [key rotation](/docs/operations/key-rotation) for both rotation procedures.
+
+</Accordion>
+</Accordions>
 
 ## EndpointSource
 
@@ -53,11 +132,51 @@ type EndpointResolution =
   { status: 'active'; url: string; secrets: readonly string[] } | { status: 'paused' | 'deleted' }
 ```
 
-`matchRecipients` returns the complete matching set, including paused endpoints. Lookup failures reject. A source must not convert an outage into an empty result. Concurrent edits can produce a result that reflects different moments; the contract does not promise a scope-wide snapshot.
+```ts
+import { createDelivery } from 'good-webhooks/delivery'
+import type { EndpointSource } from 'good-webhooks/management'
+import { Pool } from 'pg'
+import { z } from 'zod'
 
-`resolveEndpoint` returns current state before an attempt. Active results contain the current URL and usable Standard Webhooks signing secrets. Deleted or missing records return `'deleted'`. A missing Better Auth user or organization also makes its endpoints ineligible. Lookup and decryption failures reject.
+// A fixed, single-endpoint source. Real sources read your endpoint storage.
+const source: EndpointSource = {
+  async matchRecipients() {
+    return ['endpoint-1']
+  },
+  async resolveEndpoint() {
+    return {
+      status: 'active',
+      url: 'https://receiver.example/webhooks',
+      secrets: [process.env.WEBHOOK_SECRET!],
+    }
+  },
+}
 
-The built-in management source returns the new signing secret first and the previous secret only while the overlap remains active. The source is not an API for untrusted callers. Custom senders also own [recipient persistence and safe transport](/docs/guides/custom-senders).
+const delivery = createDelivery({
+  database: new Pool({ connectionString: process.env.DATABASE_URL }),
+  events: { 'invoice.paid': z.object({ invoiceId: z.string() }) },
+  source,
+})
+```
+
+The sender calls `matchRecipients` once at publication and `resolveEndpoint` before every attempt. The source is not an API for untrusted callers.
+
+| Method            | Contract                                                                                                                                                         |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `matchRecipients` | Returns the complete set of matching endpoint IDs, including paused endpoints. Lookup failures reject. A source must not convert an outage into an empty result. |
+| `resolveEndpoint` | Returns current state. Active results contain the current URL and usable Standard Webhooks signing secrets. Deleted or missing records return `'deleted'`.       |
+
+The built-in source returns the new signing secret first and the previous secret only while the overlap remains active. It rejects an unknown event name with `INVALID_INPUT`. Lookup and decryption failures reject.
+
+<Accordions>
+<Accordion title="Consistency and missing owners">
+
+Concurrent edits can produce a `matchRecipients` result that reflects different moments; the contract does not promise a scope-wide snapshot. A missing Better Auth user or organization also makes its endpoints ineligible: matching returns no recipients and resolution returns `'deleted'`.
+
+Custom senders also own [recipient persistence and safe transport](/docs/guides/custom-senders).
+
+</Accordion>
+</Accordions>
 
 ## createManagement
 
@@ -65,7 +184,22 @@ The built-in management source returns the new signing secret first and the prev
 createManagement(options: ManagementOptions): EndpointManagement
 ```
 
-Creates shared lifecycle behavior over custom persistence and encryption.
+```ts
+import { createManagement } from 'good-webhooks/management'
+import { createPostgresManagementRepository } from 'good-webhooks/management/postgres'
+import { Pool } from 'pg'
+import { cipher } from './cipher.js' // Your SecretCipher, for example backed by a KMS.
+
+export const management = createManagement({
+  repository: createPostgresManagementRepository(
+    new Pool({ connectionString: process.env.DATABASE_URL }),
+  ),
+  cipher,
+  eventTypes: ['invoice.paid', 'invoice.voided'],
+})
+```
+
+Creates the shared endpoint lifecycle over custom persistence and encryption.
 
 | Option               | Contract                                                                                                             |
 | -------------------- | -------------------------------------------------------------------------------------------------------------------- |
@@ -76,7 +210,15 @@ Creates shared lifecycle behavior over custom persistence and encryption.
 | `validateUrl(url)`   | Optional async host check after portable URL validation.                                                             |
 | `scopeExists(scope)` | Optional async ownership check. Returns `false` for a missing owner and rejects on lookup failure.                   |
 
+Invalid options throw `INVALID_CONFIG`. Portable URL validation requires HTTPS and rejects credentials, fragments, and private or reserved IP literals. Loopback hosts, including `localhost`, need `allowLocalhost`, which also permits HTTP for them.
+
+<Accordions>
+<Accordion title="How scopeExists changes behavior">
+
 With `scopeExists`, ordinary reads and writes reject missing owners with `NOT_FOUND`. `remove` and `removeScope` skip that check so an owner can still be cleaned up after deletion. Sender matching returns no recipients for a missing owner, and resolution returns `'deleted'`. Creation also checks ownership after the insert so a concurrent owner deletion cannot leave a live orphan.
+
+</Accordion>
+</Accordions>
 
 ## ManagementRepository
 
@@ -94,7 +236,14 @@ interface ManagementRepository {
 }
 ```
 
-`list` returns every live record without truncation. `create` atomically enforces the strict 1,000-record scope limit. `update` atomically guards on scope, ID, and revision, increments the revision, and applies the patch. A revision conflict returns `null`. Repository errors propagate.
+| Method   | Contract                                                                                                                          |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `list`   | Returns every live record in the scope without truncation.                                                                        |
+| `get`    | Returns the record, including a deleted one, or `null`.                                                                           |
+| `create` | Atomically inserts the record and enforces the strict 1,000-record scope limit.                                                   |
+| `update` | Atomically guards on scope, ID, and revision, increments the revision, and applies the patch. A revision conflict returns `null`. |
+
+Repository errors propagate. [`createPostgresManagementRepository`](/docs/reference/postgres#createpostgresmanagementrepository) is the built-in implementation.
 
 `StoredEndpoint` adds `revision`, `encryptedSecret`, nullable `previousEncryptedSecret`, and nullable `previousSecretExpiresAt` to the endpoint shape. `StoredEndpointPatch` is a partial stored record without `id`, `createdAt`, or `revision`. Stored records must never be sent to clients.
 
@@ -107,6 +256,4 @@ interface SecretCipher {
 }
 ```
 
-The cipher encrypts receiver-facing signing secrets. A cipher that supports storage-key rotation writes with the current key and reads the retained keys until re-encryption finishes.
-
-This entrypoint exports every contract named on this page, plus the aliases `ManagedEndpoint`, `CreateManagedEndpoint`, `UpdateManagedEndpoint`, and `ManagedEndpointWithSecret`.
+The cipher encrypts receiver-facing signing secrets at rest. A cipher that supports storage encryption key rotation writes with the current key and reads the retained keys until re-encryption finishes.

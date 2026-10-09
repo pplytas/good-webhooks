@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+The package ships an [Agent Skill](https://agentskills.io) in `skills/good-webhooks/` that matches the installed version, and a shorter README. Runtime behavior, public APIs, dependencies, and database schema are unchanged.
+
 ## 0.1.0-alpha.3 (2026-10-08)
 
 Fix delivery-history ordering and cursor pagination. `deliveries.list()` now sorts by the numeric delivery ID instead of its text representation. Previously, IDs such as `9` appeared before `43`, and cursor pages could skip deliveries across digit boundaries.

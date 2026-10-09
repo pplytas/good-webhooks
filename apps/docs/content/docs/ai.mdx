@@ -1,24 +1,142 @@
 ---
-title: AI resources
-description: Feed these docs to coding assistants and agents.
+title: Use with AI agents
+description: Give coding agents the docs as Markdown, an Agent Skill, an MCP server, the rules they most often get wrong, and prompts that work.
 ---
 
-Every page has a **Copy Markdown** button and an **Open in** menu at the top for ChatGPT, Claude, and other assistants.
+Every page is available as plain Markdown. Coding agents read it more reliably than HTML.
 
-| Resource                           | Contents                                                                                 |
-| ---------------------------------- | ---------------------------------------------------------------------------------------- |
-| [`/llms.txt`](/llms.txt)           | An index of every page with a one-line description                                       |
-| [`/llms-full.txt`](/llms-full.txt) | The complete documentation as one Markdown file                                          |
-| `/llms.mdx/<path>.md`              | One page as Markdown, for example [`/llms.mdx/quick-start.md`](/llms.mdx/quick-start.md) |
+| Resource                           | What it is                                                                                 |
+| ---------------------------------- | ------------------------------------------------------------------------------------------ |
+| [`/llms.txt`](/llms.txt)           | An index of every page, grouped by section, with links to the Markdown versions            |
+| [`/llms-full.txt`](/llms-full.txt) | All the docs in one Markdown file                                                          |
+| `/docs/<page>.md`                  | Any page: add `.md` to its URL, for example [`/docs/quick-start.md`](/docs/quick-start.md) |
+| `Accept: text/markdown`            | Any page URL returns Markdown when the request prefers it                                  |
+| **Copy Markdown** and **Open in**  | Buttons at the top of every page. Send the page to ChatGPT, Claude, Cursor, and others     |
 
-The Markdown output includes the type-checked example files that the HTML pages embed, so an assistant sees the same code you do.
+The Markdown includes the type-checked example files and the generated type tables, so an agent sees the same code you do. The docs describe the latest alpha; pin that version.
 
-## Point an agent at the docs
+## Install the skill
 
-Add this line to your project's `AGENTS.md`, `CLAUDE.md`, or equivalent:
+The package ships an [Agent Skill](https://agentskills.io) with setup steps, code templates, and the rules below. It lives in `node_modules/good-webhooks/skills/good-webhooks/`, so it always matches your installed version.
 
-```md
-Good Webhooks documentation: https://good-webhooks.vercel.app/llms-full.txt
+<Tabs groupId="skill" items={['From GitHub', 'From node_modules', 'Manually']}>
+<Tab>
+
+```sh
+npx skills add pplytas/good-webhooks
 ```
 
-The source for the documentation is in the repository under [`apps/docs/content/docs`](https://github.com/pplytas/good-webhooks/tree/main/apps/docs/content/docs). The public API lives in [`packages/good-webhooks/src`](https://github.com/pplytas/good-webhooks/tree/main/packages/good-webhooks/src) with shipped declarations.
+</Tab>
+<Tab>
+
+Install skills from every installed package that ships one:
+
+```sh
+npx skills experimental_sync
+```
+
+</Tab>
+<Tab>
+
+Copy the folder into your agent's skills directory, for example for Claude Code:
+
+```sh
+mkdir -p .claude/skills
+cp -R node_modules/good-webhooks/skills/good-webhooks .claude/skills/
+```
+
+</Tab>
+</Tabs>
+
+## Connect the MCP server
+
+`https://good-webhooks.vercel.app/api/mcp` is a [Model Context Protocol](https://modelcontextprotocol.io) server with three tools: `list_pages`, `get_page`, and `search`. No sign-in needed.
+
+<Tabs groupId="mcp-client" persist items={['Claude Code', 'Cursor', 'VS Code']}>
+<Tab>
+
+```sh
+claude mcp add --transport http good-webhooks https://good-webhooks.vercel.app/api/mcp
+```
+
+</Tab>
+<Tab>
+
+```json title=".cursor/mcp.json"
+{
+  "mcpServers": {
+    "good-webhooks": { "url": "https://good-webhooks.vercel.app/api/mcp" }
+  }
+}
+```
+
+</Tab>
+<Tab>
+
+```json title=".vscode/mcp.json"
+{
+  "servers": {
+    "good-webhooks": { "type": "http", "url": "https://good-webhooks.vercel.app/api/mcp" }
+  }
+}
+```
+
+</Tab>
+</Tabs>
+
+## Or add the rules to your project
+
+Without the skill, paste this into your `AGENTS.md`, `CLAUDE.md`, or your editor's rules file. It points the agent at the docs and lists the mistakes agents make most often with this library.
+
+```md title="AGENTS.md"
+## Good Webhooks
+
+Docs: https://good-webhooks.vercel.app/llms.txt (fetch the linked .md pages for details)
+
+- Receivers must pass the raw request body (string or bytes) to `parseWebhook()`. Never parsed JSON.
+- Receivers must record `event.id` in the same transaction as their change. Delivery is at least once.
+- Respond 400 only for SIGNATURE_INVALID, SIGNATURE_EXPIRED, PAYLOAD_INVALID. Other errors are 500 so the sender retries.
+- `publish()` only stores the event. Nothing is sent unless a worker runs `worker.run()` or `worker.runOnce()`.
+- Load `WEBHOOK_ENCRYPTION_KEY` from secrets. Never call `generateEncryptionKey()` at startup.
+- Apply SQL from `getPostgresMigration()` with the migration tool. The library never runs migrations.
+- `forScope()` does not authorize. Check the caller's access before choosing a scope.
+- Publish with `{ transaction: client }` when the business write uses the same database.
+- `allowLocalhost: true` is for local development only.
+```
+
+## Prompts to try
+
+<Tabs items={['Try it', 'Add to an app', 'Add a receiver']}>
+<Tab>
+
+```text
+Read https://good-webhooks.vercel.app/docs/quick-start.md and follow it in a new
+directory. Run the script and show me the output.
+```
+
+</Tab>
+<Tab>
+
+```text
+Read https://good-webhooks.vercel.app/llms.txt, then the installation, publish-events,
+and run-workers pages. Add Good Webhooks to this app: migration file, client module,
+publish an `order.created` event inside the transaction that creates the order, and a
+separate worker entrypoint. Follow the production checklist page.
+```
+
+</Tab>
+<Tab>
+
+```text
+Read https://good-webhooks.vercel.app/docs/guides/receive.md. Add a webhook route
+to this app for the events in events.ts. Verify with parseWebhook, deduplicate by
+event.id in the same transaction as the change, and map errors to status codes as the
+page describes.
+```
+
+</Tab>
+</Tabs>
+
+## Source
+
+The docs source is in [`apps/docs/content/docs`](https://github.com/pplytas/good-webhooks/tree/main/apps/docs/content/docs). The public API is in [`packages/good-webhooks/src`](https://github.com/pplytas/good-webhooks/tree/main/packages/good-webhooks/src) and ships with type declarations.

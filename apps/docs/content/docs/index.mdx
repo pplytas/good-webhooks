@@ -1,22 +1,37 @@
 ---
 title: Introduction
-description: Good Webhooks is a TypeScript library for outbound webhooks that lives in your application and your PostgreSQL database.
+description: Good Webhooks is a TypeScript library that adds outbound webhooks to your application, using your PostgreSQL database.
 ---
 
-Good Webhooks gives your application three things that usually get rebuilt from scratch:
+Good Webhooks lets your application send webhooks to your customers. You publish an event; it handles the rest: who should receive it, signing, retries, history, and replay. It runs inside your app and stores everything in your PostgreSQL database. There is no extra service to host.
 
-- **Endpoint management.** Your users register destinations, choose event types, pause, resume, and rotate secrets. Through a [Better Auth plugin](/docs/better-auth) or a standalone PostgreSQL provider.
-- **Publication.** You publish typed events. Payloads are validated, idempotency keys are honored, and publication can run inside your own database transaction.
-- **Delivery.** A worker you start sends signed [Standard Webhooks](https://www.standardwebhooks.com) requests, retries transient failures, records every attempt, and replays on demand.
+<Flow title="The life of one event">
+  <FlowStep title="Publish" actor="your app">
+    `publish()` validates the payload and finds subscribed endpoints.
+  </FlowStep>
+  <FlowStep title="Store" actor="PostgreSQL">
+    The event and one delivery per endpoint commit with your data.
+  </FlowStep>
+  <FlowStep title="Deliver" actor="worker">
+    A worker signs each request, sends it, and retries failures.
+  </FlowStep>
+  <FlowStep title="Verify" actor="receiver">
+    The receiver checks the signature and gets a typed event.
+  </FlowStep>
+</Flow>
 
-Receivers verify requests with one function from `good-webhooks/verify`, or with any Standard Webhooks library.
+## In code
+
+<Tabs groupId="intro-code" items={['Publish', 'Deliver', 'Receive']}>
+<Tab>
 
 ```ts title="app.ts"
 import { createWebhooks } from 'good-webhooks'
+import { Pool } from 'pg'
 import { z } from 'zod'
 
-const webhooks = createWebhooks({
-  database: pool,
+export const webhooks = createWebhooks({
+  database: new Pool({ connectionString: process.env.DATABASE_URL }),
   encryptionKey: process.env.WEBHOOK_ENCRYPTION_KEY!,
   events: {
     'invoice.paid': z.object({ invoiceId: z.string(), amount: z.number().int() }),
@@ -25,66 +40,74 @@ const webhooks = createWebhooks({
 
 await webhooks.publish({
   type: 'invoice.paid',
-  data: { invoiceId: 'inv_123', amount: 4200 },
-  idempotencyKey: 'invoice.paid:inv_123',
+  data: { invoiceId: 'inv_123', amount: 4200 }, // type-checked against the schema
 })
 ```
 
-<Callout type="warn" title="Alpha software">
+</Tab>
+<Tab>
+
+```ts title="worker.ts"
+import { webhooks } from './app.js'
+
+const stop = new AbortController()
+process.once('SIGTERM', () => stop.abort())
+
+// Sends due deliveries, retries failures, and stops cleanly on SIGTERM.
+await webhooks.worker.run({ signal: stop.signal })
+```
+
+</Tab>
+<Tab>
+
+```ts title="receiver.ts"
+import { parseWebhook } from 'good-webhooks/verify'
+import { events } from './events.js' // the same event map the sender uses
+
+const event = await parseWebhook({
+  body: rawBody, // the request body exactly as received
+  headers: request.headers,
+  secret: process.env.WEBHOOK_SECRET!,
+  events,
+})
+event.data.amount // number
+```
+
+</Tab>
+</Tabs>
+
+## What it handles for you
+
+Most teams start with a `fetch()` in a request handler. Then a customer's server goes down and events are lost, a deploy sends duplicates, or a URL points at an internal service. Good Webhooks covers those cases:
+
+| Good Webhooks handles                                  | You decide                                    |
+| ------------------------------------------------------ | --------------------------------------------- |
+| Endpoint storage, encrypted secrets, URL safety checks | Who may manage which endpoints                |
+| Payload validation, idempotency, recipient selection   | When to publish, and in which transaction     |
+| Signing, retries, attempt history, replay              | Where the worker runs and how it's supervised |
+| Migration SQL and schema checks                        | When migrations run                           |
+| Signature verification and typed parsing for receivers | What the receiver does with the event         |
+
+Nothing starts on its own: creating the client opens no connections, runs no migrations, and starts no workers.
+
+<Callout type="warn" title="Alpha">
   The API can change between alpha releases. Pin the exact version and read the [release
-  notes](https://github.com/pplytas/good-webhooks/releases) before upgrading. See the [compatibility
-  policy](/docs/operations/compatibility).
+  notes](https://github.com/pplytas/good-webhooks/releases) before upgrading.
 </Callout>
 
-## Why not build it yourself?
-
-Most teams start with a `fetch()` in a request handler. The problems show up later: a customer's endpoint goes down and events are lost, a deploy sends duplicates, a secret leaks into logs, a rotated secret breaks a customer overnight, or a URL points at an internal service.
-
-Good Webhooks handles the parts that are easy to get wrong and leaves the parts that belong to you:
-
-| Good Webhooks owns                                       | Your application owns                              |
-| -------------------------------------------------------- | -------------------------------------------------- |
-| Endpoint lifecycle, encrypted secrets, URL safety checks | Who is allowed to manage which endpoints           |
-| Payload validation, idempotency, recipient selection     | When to publish and in which transaction           |
-| Signing, retries, attempt history, replay                | Starting and supervising the worker process        |
-| Migration SQL and schema checks                          | Running migrations and owning database connections |
-| Signature verification and payload parsing on receivers  | Deduplication and business processing              |
-
-Nothing runs implicitly. Constructors open no connections, apply no migrations, and start no workers.
-
-## Pick your setup
-
-Management and delivery are independent. Combine them however your stack needs.
-
-| You want                                                | Start here                                                |
-| ------------------------------------------------------- | --------------------------------------------------------- |
-| Everything on PostgreSQL, no auth framework             | [Quick start](/docs/quick-start)                          |
-| Signed-in users managing their own endpoints            | [Better Auth plugin](/docs/better-auth)                   |
-| Better Auth for management, Good Webhooks for delivery  | [Add delivery to Better Auth](/docs/better-auth/delivery) |
-| Either management provider feeding your existing sender | [Custom senders](/docs/guides/custom-senders)             |
-
-## Requirements
-
-- Node.js 24 or later. The package ships ESM and also loads through CommonJS `require()`.
-- PostgreSQL 16 or 17 for delivery or standalone management.
-- Better Auth `>=1.7.7 <1.8.0` if you use the plugin. It is an optional peer dependency.
-- TypeScript 5.9.3 or later for typed consumers.
-
-Edge runtimes are not supported. The package targets Node.js.
-
-## Next steps
+## Where to go next
 
 <Cards>
-  <Card title="Installation" href="/docs/installation">
-    Add the package and the dependencies your setup needs.
+  <Card title="Try it in five minutes" href="/docs/quick-start">
+    One file sends a signed webhook to a local receiver.
   </Card>
-  <Card title="Quick start" href="/docs/quick-start">
-    Send a signed webhook to a local receiver in one file.
+  <Card title="Add it to your app" href="/docs/installation">
+    Pick your setup and install what it needs.
   </Card>
-  <Card title="How it works" href="/docs/concepts/architecture">
-    What management, delivery, and your application each own.
+  <Card title="Use Better Auth?" href="/docs/better-auth">
+    Let signed-in users manage their own endpoints.
   </Card>
-  <Card title="Complete examples" href="/docs/examples">
-    Two runnable applications with retries, replay, and real sessions.
+  <Card title="Understand the model" href="/docs/concepts/how-it-works">
+    Management, delivery, scopes, and guarantees.
   </Card>
 </Cards>

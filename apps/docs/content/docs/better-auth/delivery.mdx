@@ -3,9 +3,21 @@ title: Add delivery to Better Auth
 description: Keep Better Auth as the source of endpoints and send events with the PostgreSQL delivery engine from a separate worker.
 ---
 
-Better Auth management and PostgreSQL delivery connect through `management.source`. The app publishes; a worker process delivers. Both construct the provider from the same auth configuration and must read the same management database.
+Keep Better Auth for endpoint management and add Good Webhooks delivery on PostgreSQL. The two connect through `management.source`:
 
-Complete the [plugin setup](/docs/better-auth) first.
+<Flow>
+  <FlowStep title="Endpoints" actor="Better Auth">
+    Users manage endpoints through the plugin, in your auth database.
+  </FlowStep>
+  <FlowStep title="Publish" actor="your app">
+    `delivery.publish()` asks the source who subscribes and stores deliveries in PostgreSQL.
+  </FlowStep>
+  <FlowStep title="Deliver" actor="worker process">
+    Rebuilds the same auth instance, resolves each endpoint, and sends.
+  </FlowStep>
+</Flow>
+
+The app and the worker build the provider from the same auth configuration, so both must reach the same auth database. Complete the [plugin setup](/docs/better-auth) first.
 
 <Steps>
 <Step>
@@ -22,7 +34,7 @@ pg zod
 Generate delivery-only SQL and apply it once with your migration runner. This creates the delivery tables in `public`; pass `schema` to [target another schema](/docs/operations/migrations).
 
 ```sh
-node --input-type=module -e 'import { getPostgresMigration } from "good-webhooks/migrations"; process.stdout.write(getPostgresMigration({ component: "delivery" }))' > 001-webhook-delivery.sql
+node -e 'import("good-webhooks/migrations").then(m => process.stdout.write(m.getPostgresMigration({ component: "delivery" })))' > 001-webhook-delivery.sql
 psql "$DELIVERY_DATABASE_URL" --single-transaction -v ON_ERROR_STOP=1 -f 001-webhook-delivery.sql
 ```
 

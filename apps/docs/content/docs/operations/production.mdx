@@ -1,0 +1,46 @@
+---
+title: Production checklist
+description: Everything to settle before real customers receive webhooks, with a link to the details for each item.
+---
+
+Work through this list once before launch. Each item links to the page that explains it.
+
+## Keys and secrets
+
+- [ ] The storage encryption key is generated once, kept in a secret manager, and loaded by every app and worker process. Never generate it at startup. [Manage endpoints](/docs/guides/endpoints)
+- [ ] Signing secrets are shown to the customer once, over a secure channel, and never logged. [Security model](/docs/concepts/security)
+- [ ] You know how to rotate both a signing secret and the storage key. [Key rotation](/docs/operations/key-rotation)
+
+## Database
+
+- [ ] Migrations run through your migration tool, not at app startup. [Migrations](/docs/operations/migrations)
+- [ ] Every process calls `check()` at startup and fails fast on `SCHEMA_MISMATCH`.
+- [ ] Pool sizes and statement timeouts are budgeted across app, worker, and cleanup processes. [Run workers](/docs/operations/workers#bound-database-waits)
+
+## Publishing
+
+- [ ] Events are published inside the transaction that changes your data, where the tables share a database. [Publish events](/docs/guides/publish#publish-inside-your-transaction)
+- [ ] Every `publish()` that can repeat has an `idempotencyKey` derived from the business fact.
+- [ ] Your app authorizes the caller before choosing a scope. Scopes don't check permissions. [Scopes](/docs/concepts/scopes)
+- [ ] `allowLocalhost` is off.
+
+## Worker
+
+- [ ] At least one worker runs as its own supervised process, restarted with backoff on failure. [Run workers](/docs/operations/workers)
+- [ ] `SIGTERM` aborts the worker's signal, and the supervisor's kill deadline is longer than `shutdownGraceMs`.
+- [ ] Worker failures are logged and alerted on: either `run()` rejects and the process exits, or your `onError` logs and you watch that deliveries keep moving. [Handle failures](/docs/operations/workers#handle-failures)
+
+## History
+
+- [ ] A cleanup job calls `prune()` on a schedule. Workers never delete history. [Retention](/docs/operations/retention)
+- [ ] Delivery history is treated as customer data: it holds payloads and response bodies.
+- [ ] Support staff know how to inspect deliveries and replay one. [Retries and replay](/docs/operations/retries-and-replay)
+
+## Receivers
+
+- [ ] Receivers verify the raw body and record `event.id` with their change, so retries and replays are harmless. [Receive webhooks](/docs/guides/receive)
+- [ ] Event names stay backward compatible. Breaking payload changes get a new name, such as `invoice.paid.v2`.
+
+## Upgrades
+
+- [ ] The package version is pinned exactly, and you read the release notes before upgrading. [Compatibility](/docs/operations/compatibility)

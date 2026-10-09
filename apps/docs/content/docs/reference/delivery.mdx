@@ -3,10 +3,20 @@ title: Delivery
 description: Publication, delivery history, worker execution, and PostgreSQL sender options.
 ---
 
+`good-webhooks/delivery` is the PostgreSQL sender: it publishes events, records deliveries, and runs workers against any endpoint source.
+
 ```ts
 import { createDelivery } from 'good-webhooks/delivery'
-import type { DeliveryEngine, DeliveryOptions } from 'good-webhooks/delivery'
+import type {
+  DeliveryEngine,
+  DeliveryOptions,
+  EndpointSource,
+  EndpointResolution,
+  ManagementScope,
+} from 'good-webhooks/delivery'
 ```
+
+Shared event, database, query, and result types come from [`good-webhooks`](/docs/reference/core#other-root-exports). Every method on this page is also on the [`createWebhooks()`](/docs/reference/core) client.
 
 ## createDelivery
 
@@ -14,7 +24,26 @@ import type { DeliveryEngine, DeliveryOptions } from 'good-webhooks/delivery'
 createDelivery<const E extends EventDefinitions>(options: DeliveryOptions<E>): DeliveryEngine<E>
 ```
 
-Creates a PostgreSQL sender backed by an `EndpointSource`. The constructor starts no work.
+```ts title="delivery.ts"
+import { createDelivery } from 'good-webhooks/delivery'
+import { createPostgresManagement } from 'good-webhooks/management/postgres'
+import { Pool } from 'pg'
+import { z } from 'zod'
+
+const database = new Pool({ connectionString: process.env.DATABASE_URL })
+const events = {
+  'invoice.paid': z.object({ invoiceId: z.string(), amount: z.number().int() }),
+}
+const management = createPostgresManagement({
+  database,
+  eventTypes: Object.keys(events),
+  encryptionKey: process.env.WEBHOOK_ENCRYPTION_KEY!,
+})
+
+export const delivery = createDelivery({ database, events, source: management.source })
+```
+
+Any [`EndpointSource`](/docs/reference/management#endpointsource) works as `source`, including [Better Auth management](/docs/better-auth/delivery). The constructor starts no work.
 
 | Option           | Default                                        | Contract                                                                                                                                |
 | ---------------- | ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
@@ -26,8 +55,11 @@ Creates a PostgreSQL sender backed by an `EndpointSource`. The constructor start
 | `retry.maxAgeMs` | `86400000`                                     | Delivery age limit from 100 through 2,592,000,000 ms.                                                                                   |
 | `retentionMs`    | `604800000`                                    | Event retention from 1,000 through 31,536,000,000 ms. Must be at least `retry.maxAgeMs`.                                                |
 | `allowLocalhost` | `false`                                        | Permits HTTP loopback destinations for development. Other private addresses stay forbidden.                                             |
+| `delivery`       | See below                                      | Per-attempt and per-batch limits.                                                                                                       |
 
-Event names match `^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,119}$`. The constructor validates each event's Standard Schema interface.
+Event names match `^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,119}$`. The constructor validates each event's Standard Schema interface. Any invalid option throws `INVALID_CONFIG`. [Delivery guarantees](/docs/concepts/delivery-guarantees) explains how `retry` plays out.
+
+### The delivery object
 
 The `delivery` object has the following fields. This table is generated from the public `DeliveryOptions` type.
 
@@ -46,21 +78,49 @@ The `delivery` object has the following fields. This table is generated from the
 publish(input: PublishInput<E>, options?: PublishOptions): Promise<PublishResult>
 ```
 
-`input` contains `type`, the event validator's input `data`, and an optional `idempotencyKey`. The selected validator runs before publication. Its output must be plain JSON. The stored body contains `{ id, type, occurredAt, data }`, where `id` is the event UUID and `occurredAt` is an ISO timestamp assigned during publication.
+```ts
+import { delivery } from './delivery.js'
+
+const { eventId, deliveryCount, duplicate } = await delivery.publish({
+  type: 'invoice.paid',
+  data: { invoiceId: 'inv_123', amount: 4200 },
+  idempotencyKey: 'invoice.paid:inv_123',
+})
+```
 
 | Input or result        | Contract                                                                                                         |
 | ---------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `input.type`           | A configured event name.                                                                                         |
+| `input.data`           | The event validator's input type. The validator runs before anything is stored.                                  |
 | `idempotencyKey`       | Nonblank string of at most 200 characters without null bytes. Unique within a scope while the event is retained. |
 | `options.transaction`  | Optional PostgreSQL client inside an active `BEGIN` transaction. It must access the configured delivery tables.  |
 | `result.eventId`       | Accepted event UUID.                                                                                             |
 | `result.deliveryCount` | Number of original deliveries created for the accepted recipient set, including paused recipients. Can be zero.  |
 | `result.duplicate`     | `true` when the same key already identifies the same event type and validated payload.                           |
 
+The stored body is `{ id, type, occurredAt, data }`. `id` is the event UUID and `occurredAt` is an ISO timestamp assigned during publication.
+
+The event and its original deliveries commit atomically within delivery storage. A caller-owned transaction stays uncommitted when `publish` returns. The [transaction and recipient guarantees](/docs/concepts/delivery-guarantees) also apply to duplicate publication. The [publish guide](/docs/guides/publish) shows idempotency keys and transactions in context.
+
+| Error                  | When                                                                                                       |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `INVALID_INPUT`        | Unknown event type, payload rejected by the validator, payload outside the JSON limits, or an invalid key. |
+| `IDEMPOTENCY_CONFLICT` | The key already identifies a different event type or payload in this scope.                                |
+| `TRANSACTION_REQUIRED` | `options.transaction` has no active transaction.                                                           |
+| Other errors           | Validator-thrown errors, source failures, and database failures propagate unchanged.                       |
+
+<Accordions>
+<Accordion title="Payload normalization and limits">
+
 Payload normalization sorts object keys. It rejects nonfinite numbers, cycles, non-JSON values, nonplain objects, nesting beyond 64 levels, and JSON larger than 256 KiB. A publication validator can transform input, but its output must meet those JSON limits.
 
-The event and original deliveries commit atomically within delivery storage. A caller-owned transaction remains uncommitted when `publish` returns. The [transaction and recipient guarantees](/docs/concepts/delivery-guarantees) also apply to duplicate publication.
+</Accordion>
+<Accordion title="Publishing inside a caller-owned transaction">
 
-Errors include `INVALID_INPUT`, `IDEMPOTENCY_CONFLICT`, and `TRANSACTION_REQUIRED`. Validator-thrown errors and source or database failures can propagate.
+`publish` runs in a savepoint on the supplied client, so a failed publication rolls back only its own writes. Workers cannot see the event until you commit. Recipient matching is a separate read through `source`, so it is not part of your transaction. See [publish inside your transaction](/docs/guides/publish#publish-inside-your-transaction).
+
+</Accordion>
+</Accordions>
 
 ## deliveries
 
@@ -70,11 +130,39 @@ deliveries.get(id: string): Promise<DeliveryDetail>
 deliveries.replay(id: string): Promise<Delivery>
 ```
 
-`list` returns newest delivery IDs first. `DeliveryQuery` accepts `endpointId`, event UUID `eventId`, `status`, `limit`, and the exclusive delivery-ID cursor `before`. `limit` defaults to 25 and accepts 1 through 100. The result is `{ items, nextCursor }`; `nextCursor: null` marks the final page.
+```ts
+import { delivery } from './delivery.js'
 
-`get` includes the `attempts` array in attempt-number order. Delivery IDs are positive PostgreSQL bigint strings. A missing record in the selected scope produces `NOT_FOUND`.
+const page = await delivery.deliveries.list({ status: 'failed', limit: 25 })
+const detail = await delivery.deliveries.get(page.items[0]!.id)
+if (detail.replayOf === null) await delivery.deliveries.replay(detail.id)
+```
 
-`replay` accepts only an original `succeeded` or `failed` delivery. It requires an active endpoint and an event inside its retention window. A pending or in-flight replay produces `REPLAY_IN_PROGRESS`. Invalid lifecycle or retention conditions produce `INVALID_STATE`. Replays retain the original event ID and body but have a new delivery ID and retry budget.
+### list
+
+| `DeliveryQuery` field | Contract                                                      |
+| --------------------- | ------------------------------------------------------------- |
+| `endpointId`          | Only deliveries to this endpoint.                             |
+| `eventId`             | Only deliveries of this event UUID.                           |
+| `status`              | One delivery status.                                          |
+| `limit`               | Integer from 1 through 100. Default 25.                       |
+| `before`              | Exclusive delivery-ID cursor. Pass the previous `nextCursor`. |
+
+`list` returns newest delivery IDs first. The result is `{ items, nextCursor }`; `nextCursor: null` marks the final page. Invalid query values throw `INVALID_INPUT`.
+
+### get
+
+`get` returns the delivery with its `attempts` array in attempt-number order. Delivery IDs are positive PostgreSQL bigint strings. A missing record in the selected scope produces `NOT_FOUND`.
+
+### replay
+
+`replay` sends the original event to the same endpoint again as a new delivery. It keeps the event ID and body and gets a new delivery ID and retry budget. See [retries and replay](/docs/operations/retries-and-replay).
+
+| Error                | When                                                                                                                    |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `NOT_FOUND`          | No delivery with this ID in the selected scope.                                                                         |
+| `INVALID_STATE`      | The endpoint is not active, the delivery is a replay or not `succeeded` or `failed`, or the event is outside retention. |
+| `REPLAY_IN_PROGRESS` | The original delivery already has a pending or in-flight replay.                                                        |
 
 ### Delivery and attempt records
 
@@ -87,8 +175,17 @@ deliveries.replay(id: string): Promise<Delivery>
 | `replayOf`                    | Original delivery ID, or `null`.                                         |
 | `lastError`                   | Last error text, or `null`.                                              |
 | `lastStatus`                  | Last HTTP status, or `null`.                                             |
+| `attempts`                    | `Attempt[]`. Only on `DeliveryDetail`, the result of `get`.              |
 
-An `Attempt` has `number`, `startedAt`, nullable `finishedAt`, `outcome`, nullable `responseStatus`, nullable `responseBody`, and nullable `error`. Dates are `Date` values. Outcomes are `'started'`, `'succeeded'`, `'retry'`, `'failed'`, or `'abandoned'`. `responseBody` is bounded by `maxResponseBytes`.
+| Attempt field    | Type or meaning                                                      |
+| ---------------- | -------------------------------------------------------------------- |
+| `number`         | Attempt number, starting at 1.                                       |
+| `startedAt`      | `Date`.                                                              |
+| `finishedAt`     | `Date`, or `null` while the attempt runs.                            |
+| `outcome`        | `'started'`, `'succeeded'`, `'retry'`, `'failed'`, or `'abandoned'`. |
+| `responseStatus` | HTTP status, or `null`.                                              |
+| `responseBody`   | Captured response text bounded by `maxResponseBytes`, or `null`.     |
+| `error`          | Error text, or `null`.                                               |
 
 ## deliverySettings
 
@@ -97,9 +194,20 @@ deliverySettings.get(endpointId: string): Promise<{ maxInFlight: number }>
 deliverySettings.set(endpointId: string, settings: { maxInFlight: number }): Promise<{ maxInFlight: number }>
 ```
 
-Stores sender-owned concurrency settings separately from endpoint records. `maxInFlight` defaults to 2 and accepts an integer from 1 through 50. Active and paused endpoints accept settings. Missing or deleted endpoints produce `NOT_FOUND`.
+```ts
+import { delivery } from './delivery.js'
 
-These settings apply to workers sharing the same delivery database and schema. They are distinct from the `delivery.concurrency` limit on each batch.
+const endpointId = 'ENDPOINT_ID' // From endpoints.create()
+await delivery.deliverySettings.set(endpointId, { maxInFlight: 4 })
+```
+
+| Setting       | Default | Limits                     |
+| ------------- | ------- | -------------------------- |
+| `maxInFlight` | `2`     | Integer from 1 through 50. |
+
+Stores sender-owned concurrency settings separately from endpoint records. Active and paused endpoints accept settings. Missing or deleted endpoints produce `NOT_FOUND`. An out-of-range value produces `INVALID_INPUT`.
+
+These settings apply to all workers sharing the same delivery database and schema. They are distinct from the `delivery.concurrency` limit on each batch.
 
 ## worker
 
@@ -117,26 +225,99 @@ worker.run(options: {
 worker.prune(): Promise<number>
 ```
 
-`runOnce` recovers expired leases and processes one bounded batch. It does not drain the queue. Its result contains `claimed`, `succeeded`, `retried`, `failed`, and `stale` counts. `stale` means the worker's claim no longer owns completion. Internal failures can reject with `AggregateError` after all sibling attempts settle.
+```ts title="worker.ts"
+import { delivery } from './delivery.js'
 
-`run` processes batches until its signal aborts. After a batch completes at least one prepared attempt as a success, retry, or terminal failure, the next batch starts immediately. Empty batches and stale-only results wait for `pollIntervalMs`. The interval defaults to 1,000 and accepts an integer from 10 through 60,000 milliseconds. Receiver retries keep their configured schedule. Recovery and reservation cleanup alone do not trigger an immediate batch.
+const stop = new AbortController()
+process.once('SIGTERM', () => stop.abort())
+
+await delivery.worker.run({
+  signal: stop.signal,
+  onError: (error) => console.error('Webhook worker batch failed', error),
+})
+```
+
+| Option            | Applies to                  | Default | Contract                                                                                   |
+| ----------------- | --------------------------- | ------- | ------------------------------------------------------------------------------------------ |
+| `signal`          | `run` (required), `runOnce` | None    | Abort to stop. An already-aborted signal returns without database work.                    |
+| `onError`         | `run`                       | None    | Called with an internal batch failure. Without it, the failure stops `run`.                |
+| `pollIntervalMs`  | `run`                       | `1000`  | Integer from 10 through 60,000 ms. The wait after an empty batch.                          |
+| `shutdownGraceMs` | `run`, `runOnce`            | `30000` | Integer from 0 through 2,147,483,647 ms. Time for prepared attempts to finish after abort. |
+
+All worker methods cover every scope in the configured delivery database and schema. Workers own neither the host's process signal handlers nor its database pool. The [workers guide](/docs/operations/workers) shows a supervised process.
+
+### runOnce
+
+`runOnce` recovers expired leases and processes one bounded batch. It does not drain the queue. Its `WorkerResult` contains these counts:
+
+| Count       | Meaning                                                    |
+| ----------- | ---------------------------------------------------------- |
+| `claimed`   | Deliveries claimed in this batch.                          |
+| `succeeded` | Attempts that got a `2xx`.                                 |
+| `retried`   | Attempts that failed and were scheduled for a retry.       |
+| `failed`    | Attempts that failed permanently or used up their retries. |
+| `stale`     | Attempts whose claim no longer owns completion.            |
+
+### run
+
+`run` processes batches until its signal aborts. After a batch completes at least one prepared attempt as a success, retry, or terminal failure, the next batch starts immediately. Empty batches and stale-only results wait for `pollIntervalMs`. Receiver retries keep their configured schedule. Recovery and reservation cleanup alone do not trigger an immediate batch.
 
 Without `onError`, an internal batch failure stops `run`. With `onError`, the loop awaits the callback, then waits for `pollIntervalMs` before continuing. A callback that throws or rejects stops the loop.
 
-Both methods accept `shutdownGraceMs`, an integer from 0 through 2,147,483,647 milliseconds. The default is 30,000. When the signal aborts, the worker stops taking new work and stops waiting for endpoint-provider results. Already prepared attempts can finish during the grace period. When the period expires, the worker requests cancellation of remaining sends. A value of `0` requests immediate cancellation. An already-aborted signal returns without database work.
+### Attempt outcomes
+
+| Response                                                   | Attempt outcome                                     |
+| ---------------------------------------------------------- | --------------------------------------------------- |
+| `2xx`                                                      | `succeeded`                                         |
+| Network, DNS, or timeout error, `408`, `425`, `429`, `5xx` | `retry` while retries remain, otherwise `failed`    |
+| Any other status, including `3xx`                          | `failed`. Redirects are never followed              |
+| URL resolves to an unsafe address at send time             | `failed`, no retry                                  |
+| Worker stopped or lease expired mid-request                | `abandoned`. The delivery retries if budget remains |
+
+Each retry waits its configured delay plus up to 20% random jitter. A retry that would land after `retry.maxAgeMs` is not scheduled.
+
+### prune
+
+`prune` deletes at most 100 expired events and their dependent deliveries and attempts per call. It returns the number of removed events. Live leases or contended locks can defer deletion. It does not run automatically. See [retention](/docs/operations/retention).
+
+### Worker errors
+
+| Error            | When                                                                    |
+| ---------------- | ----------------------------------------------------------------------- |
+| `INVALID_INPUT`  | `pollIntervalMs` or `shutdownGraceMs` is out of range.                  |
+| `INVALID_STATE`  | This instance already has an active `run` loop or batch.                |
+| `AggregateError` | Internal failures in a batch. Thrown after all sibling attempts settle. |
+
+<Accordions>
+<Accordion title="Shutdown and the grace period">
+
+When the signal aborts, the worker stops taking new work and stops waiting for endpoint-provider results. Already prepared attempts can finish during the grace period. When the period expires, the worker requests cancellation of remaining sends. A value of `0` requests immediate cancellation.
 
 The grace period starts when the signal aborts. It does not extend delivery leases or bound database cleanup. Both methods await owned work and completion writes before returning. Underlying provider calls can continue after the worker stops waiting for them. The host controls database timeouts, pool closure, and the final process deadline. Forced cancellation can leave the receiver's outcome unknown and require another attempt.
 
-One worker instance cannot run overlapping `runOnce` calls or mix `runOnce` with an active `run` loop, including during shutdown. Separate instances coordinate through PostgreSQL leases. Workers own neither the host's process signal handlers nor its database pool.
+</Accordion>
+<Accordion title="Running several workers">
 
-`prune` deletes at most 100 expired events and their dependent deliveries and attempts per call. Live leases or contended locks can defer deletion. It returns the number of removed events. It does not run automatically.
+One worker instance cannot run overlapping `runOnce` calls or mix `runOnce` with an active `run` loop, including during shutdown. Separate instances coordinate through PostgreSQL leases and share each endpoint's `maxInFlight` limit.
 
-All worker methods cover every scope in the configured delivery database and schema.
+</Accordion>
+</Accordions>
 
 ## check and forScope
 
-`check(): Promise<void>` verifies delivery schema version `3`. It never applies migrations and does not check management storage.
+```ts
+check(): Promise<void>
+forScope(scope: Scope): Pick<DeliveryEngine<E>, 'publish' | 'deliveries' | 'deliverySettings'>
+```
 
-`forScope(scope: Scope)` returns `publish`, `deliveries`, and `deliverySettings` bound to one named scope. The root methods use application scope. Scope selection does not authorize access.
+```ts
+import { delivery } from './delivery.js'
 
-The delivery entrypoint also exports the `EndpointSource`, `EndpointResolution`, and `ManagementScope` types. Shared event, database, query, and result types are available from `good-webhooks`.
+await delivery.check()
+const customer = delivery.forScope({ type: 'organization', id: 'org_123' })
+await customer.deliveries.list()
+```
+
+`check()` verifies delivery schema version `3` and throws `SCHEMA_MISMATCH` otherwise. It never applies migrations and does not check management storage.
+
+`forScope(scope)` returns `publish`, `deliveries`, and `deliverySettings` bound to one named scope. An invalid scope throws `INVALID_INPUT`. The root methods use application scope. Scope selection does not authorize access. See [scopes](/docs/concepts/scopes).

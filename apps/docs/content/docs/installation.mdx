@@ -1,56 +1,131 @@
 ---
 title: Installation
-description: Install Good Webhooks and the dependencies for your setup.
+description: Add Good Webhooks to an existing application. Install, create a key and the tables, and connect.
 ---
+
+This page sets up the PostgreSQL setup in an existing app. Using Better Auth for endpoint management? Install here, then continue with the [Better Auth plugin](/docs/better-auth).
+
+**Requirements:** Node.js 24 or later, PostgreSQL 16 or 17, and for TypeScript, version 5.9.3 or later with `moduleResolution` set to `NodeNext` or `Bundler`. Edge runtimes are not supported.
 
 <Steps>
 <Step>
-### Install the package
+### Install
+
+<Tabs groupId="setup" persist items={['PostgreSQL', 'Better Auth', 'Receiver only']}>
+<Tab>
 
 ```package-install
-good-webhooks@alpha
-```
-
-The `alpha` tag resolves to the latest alpha release. Commit your lockfile and read the [release notes](https://github.com/pplytas/good-webhooks/releases) before upgrading.
-
-</Step>
-<Step>
-### Add a database driver and a validator
-
-Delivery and standalone management use PostgreSQL through [node-postgres](https://node-postgres.com). Event payloads are validated with any [Standard Schema](https://standardschema.dev) library. The docs use Zod.
-
-```package-install
-pg zod
+good-webhooks@alpha pg zod
 ```
 
 ```package-install
 npm install --save-dev @types/pg
 ```
 
-Receivers that only verify webhooks need neither. `good-webhooks/verify` has no database dependency.
-
-</Step>
-<Step>
-### Add Better Auth (optional)
-
-Only if you want signed-in users to manage endpoints through [the plugin](/docs/better-auth):
+</Tab>
+<Tab>
 
 ```package-install
-better-auth@1.7.7
+good-webhooks@alpha better-auth@1.7.7
 ```
 
-Better Auth is an optional peer dependency in the range `>=1.7.7 <1.8.0`. Standalone management, delivery, and verification do not import it.
+Add `pg zod` too if the same app will [send events](/docs/better-auth/delivery). Supported range: `better-auth >=1.7.7 <1.8.0`. Then follow the [Better Auth plugin](/docs/better-auth) guide; the steps below are for the PostgreSQL setup.
+
+</Tab>
+<Tab>
+
+You only receive webhooks from a Good Webhooks sender:
+
+```package-install
+good-webhooks@alpha zod
+```
+
+Skip the steps below and go to [receive webhooks](/docs/guides/receive). `good-webhooks/verify` has no database dependency.
+
+</Tab>
+</Tabs>
+
+The `alpha` tag installs the latest alpha. Commit your lockfile. Payload schemas can use any [Standard Schema](https://standardschema.dev) library; these docs use Zod.
 
 </Step>
 <Step>
-### Check your TypeScript settings
+### Create a storage key
 
-TypeScript 5.9.3 or later, with `moduleResolution` set to `NodeNext` or `Bundler`. If you use the Better Auth plugin, enable `skipLibCheck` for its upstream declarations. Your own event and payload types stay fully checked.
+Endpoint signing secrets are encrypted in your database with this key. Generate it once:
+
+```sh
+node -e 'import("good-webhooks").then(m => console.log(m.generateEncryptionKey()))'
+```
+
+Store the output in your secret manager or `.env` as `WEBHOOK_ENCRYPTION_KEY`. Every process that sends or manages webhooks needs the **same** key.
+
+</Step>
+<Step>
+### Create the tables
+
+Write the SQL to a migration file:
+
+```sh
+node -e 'import("good-webhooks/migrations").then(m => process.stdout.write(m.getPostgresMigration()))' > 001-webhooks.sql
+```
+
+Apply it with the migration tool you already use, or with `psql`:
+
+```sh
+psql "$DATABASE_URL" --single-transaction -v ON_ERROR_STOP=1 -f 001-webhooks.sql
+```
+
+The tables are prefixed `webhook_` and go in `public`. To use another schema, see [migrations](/docs/operations/migrations).
+
+</Step>
+<Step>
+### Create the client
+
+```ts title="webhooks.ts"
+import { createWebhooks } from 'good-webhooks'
+import { Pool } from 'pg'
+import { z } from 'zod'
+
+export const pool = new Pool({ connectionString: process.env.DATABASE_URL })
+
+export const webhooks = createWebhooks({
+  database: pool,
+  encryptionKey: process.env.WEBHOOK_ENCRYPTION_KEY!,
+  events: {
+    'invoice.paid': z.object({ invoiceId: z.string(), amount: z.number().int() }),
+  },
+})
+```
+
+Check the setup once at startup. It throws `SCHEMA_MISMATCH` if the tables are missing or outdated:
+
+```ts
+await webhooks.check()
+```
 
 </Step>
 </Steps>
 
+You're set up. Nothing is sent yet: that takes a published event and a running worker.
+
+<Cards>
+  <Card title="1. Publish events" href="/docs/guides/publish">
+    Define your event catalog and publish from your app.
+  </Card>
+  <Card title="2. Run a worker" href="/docs/operations/workers">
+    Start the process that sends and retries.
+  </Card>
+  <Card title="3. Manage endpoints" href="/docs/guides/endpoints">
+    Register where events go.
+  </Card>
+  <Card title="4. Receive webhooks" href="/docs/guides/receive">
+    Give your customers a verified receiver.
+  </Card>
+</Cards>
+
 ## Entry points
+
+Import only what a process needs. A receiver never loads database code.
 
 | Import                              | Use it for                                                           |
 | ----------------------------------- | -------------------------------------------------------------------- |
@@ -63,13 +138,4 @@ TypeScript 5.9.3 or later, with `moduleResolution` set to `NodeNext` or `Bundler
 | `good-webhooks/verify`              | `parseWebhook()` and `verifyWebhook()` for receivers                 |
 | `good-webhooks/migrations`          | `getPostgresMigration()` and the shipped SQL files                   |
 
-## Next steps
-
-<Cards>
-  <Card title="Quick start" href="/docs/quick-start">
-    Standalone PostgreSQL: create an endpoint, publish, deliver, verify.
-  </Card>
-  <Card title="Better Auth quick start" href="/docs/better-auth/quick-start">
-    Register an endpoint through an authenticated session. No PostgreSQL needed.
-  </Card>
-</Cards>
+The package ships ESM and also loads through CommonJS `require()` on Node.js 24. If you use the Better Auth plugin, enable `skipLibCheck` for its upstream declarations; your own types stay fully checked.

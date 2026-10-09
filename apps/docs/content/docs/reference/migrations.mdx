@@ -3,15 +3,29 @@ title: PostgreSQL migrations
 description: Fresh-install SQL, component selection, custom schemas, and exported SQL assets.
 ---
 
+`good-webhooks/migrations` generates the fresh-install SQL for management and delivery tables; your migration tool applies it.
+
 ```ts
 import { getPostgresMigration } from 'good-webhooks/migrations'
 import type { PostgresMigrationOptions } from 'good-webhooks/migrations'
 ```
 
+The [migrations guide](/docs/operations/migrations) covers applying, upgrading, and splitting storage.
+
 ## getPostgresMigration
 
 ```ts
 getPostgresMigration(options?: PostgresMigrationOptions): string
+```
+
+```ts title="scripts/write-migration.ts"
+import { writeFile } from 'node:fs/promises'
+import { getPostgresMigration } from 'good-webhooks/migrations'
+
+await writeFile(
+  'migrations/001-webhooks.sql',
+  getPostgresMigration({ schema: 'webhooks', component: 'all' }),
+)
 ```
 
 Returns fresh-install SQL. It never connects to a database or applies DDL. The host applies the SQL once in a transaction and records it in its migration ledger.
@@ -23,7 +37,7 @@ Returns fresh-install SQL. It never connects to a database or applies DDL. The h
 | `schema`    | `'public'` | Namespace for all tables emitted by this call. |
 | `component` | `'all'`    | `'management'`, `'delivery'`, or `'all'`.      |
 
-Every generated script starts with `CREATE SCHEMA IF NOT EXISTS` for its target namespace. Table creation is not idempotent. Reapplying initial SQL is not an upgrade procedure.
+Every generated script includes `CREATE SCHEMA IF NOT EXISTS` for its target namespace before its tables. Table creation is not idempotent. Reapplying initial SQL is not an upgrade procedure. Invalid names or components produce `INVALID_CONFIG`.
 
 ## Components and SQL assets
 
@@ -33,13 +47,30 @@ Every generated script starts with `CREATE SCHEMA IF NOT EXISTS` for its target 
 | `delivery`   | `webhook_schema_version`, `webhook_endpoint_state`, `webhook_events`, `webhook_deliveries`, `webhook_attempts` | `good-webhooks/migrations/delivery.sql`    |
 | `all`        | Both groups                                                                                                    | `good-webhooks/migrations/001-initial.sql` |
 
-All three `.sql` files are public package exports. They can be resolved through `import.meta.resolve` or `require.resolve` and read by a host migration tool. They are text assets, not executable JavaScript imports.
+All three `.sql` files are public package exports. They are text assets, not executable JavaScript imports. Resolve them with `import.meta.resolve` or `require.resolve` and read them with your migration tool:
 
-The current delivery schema version is `3`. `createDelivery().check()` expects exactly that version. Earlier prototype storage needs an explicit upgrade plan or fresh storage. None of these assets upgrades existing data.
+```ts
+import { readFile } from 'node:fs/promises'
+
+const sql = await readFile(
+  new URL(import.meta.resolve('good-webhooks/migrations/delivery.sql')),
+  'utf8',
+)
+```
+
+The current delivery schema version is `3`. `createDelivery().check()` expects exactly that version. None of these assets upgrades existing data.
+
+<Accordions>
+<Accordion title="Upgrading from prototype storage">
+
+Earlier prototype storage needs an explicit upgrade plan or fresh storage. The initial SQL does not upgrade it, and `check()` reports `SCHEMA_MISMATCH` until the version is `3`.
+
+</Accordion>
+</Accordions>
 
 ## Schema names
 
-A schema must be a nonblank, well-formed string of at most 63 UTF-8 bytes without null bytes. The generator and runtime quote names as PostgreSQL identifiers. Invalid names or components produce `INVALID_CONFIG`.
+A schema must be a nonblank, well-formed string of at most 63 UTF-8 bytes without null bytes. The generator and runtime quote names as PostgreSQL identifiers. Invalid names produce `INVALID_CONFIG`.
 
 The `schema` passed to a runtime must match the corresponding migration. Management and delivery can use separate namespaces by generating each component separately. An injected management provider keeps its own configured namespace regardless of delivery options.
 

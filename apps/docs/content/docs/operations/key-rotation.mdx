@@ -16,7 +16,7 @@ Two different keys, two different procedures:
 <Tab>
 
 ```ts
-const { secret } = await tenant.endpoints.rotateSecret(endpointId, { graceMs: 3_600_000 })
+const { secret } = await customer.endpoints.rotateSecret(endpointId, { graceMs: 3_600_000 })
 ```
 
 </Tab>
@@ -36,6 +36,19 @@ const { data } = await authClient.goodWebhooks.rotateSecret({ id: endpointId, gr
 </Tab>
 </Tabs>
 
+<Flow title="Signing secret rotation with a one-hour overlap">
+  <FlowStep title="Rotate" actor="your app">
+    `rotateSecret()` returns the new secret once.
+  </FlowStep>
+  <FlowStep title="Overlap" actor="worker">
+    Every request carries signatures from both secrets.
+  </FlowStep>
+  <FlowStep title="Install" actor="receiver">
+    The customer switches to the new secret.
+  </FlowStep>
+  <FlowStep title="Overlap ends">Only the new secret signs.</FlowStep>
+</Flow>
+
 During the grace period both secrets are usable: delivery signs with both, and `parseWebhook()` accepts either. Hand the new secret to the receiver before the period ends.
 
 - Default and maximum `graceMs` is 24 hours.
@@ -50,7 +63,7 @@ The standalone PostgreSQL provider decrypts with the current key first, then any
 ### Generate and store the new key
 
 ```sh
-node --input-type=module -e 'import { generateEncryptionKey } from "good-webhooks"; console.log(generateEncryptionKey())'
+node -e 'import("good-webhooks").then(m => console.log(m.generateEncryptionKey()))'
 ```
 
 </Step>

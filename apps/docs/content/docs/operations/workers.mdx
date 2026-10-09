@@ -3,27 +3,45 @@ title: Run workers
 description: Start delivery explicitly, supervise it, and shut it down without losing in-flight work.
 ---
 
-Nothing sends until a worker runs. You own the process, its database pool, and its supervision. Apply [migrations](/docs/operations/migrations) before starting one.
+Nothing is sent until a worker runs. A worker is a process you start: it claims due deliveries, sends them, records each attempt, and schedules retries. You own the process, its database pool, and its supervision.
 
-## One batch or a loop
+## The smallest worker
 
-```ts
-// One bounded batch. Call it from a scheduler if work remains.
-const result = await webhooks.worker.runOnce()
-result.succeeded // also claimed, retried, failed, stale
+```ts title="worker.ts"
+import { pool, webhooks } from './webhooks.js'
 
-// Continuous processing until the signal aborts.
 const stop = new AbortController()
-await webhooks.worker.run({
-  signal: stop.signal,
-  pollIntervalMs: 1000,
-  shutdownGraceMs: 30_000,
-})
+process.once('SIGTERM', () => stop.abort())
+process.once('SIGINT', () => stop.abort())
+
+await webhooks.check() // fails fast if migrations are missing
+await webhooks.worker.run({ signal: stop.signal }) // returns after a clean shutdown
+await pool.end()
 ```
 
-`run()` starts the next batch immediately after a batch completes at least one attempt. After an empty batch, or an error handled by `onError`, it waits `pollIntervalMs`. Receiver retries keep their own schedule regardless of polling.
+Run it as its own process next to your app, and apply [migrations](/docs/operations/migrations) first. `run()` also takes `pollIntervalMs`, `shutdownGraceMs`, and `onError`; see the [worker reference](/docs/reference/delivery#worker).
 
-Workers process every scope in their delivery database and schema. Several workers coordinate through PostgreSQL leases and share per-endpoint concurrency limits. No database transaction is held open during an HTTP request.
+<Flow title="What run() does in a loop">
+  <FlowStep title="Claim">
+    Lease due deliveries, respecting each endpoint's in-flight limit.
+  </FlowStep>
+  <FlowStep title="Resolve">Read each endpoint's current URL, status, and secrets.</FlowStep>
+  <FlowStep title="Send">Sign and POST. No database transaction is held open meanwhile.</FlowStep>
+  <FlowStep title="Record">Store the attempt; mark succeeded, failed, or due for retry.</FlowStep>
+</Flow>
+
+After a batch that made at least one attempt, `run()` starts the next batch at once. After an empty batch, it waits `pollIntervalMs` (default 1 second). Retries keep their own schedule regardless.
+
+Workers handle every scope in their delivery database and schema. Run as many as you like: they coordinate through PostgreSQL leases and share the per-endpoint limits.
+
+## One batch instead of a loop
+
+`runOnce()` processes one bounded batch and returns counts. Use it from a scheduler or in tests:
+
+```ts
+const result = await webhooks.worker.runOnce()
+// { claimed, succeeded, retried, failed, stale }
+```
 
 ## A supervised worker process
 
@@ -58,20 +76,26 @@ For Better Auth management, the worker also constructs the auth instance and pro
 
 Without `onError`, an internal failure rejects `run()` and the process exits. Let your supervisor restart it with backoff. If you pass `onError` to log and continue, watch that deliveries keep making progress. Receiver failures are not internal failures; they follow the retry policy.
 
-Errors are emitted as JSON lines (`webhooks.worker.started`, `webhooks.worker.failed`, `webhooks.worker.stopped`) without configuration, payloads, or secrets.
+The example entrypoint logs JSON lines (`webhooks.worker.started`, `webhooks.worker.failed`, `webhooks.worker.stopped`) without configuration, payloads, or secrets. The library itself writes no logs.
 
 ## Shut down cleanly
 
-Abort the signal to stop. The worker then:
+Abort the signal to stop:
 
-1. stops claiming new work and stops waiting on endpoint-provider lookups,
-2. lets already-prepared attempts finish for up to `shutdownGraceMs` (default 30 seconds),
-3. cancels remaining sends and records their outcome,
-4. returns after owned work and completion writes finish.
+<Flow>
+  <FlowStep title="Stop claiming">
+    No new deliveries; pending endpoint lookups are abandoned.
+  </FlowStep>
+  <FlowStep title="Grace period">
+    Requests already being sent get up to `shutdownGraceMs` (30 s default).
+  </FlowStep>
+  <FlowStep title="Cancel">Remaining requests are cancelled and their outcome recorded.</FlowStep>
+  <FlowStep title="Return">`run()` resolves after its database writes finish.</FlowStep>
+</Flow>
 
 Await the worker before closing the pool. Then give your supervisor a final deadline that covers the grace period, database writes, pool closure, and your own cleanup. The grace period is not a process exit deadline.
 
-A cancelled HTTP request may still have been processed by the receiver. Such attempts are retried, which is one more reason [receivers deduplicate](/docs/guides/receive#commit-before-you-acknowledge).
+A cancelled HTTP request may still have been processed by the receiver. Such attempts are retried, which is one more reason [receivers deduplicate](/docs/guides/receive#process-each-event-once).
 
 ## Bound database waits
 

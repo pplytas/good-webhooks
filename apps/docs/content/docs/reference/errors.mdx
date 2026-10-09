@@ -3,30 +3,68 @@ title: Errors
 description: Expected operation errors and failures recorded in delivery history.
 ---
 
+Every expected failure throws a `WebhookError` with a stable `code`.
+
 ```ts
 import { WebhookError } from 'good-webhooks'
 import type { WebhookErrorCode } from 'good-webhooks'
 ```
 
-`WebhookError` extends `Error`. It has `name: 'WebhookError'`, a stable `code`, a descriptive `message`, and an optional `cause`. The receiver entrypoint also exports the class and code type.
+The receiver entry point `good-webhooks/verify` also exports the class and code type.
 
-| Code                   | Meaning                                                                          |
-| ---------------------- | -------------------------------------------------------------------------------- |
-| `INVALID_CONFIG`       | Invalid constructor, encryption, migration, or receiver-validator configuration. |
-| `INVALID_INPUT`        | Invalid operation arguments or producer payload.                                 |
-| `UNSAFE_URL`           | Destination fails URL or resolved-address validation.                            |
-| `NOT_FOUND`            | Record or owner is absent in the selected scope.                                 |
-| `INVALID_STATE`        | Operation conflicts with lifecycle, limits, retention, or concurrent state.      |
-| `IDEMPOTENCY_CONFLICT` | An accepted key identifies different event content.                              |
-| `REPLAY_IN_PROGRESS`   | An original delivery already has a pending or in-flight replay.                  |
-| `SCHEMA_MISMATCH`      | Expected PostgreSQL storage is missing or incompatible.                          |
-| `SIGNATURE_INVALID`    | Webhook headers or signature are invalid.                                        |
-| `SIGNATURE_EXPIRED`    | Webhook timestamp falls outside the configured tolerance.                        |
-| `PAYLOAD_INVALID`      | An authenticated webhook body fails envelope or receiver-payload validation.     |
-| `TRANSACTION_REQUIRED` | A supplied publication client has no active PostgreSQL transaction.              |
+## WebhookError
+
+```ts
+class WebhookError extends Error {
+  readonly name: 'WebhookError'
+  readonly code: WebhookErrorCode
+  constructor(code: WebhookErrorCode, message: string, options?: ErrorOptions)
+}
+```
+
+```ts
+import { WebhookError } from 'good-webhooks'
+import { webhooks } from './webhooks.js'
+
+try {
+  await webhooks.publish({
+    type: 'invoice.paid',
+    data: { invoiceId: 'inv_123', amount: 4200 },
+    idempotencyKey: 'invoice.paid:inv_123',
+  })
+} catch (error) {
+  if (error instanceof WebhookError && error.code === 'IDEMPOTENCY_CONFLICT') {
+    console.error('Idempotency key reused for a different payload:', error.message)
+  }
+  throw error
+}
+```
+
+`WebhookError` extends `Error`. It has `name: 'WebhookError'`, a stable `code`, a descriptive `message`, and an optional `cause`.
+
+## Codes
+
+| Code                   | Meaning                                                                          | Thrown by                                                               |
+| ---------------------- | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| `INVALID_CONFIG`       | Invalid constructor, encryption, migration, or receiver-validator configuration. | Constructors, `getPostgresMigration`, `parseWebhook`, secret decryption |
+| `INVALID_INPUT`        | Invalid operation arguments or producer payload.                                 | Most operations                                                         |
+| `UNSAFE_URL`           | Destination fails URL or resolved-address validation.                            | Endpoint create, update, and resume                                     |
+| `NOT_FOUND`            | Record or owner is absent in the selected scope.                                 | Endpoint and delivery lookups                                           |
+| `INVALID_STATE`        | Operation conflicts with lifecycle, limits, retention, or concurrent state.      | Endpoint lifecycle, `replay`, worker overlap                            |
+| `IDEMPOTENCY_CONFLICT` | An accepted key identifies different event content.                              | `publish`                                                               |
+| `REPLAY_IN_PROGRESS`   | An original delivery already has a pending or in-flight replay.                  | `replay`                                                                |
+| `SCHEMA_MISMATCH`      | Expected storage is missing or incompatible.                                     | `check()`, Better Auth record reads                                     |
+| `SIGNATURE_INVALID`    | Webhook headers or signature are invalid.                                        | `verifyWebhook`, `parseWebhook`                                         |
+| `SIGNATURE_EXPIRED`    | Webhook timestamp falls outside the configured tolerance.                        | `verifyWebhook`, `parseWebhook`                                         |
+| `PAYLOAD_INVALID`      | An authenticated webhook body fails envelope or receiver-payload validation.     | `parseWebhook`                                                          |
+| `TRANSACTION_REQUIRED` | A supplied publication client has no active PostgreSQL transaction.              | `publish` with `options.transaction`                                    |
+
+Each reference page lists the exact conditions for its operations.
+
+## Failures outside WebhookError
 
 Database errors, provider lookup failures, and unexpected validator failures can propagate as other error types. Code that handles `WebhookError` still needs a path for unexpected failures.
 
-An HTTP recipient failure normally becomes a delivery and attempt record. It does not reject `publish`, because publication queues work without sending it. Worker internal failures can reject `runOnce` with an `AggregateError`.
+An HTTP recipient failure normally becomes a delivery and attempt record. It does not reject `publish`, because publication queues work without sending it. Worker internal failures can reject `runOnce` with an `AggregateError`. See [retries and replay](/docs/operations/retries-and-replay).
 
 The Better Auth plugin [maps expected management errors to HTTP responses](/docs/reference/better-auth#route-errors). That mapping does not change the direct provider API.

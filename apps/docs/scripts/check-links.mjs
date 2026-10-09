@@ -1,21 +1,11 @@
 import assert from 'node:assert/strict'
-import { readFile, readdir, stat } from 'node:fs/promises'
-import path from 'node:path'
-import { fileURLToPath } from 'node:url'
+import pkg from '../../../packages/good-webhooks/package.json' with { type: 'json' }
+import { startServer } from './server.mjs'
 
-const output = path.resolve(fileURLToPath(new URL('../out/', import.meta.url)))
-const origin = 'https://docs.invalid'
-
-async function filesIn(directory) {
-  const entries = await readdir(directory, { withFileTypes: true })
-  const nested = await Promise.all(
-    entries.map((entry) => {
-      const name = path.join(directory, entry.name)
-      return entry.isDirectory() ? filesIn(name) : [name]
-    }),
-  )
-  return nested.flat()
-}
+const siteUrl = new URL(pkg.homepage).origin
+const { url, stop } = await startServer()
+const errors = []
+const pages = new Map()
 
 function decodeAttribute(value) {
   return value
@@ -27,71 +17,120 @@ function decodeAttribute(value) {
     )
 }
 
-const files = await filesIn(output)
-const exported = new Set(files)
-const html = new Map(
-  await Promise.all(
-    files
-      .filter((file) => file.endsWith('.html'))
-      .map(async (file) => {
-        const content = await readFile(file, 'utf8')
-        return [
-          file,
-          {
-            content,
-            ids: new Set(
-              [...content.matchAll(/\bid="([^"]+)"/g)].map((match) => decodeAttribute(match[1])),
-            ),
-          },
-        ]
+/** Fetch a same-origin path once; HTML responses keep their element IDs for fragment checks. */
+function load(path) {
+  if (!pages.has(path)) {
+    pages.set(
+      path,
+      fetch(`${url}${path}`, { redirect: 'manual' }).then(async (response) => {
+        const type = response.headers.get('content-type') ?? ''
+        const body = await response.text()
+        const ids = type.startsWith('text/html')
+          ? new Set([...body.matchAll(/\bid="([^"]+)"/g)].map((match) => decodeAttribute(match[1])))
+          : null
+        return { status: response.status, type, body, ids }
       }),
-  ),
-)
-assert(exported.has(path.join(output, 'index.html')), 'The landing page was not exported at /.')
-assert(
-  exported.has(path.join(output, 'docs/index.html')),
-  'The introduction was not exported at /docs/.',
-)
-for (const name of ['llms.txt', 'llms-full.txt']) {
-  assert(exported.has(path.join(output, name)), `${name} was not exported.`)
-}
-const search = path.join(output, 'api/search')
-assert(exported.has(search), 'The static search index was not exported.')
-JSON.parse(await readFile(search, 'utf8'))
-
-const errors = []
-let checked = 0
-for (const [file, page] of html) {
-  const relative = path.relative(output, file).split(path.sep).join('/')
-  const pathname = `/${relative.replace(/index\.html$/, '')}`
-  for (const match of page.content.matchAll(/\b(href|src)="([^"]+)"/g)) {
-    const target = new URL(decodeAttribute(match[2]), `${origin}${pathname}`)
-    if (target.origin !== origin) continue
-    const name = path.resolve(output, `.${decodeURIComponent(target.pathname)}`)
-    if (!name.startsWith(`${output}${path.sep}`) && name !== output) {
-      errors.push(`${pathname}: link leaves export directory: ${match[2]}`)
-      continue
-    }
-    const resolved = [name, path.join(name, 'index.html'), `${name}.html`].find((candidate) =>
-      exported.has(candidate),
     )
-    if (!resolved) {
-      errors.push(`${pathname}: missing ${target.pathname}`)
+  }
+  return pages.get(path)
+}
+
+async function checkLink(from, href, base) {
+  const target = new URL(href, base)
+  if (target.origin === siteUrl) target.host = new URL(url).host
+  if (target.origin !== url) return 0
+  const loaded = await load(target.pathname)
+  if (loaded.status !== 200) {
+    errors.push(`${from}: ${target.pathname} returned ${loaded.status}`)
+    return 1
+  }
+  const fragment = decodeURIComponent(target.hash.slice(1))
+  if (fragment && !fragment.startsWith(':~:') && loaded.ids && !loaded.ids.has(fragment)) {
+    errors.push(`${from}: missing fragment ${target.pathname}#${fragment}`)
+  }
+  return 1
+}
+
+let checked = 0
+try {
+  const sitemap = await load('/sitemap.xml')
+  assert.equal(sitemap.status, 200, 'sitemap.xml is missing.')
+  const documents = [...sitemap.body.matchAll(/<loc>([^<]+)<\/loc>/g)].map(
+    (match) => new URL(match[1]).pathname,
+  )
+  assert(documents.includes('/') && documents.includes('/docs'), 'The sitemap lacks / or /docs.')
+
+  // Every HTML page: its links, assets, and fragments resolve.
+  for (const path of documents) {
+    const page = await load(path)
+    if (page.status !== 200) {
+      errors.push(`sitemap: ${path} returned ${page.status}`)
       continue
     }
-    const fragment = decodeURIComponent(target.hash.slice(1))
-    if (
-      fragment &&
-      !fragment.startsWith(':~:') &&
-      html.has(resolved) &&
-      !html.get(resolved).ids.has(fragment)
-    ) {
-      errors.push(`${pathname}: missing fragment ${target.pathname}#${fragment}`)
-    }
-    checked++
+    const hrefs = [...page.body.matchAll(/\b(?:href|src)="([^"]+)"/g)].map((m) =>
+      decodeAttribute(m[1]),
+    )
+    const results = await Promise.all(hrefs.map((href) => checkLink(path, href, `${url}${path}`)))
+    checked += results.reduce((sum, value) => sum + value, 0)
   }
+
+  // Every Markdown export listed in llms.txt, and the links inside it.
+  const index = await load('/llms.txt')
+  assert.equal(index.status, 200, 'llms.txt is missing.')
+  const exports = [...index.body.matchAll(/\]\((https?:\/\/[^)\s]+\.md)\)/g)]
+    .map((m) => m[1])
+    .filter((link) => link.startsWith(`${siteUrl}/`))
+  assert.equal(exports.length, documents.length - 1, 'llms.txt must list every docs page.')
+  for (const link of exports) {
+    const { pathname } = new URL(link)
+    const markdown = await load(pathname)
+    if (markdown.status !== 200 || !markdown.type.startsWith('text/markdown')) {
+      errors.push(`llms.txt: ${pathname} returned ${markdown.status} ${markdown.type}`)
+      continue
+    }
+    const links = [...markdown.body.matchAll(/\]\((https?:\/\/[^)\s]+)\)/g)].map((m) => m[1])
+    const results = await Promise.all(links.map((href) => checkLink(pathname, href, href)))
+    checked += results.reduce((sum, value) => sum + value, 0)
+  }
+
+  // Content negotiation: the same URL serves Markdown to agents that ask for it.
+  for (const path of ['/docs', '/docs/quick-start']) {
+    const response = await fetch(`${url}${path}`, { headers: { accept: 'text/markdown' } })
+    const text = await response.text()
+    if (
+      !response.headers.get('content-type')?.startsWith('text/markdown') ||
+      !text.startsWith('# ')
+    ) {
+      errors.push(`Accept: text/markdown on ${path} did not return Markdown.`)
+    }
+  }
+
+  const full = await load('/llms-full.txt')
+  assert.equal(full.status, 200, 'llms-full.txt is missing.')
+  const search = await fetch(`${url}/api/search?query=replay`).then((response) => response.json())
+  assert(Array.isArray(search) && search.length > 0, 'Search returned no results for "replay".')
+
+  // The MCP server answers a stateless tools/call with the page's Markdown.
+  const mcp = await fetch(`${url}/api/mcp`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      accept: 'application/json, text/event-stream',
+      'mcp-protocol-version': '2025-06-18',
+    },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'tools/call',
+      params: { name: 'get_page', arguments: { url: '/docs/quick-start' } },
+    }),
+  }).then((response) => response.text())
+  assert.match(mcp, /# Quick start/, 'The MCP get_page tool did not return the quick start.')
+} finally {
+  await stop()
 }
-assert.equal(errors.length, 0, `Broken exported links:\n${errors.join('\n')}`)
+
+assert.equal(errors.length, 0, `Broken links:\n${errors.join('\n')}`)
 console.log(
-  `Verified ${html.size} HTML files and ${checked} internal links and assets. Search index: ${(await stat(search)).size} bytes.`,
+  `Verified ${pages.size} responses and ${checked} internal links, Markdown exports, content negotiation, search, and MCP.`,
 )

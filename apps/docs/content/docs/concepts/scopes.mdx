@@ -1,75 +1,91 @@
 ---
 title: Scopes
-description: A scope is a namespace that isolates endpoints and events. It never grants access by itself.
+description: A scope keeps one customer's endpoints and events apart from everyone else's. It never grants access by itself.
 ---
 
-Every endpoint and every published event belongs to a scope. Publishing in a scope reaches only endpoints registered in that same scope. That is how one installation serves many customers without cross-talk.
+Every endpoint and every event belongs to exactly one scope. An event only reaches endpoints in its own scope. That is how one installation serves many customers without one customer's events reaching another's endpoints.
 
-| Scope             | Value                          | Typical owner              |
-| ----------------- | ------------------------------ | -------------------------- |
-| Application scope | `null`                         | Your platform itself       |
-| Named scope       | `{ type: 'user', id }`         | One signed-in user         |
-| Named scope       | `{ type: 'organization', id }` | One tenant or team         |
-| Named scope       | `{ type: 'anything', id }`     | Whatever your domain needs |
+| Scope             | Value                          | Typical owner                  |
+| ----------------- | ------------------------------ | ------------------------------ |
+| Application scope | `null`                         | Your platform itself           |
+| Named scope       | `{ type: 'user', id }`         | One signed-in user             |
+| Named scope       | `{ type: 'organization', id }` | One organization or team       |
+| Named scope       | `{ type: 'project', id }`      | Any grouping your domain needs |
 
-Application scope is its own namespace, not a parent of the named scopes. Publishing in application scope never reaches a user's endpoints, and a named publication never falls back to application endpoints. Use the endpoint owner's exact scope.
+## Who receives what
 
-## Selecting a scope
+An event published in one scope reaches endpoints in that scope only. There is no inheritance and no fallback:
 
-Each API selects scope differently:
+| Event published in ↓ · Endpoint in → | application | user `u_1` | organization `o_1` |
+| ------------------------------------ | :---------: | :--------: | :----------------: |
+| application                          |      ✓      |            |                    |
+| user `u_1`                           |             |     ✓      |                    |
+| organization `o_1`                   |             |            |         ✓          |
 
-<Tabs items={['createWebhooks / createDelivery', 'Management provider', 'Better Auth routes']}>
+Application scope is not a parent of the named scopes. To reach a customer's endpoints, publish in that customer's exact scope.
+
+## Choosing a scope in code
+
+Each API selects the scope in its own way:
+
+<Tabs groupId="api" persist items={['createWebhooks', 'Management provider', 'Better Auth client']}>
 <Tab>
 
-The root instance uses application scope. `forScope()` returns the same methods bound to a named scope.
+The root client uses application scope. `forScope()` returns the same methods bound to a named scope.
 
 ```ts
+import { webhooks } from './webhooks.js'
+
 await webhooks.publish({ type: 'invoice.paid', data }) // application scope
 
-const tenant = webhooks.forScope({ type: 'organization', id: orgId })
-await tenant.endpoints.create({ url, eventTypes: ['invoice.paid'] })
-await tenant.publish({ type: 'invoice.paid', data }) // reaches that org's endpoints
+const customer = webhooks.forScope({ type: 'organization', id: organizationId })
+await customer.endpoints.create({ url, eventTypes: ['invoice.paid'] })
+await customer.publish({ type: 'invoice.paid', data }) // reaches that organization's endpoints
 ```
 
 </Tab>
 <Tab>
 
-Direct provider methods take the scope as their first argument. Pass `null` for application scope.
+Provider methods take the scope as their first argument. Pass `null` for application scope.
 
 ```ts
 await management.create(null, input)
-await management.create({ type: 'organization', id: orgId }, input)
+await management.create({ type: 'organization', id: organizationId }, input)
 ```
 
 </Tab>
 <Tab>
 
-An omitted `scope` means the signed-in user's personal scope. Other scopes are checked against the session. See [permissions](/docs/better-auth/permissions).
+An omitted `scope` means the signed-in user. Other scopes are checked against the session. See [permissions](/docs/better-auth/permissions).
 
 ```ts
-await authClient.goodWebhooks.create({ url, eventTypes }) // current user
-await authClient.goodWebhooks.create({ scope: { type: 'organization', id }, url, eventTypes })
+await authClient.goodWebhooks.create({ url, eventTypes }) // the signed-in user
+await authClient.goodWebhooks.create({
+  scope: { type: 'organization', id: organizationId },
+  url,
+  eventTypes,
+})
 ```
 
 </Tab>
 </Tabs>
 
-## Scopes do not authorize
+## Scopes don't authorize
 
 <Callout type="warn">
-  `forScope()` and the direct provider methods trust their arguments. Authorize the caller in your
-  application **before** choosing a scope, and never pass an unchecked ID from a request body.
+  `forScope()` and the provider methods trust the scope you pass. Check that the caller may act for
+  that customer **before** choosing the scope. Never pass an unchecked ID from a request body.
 </Callout>
 
-The Better Auth routes are the exception: they check the session, organization membership, and permissions on every request. Its trusted provider returned by `createBetterAuthManagement()` bypasses those checks, which is what a worker needs.
+The Better Auth routes are the exception: they check the session, organization membership, and permissions on every request. The trusted provider from `createBetterAuthManagement()` skips those checks, which is what a worker needs.
 
-## Scope limits and identity
+## Rules and limits
 
-- `type` is 1 to 64 characters, `id` is 1 to 200 characters. Both are nonblank with no null bytes.
-- The same `id` under two different `type` values is two different scopes.
-- Each scope holds at most 1,000 live endpoints.
+- `type` is 1 to 64 characters and `id` is 1 to 200. Neither may be blank or contain null bytes.
+- The same `id` under two `type` values is two different scopes.
+- A scope holds at most 1,000 live endpoints.
 - Idempotency keys are unique per scope, not globally.
 
 ## When an owner goes away
 
-The Better Auth plugin retires a user's endpoints when the user is deleted, and an organization's endpoints when the organization is deleted. For standalone management, call `removeScope(scope)` on a `createPostgresManagement()` provider from your own owner-deletion workflow. See [manage endpoints](/docs/guides/endpoints#when-a-tenant-leaves).
+The Better Auth plugin retires a user's endpoints when the user is deleted, and an organization's endpoints when the organization is deleted. With standalone management, call `removeScope(scope)` on a `createPostgresManagement()` provider from your own deletion workflow. See [manage endpoints](/docs/guides/endpoints#when-a-scope-owner-leaves).

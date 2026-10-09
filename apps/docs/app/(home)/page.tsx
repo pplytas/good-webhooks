@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { Code } from '@/components/landing/code'
+import { Flow, FlowStep } from '@/components/flow'
 import { site } from '@/lib/site'
 
 const sample = `import { createWebhooks } from 'good-webhooks'
@@ -73,6 +74,33 @@ const features: { title: string; body: string }[] = [
   },
 ]
 
+const paths: { time: string; title: string; body: string; href: string }[] = [
+  {
+    time: '2 min read',
+    title: 'What it is',
+    body: 'The model, the code, and what you still decide.',
+    href: '/docs',
+  },
+  {
+    time: '5 min',
+    title: 'Try it',
+    body: 'One file sends a signed webhook to a local receiver.',
+    href: '/docs/quick-start',
+  },
+  {
+    time: '15 min',
+    title: 'Add it to your app',
+    body: 'Install, create the tables, publish, and run a worker.',
+    href: '/docs/installation',
+  },
+  {
+    time: 'Before launch',
+    title: 'Go to production',
+    body: 'Keys, workers, cleanup, receivers, and upgrades.',
+    href: '/docs/operations/production',
+  },
+]
+
 const setups: { title: string; body: string; href: string }[] = [
   {
     title: 'Standalone on PostgreSQL',
@@ -112,14 +140,20 @@ export default function HomePage() {
           </h1>
           <div className="mt-8 flex flex-wrap items-center gap-3">
             <Link
-              href="/docs"
+              href="/docs/quick-start"
               className="inline-flex h-11 items-center rounded-full bg-fd-primary px-6 text-sm font-medium text-fd-primary-foreground transition-colors hover:bg-fd-primary/85"
+            >
+              Quick start
+            </Link>
+            <Link
+              href="/docs"
+              className="inline-flex h-11 items-center rounded-full bg-fd-secondary px-6 text-sm font-medium transition-colors hover:bg-fd-accent"
             >
               Documentation
             </Link>
             <a
               href={site.githubUrl}
-              className="inline-flex h-11 items-center rounded-full bg-fd-secondary px-6 text-sm font-medium transition-colors hover:bg-fd-accent"
+              className="inline-flex h-11 items-center px-3 text-sm font-medium text-fd-muted-foreground transition-colors hover:text-fd-foreground"
             >
               GitHub
             </a>
@@ -134,9 +168,42 @@ export default function HomePage() {
       </section>
 
       <section className="mt-24">
-        <SectionHeading>Install</SectionHeading>
+        <SectionHeading>How it works</SectionHeading>
+        <Flow>
+          <FlowStep title="Publish" actor="your app">
+            <code>publish()</code> validates a typed event and finds subscribed endpoints.
+          </FlowStep>
+          <FlowStep title="Store" actor="PostgreSQL">
+            The event and its deliveries commit with your own data.
+          </FlowStep>
+          <FlowStep title="Deliver" actor="worker">
+            Your worker signs, sends, retries, and records every attempt.
+          </FlowStep>
+          <FlowStep title="Verify" actor="receiver">
+            <code>parseWebhook()</code> checks the signature and returns a typed event.
+          </FlowStep>
+        </Flow>
+      </section>
+
+      <section className="mt-24">
+        <SectionHeading>Start here</SectionHeading>
         <div className="mt-4 max-w-xl">
           <Code code="npm install good-webhooks@alpha" lang="bash" />
+        </div>
+        <div className="grid-cells mt-6 sm:grid-cols-2 lg:grid-cols-4">
+          {paths.map((path) => (
+            <Link
+              key={path.href}
+              href={path.href}
+              className="flex flex-col p-6 transition-colors hover:bg-fd-accent"
+            >
+              <span className="font-mono text-xs text-fd-muted-foreground">{path.time}</span>
+              <span className="mt-3 font-medium">{path.title}</span>
+              <span className="mt-2 text-sm leading-relaxed text-fd-muted-foreground">
+                {path.body}
+              </span>
+            </Link>
+          ))}
         </div>
       </section>
 

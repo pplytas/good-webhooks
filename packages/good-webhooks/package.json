@@ -59,6 +59,7 @@
     "src",
     "migrations",
     "examples",
+    "skills",
     "README.md",
     "LICENSE"
   ],

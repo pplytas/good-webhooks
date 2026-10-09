@@ -3,7 +3,14 @@ title: Better Auth quick start
 description: Create a user, register a personal endpoint through authenticated routes, and list it. One file, SQLite, no PostgreSQL.
 ---
 
-This runs the plugin end to end in a single script: migrate, sign up, call the routes with the session cookie, and watch unauthorized requests get rejected. It does not send a webhook.
+One script runs the plugin end to end against a SQLite file. No server, no PostgreSQL, and no webhook is sent:
+
+<Flow title="What the script checks">
+  <FlowStep title="No session">Listing endpoints without signing in returns `401`.</FlowStep>
+  <FlowStep title="Create">A signed-in user creates an endpoint and gets its secret once.</FlowStep>
+  <FlowStep title="List">The endpoint is listed, without its secret.</FlowStep>
+  <FlowStep title="Other scope">Asking for application scope returns `403`.</FlowStep>
+</Flow>
 
 You need Node.js 24 and npm.
 
