@@ -21,7 +21,11 @@ export async function Code({
     },
   })
   return (
-    <CodeBlock title={title} className="my-0 text-[13px]">
+    // Phones wrap long lines instead of scrolling them sideways.
+    <CodeBlock
+      title={title}
+      className="my-0 text-[13px] max-sm:[&_pre]:w-full max-sm:[&_pre]:text-xs max-sm:[&_pre]:whitespace-pre-wrap max-sm:[&_pre]:[overflow-wrap:anywhere]"
+    >
       {rendered}
     </CodeBlock>
   )

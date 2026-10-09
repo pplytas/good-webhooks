@@ -10,24 +10,26 @@ const webhooks = createWebhooks({
   database: pool, // pg.Pool
   encryptionKey: process.env.WEBHOOK_ENCRYPTION_KEY,
   events: {
-    'invoice.paid': z.object({ invoiceId: z.string(), amount: z.number().int() }),
+    'invoice.paid': z.object({
+      invoiceId: z.string(),
+      amount: z.number().int(),
+    }),
   },
 })
 
-// Register a destination. The secret goes to the receiver once.
-const { endpoint, secret } = await webhooks.endpoints.create({
+// A customer registers an endpoint.
+const { secret } = await webhooks.endpoints.create({
   url: 'https://customer.example/webhooks',
   eventTypes: ['invoice.paid'],
 })
 
-// Publish a typed event. Recipients are fixed when this commits.
+// Publish a typed event, in your transaction.
 await webhooks.publish({
   type: 'invoice.paid',
   data: { invoiceId: 'inv_123', amount: 4200 },
-  idempotencyKey: 'invoice.paid:inv_123',
 })
 
-// Deliver in a worker you control.
+// A worker you run signs, sends, and retries.
 await webhooks.worker.run({ signal })`
 
 const wire = `POST /webhooks HTTP/1.1
@@ -37,7 +39,12 @@ webhook-id: 7a0c3f3e-5b2c-4f8e-9d1a-2e6b8c4d9f10
 webhook-timestamp: 1760000000
 webhook-signature: v1,K5oZfzN95Z9UVu1EsfQmfVNQhnkZ2pj6D2hFcTjqRVo=
 
-{"id":"7a0c3f3e-…","type":"invoice.paid","occurredAt":"2026-10-09T09:46:40.000Z","data":{"invoiceId":"inv_123","amount":4200}}`
+{
+  "id": "7a0c3f3e-5b2c-4f8e-9d1a-2e6b8c4d9f10",
+  "type": "invoice.paid",
+  "occurredAt": "2026-10-09T09:46:40.000Z",
+  "data": { "invoiceId": "inv_123", "amount": 4200 }
+}`
 
 const features: { title: string; body: string }[] = [
   {
@@ -130,7 +137,7 @@ export default function HomePage() {
       <section className="grid items-center gap-12 pt-20 lg:min-h-[calc(100vh-14rem)] lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] lg:pt-12">
         <div>
           <p
-            className="font-semibold leading-none tracking-tighter text-[clamp(2.75rem,8vw,5.5rem)]"
+            className="whitespace-nowrap font-semibold leading-none tracking-tighter text-[clamp(2.5rem,9vw,4rem)] lg:text-[clamp(2.75rem,4.5vw,4rem)]"
             aria-label="good-webhooks"
           >
             good<span className="text-fd-muted-foreground/50">-</span>webhooks
@@ -224,7 +231,7 @@ export default function HomePage() {
         </ol>
       </section>
 
-      <section className="mt-24 grid gap-8 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]">
+      <section className="mt-24 grid gap-8 lg:grid-cols-[minmax(0,4fr)_minmax(0,7fr)]">
         <div>
           <SectionHeading>On the wire</SectionHeading>
           <p className="mt-4 max-w-md leading-relaxed text-fd-muted-foreground">
