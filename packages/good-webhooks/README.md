@@ -1,59 +1,85 @@
 # Good Webhooks
 
-Build webhook delivery into your TypeScript application.
+Send webhooks from your TypeScript application. You publish typed events; Good Webhooks stores them in your PostgreSQL database, delivers signed [Standard Webhooks](https://www.standardwebhooks.com) requests from a worker you run, retries failures, keeps attempt history, and supports replay. Receivers verify requests with one function.
 
-Good Webhooks is an embedded TypeScript package for outbound webhooks. Use Better Auth for authenticated endpoint management, connect your own sender, or add the PostgreSQL publisher and worker.
+```text
+publish()  →  PostgreSQL  →  worker  →  signed POST  →  parseWebhook()
+your app      event + deliveries    retries + history      the receiver
+```
 
-Good Webhooks is in alpha. Node.js 24 or later is required. The package ships ESM; Node.js 24 also supports loading this build with CommonJS `require()`.
+**[Documentation](https://good-webhooks.vercel.app/docs)** · [Quick start](https://good-webhooks.vercel.app/docs/quick-start) · [API reference](https://good-webhooks.vercel.app/docs/reference) · [For AI agents](https://good-webhooks.vercel.app/docs/ai)
 
-| Setup                                         | Entry points                                                    | Storage                                            |
-| --------------------------------------------- | --------------------------------------------------------------- | -------------------------------------------------- |
-| Better Auth management with your sender       | `good-webhooks/better-auth`, `good-webhooks/better-auth/client` | Better Auth adapter                                |
-| Better Auth management with built-in delivery | Above plus `good-webhooks/delivery`                             | Better Auth adapter and PostgreSQL delivery tables |
-| Standalone management and delivery            | `good-webhooks`                                                 | PostgreSQL management and delivery tables          |
-| Standalone management with your sender        | `good-webhooks/management/postgres`                             | PostgreSQL management tables                       |
-
-PostgreSQL setups require version 16 or later. Better Auth is an optional peer; standalone imports do not require it. The supported Better Auth range is `>=1.7.7 <1.8.0`, tested with 1.7.7.
-
-TypeScript consumers need TypeScript 5.9.3 or later, with NodeNext or Bundler resolution. Better Auth consumers use `skipLibCheck` for upstream declarations. See [compatibility and upgrades](https://good-webhooks.vercel.app/docs/operations/compatibility).
-
-## Documentation
-
-Read the [documentation](https://good-webhooks.vercel.app). The repository contains its [source](https://github.com/pplytas/good-webhooks/tree/main/apps/docs/content/docs). Run `pnpm dev` from a repository checkout to preview changes locally.
-
-- [Install Good Webhooks](https://good-webhooks.vercel.app/docs/installation)
-- [Better Auth quick start](https://good-webhooks.vercel.app/docs/better-auth/quick-start)
-- [Quick start](https://good-webhooks.vercel.app/docs/quick-start)
-- [Connect a custom sender](https://good-webhooks.vercel.app/docs/guides/custom-senders)
-- [API reference](https://good-webhooks.vercel.app/docs/reference)
-
-The [standalone example](examples/basic/demo.ts) exercises rollback, signed delivery, retry, replay, and receiver deduplication. The [repository README](https://github.com/pplytas/good-webhooks#readme) includes its database setup.
+> [!WARNING]
+> Alpha. The API can change between releases. Pin the exact version.
 
 ## Install
 
-Install the alpha release in your application:
-
 ```sh
-npm install good-webhooks@alpha
+npm install good-webhooks@alpha pg zod
 ```
 
-## Install from a checkout
+Requires Node.js 24 or later and PostgreSQL 16 or 17. Payload schemas can use any [Standard Schema](https://standardschema.dev) library.
 
-Run these commands at the repository root:
+## Use
 
-```sh
-pnpm install --frozen-lockfile
-pnpm --dir packages/good-webhooks pack
+```ts
+import { createWebhooks } from 'good-webhooks'
+import { Pool } from 'pg'
+import { z } from 'zod'
+
+const webhooks = createWebhooks({
+  database: new Pool({ connectionString: process.env.DATABASE_URL }),
+  encryptionKey: process.env.WEBHOOK_ENCRYPTION_KEY!, // from generateEncryptionKey(), stored once
+  events: {
+    'invoice.paid': z.object({ invoiceId: z.string(), amount: z.number().int() }),
+  },
+})
+
+// A customer registers an endpoint. The signing secret is returned once.
+const { secret } = await webhooks.endpoints.create({
+  url: 'https://customer.example/webhooks',
+  eventTypes: ['invoice.paid'],
+})
+
+// Publish a typed event, optionally inside your own transaction.
+await webhooks.publish({
+  type: 'invoice.paid',
+  data: { invoiceId: 'inv_123', amount: 4200 },
+  idempotencyKey: 'invoice.paid:inv_123',
+})
+
+// In a separate process: sign, send, and retry until stopped.
+await webhooks.worker.run({ signal })
 ```
 
-Then install the archive in your application:
+The receiver verifies the raw body and gets a typed event:
 
-```sh
-npm install /absolute/path/to/good-webhooks-0.1.0-alpha.3.tgz
+```ts
+import { parseWebhook } from 'good-webhooks/verify'
+
+const event = await parseWebhook({ body: rawBody, headers, secret, events })
 ```
 
-Your application supplies its database driver and payload validators. Apply the appropriate initial migration before using the PostgreSQL provider or delivery engine. Better Auth management uses Better Auth's schema workflow instead. The migration generator is available at `good-webhooks/migrations`.
+Apply the SQL from `getPostgresMigration()` (in `good-webhooks/migrations`) with your migration tool first. Nothing runs implicitly: no connections, migrations, or workers start on their own.
 
-Delivery can occur more than once and has no ordering guarantee. Receivers must verify signatures and deduplicate event IDs. The dedicated `good-webhooks/verify` entrypoint provides signature verification and typed payload parsing.
+## Setups
 
-Licensed under [MIT](LICENSE). See the repository [contribution guide](https://github.com/pplytas/good-webhooks/blob/main/CONTRIBUTING.md) and [security policy](https://github.com/pplytas/good-webhooks/blob/main/SECURITY.md).
+| You want                                     | Start with                                                                    |
+| -------------------------------------------- | ----------------------------------------------------------------------------- |
+| Everything on PostgreSQL                     | [Quick start](https://good-webhooks.vercel.app/docs/quick-start)              |
+| Signed-in users managing their own endpoints | [Better Auth plugin](https://good-webhooks.vercel.app/docs/better-auth)       |
+| Better Auth endpoints with built-in delivery | [Add delivery](https://good-webhooks.vercel.app/docs/better-auth/delivery)    |
+| Endpoint management for your own sender      | [Custom senders](https://good-webhooks.vercel.app/docs/guides/custom-senders) |
+| Only receiving webhooks                      | [Receive webhooks](https://good-webhooks.vercel.app/docs/guides/receive)      |
+
+Better Auth `>=1.7.7 <1.8.0` is an optional peer dependency. TypeScript consumers need 5.9.3 or later with `NodeNext` or `Bundler` resolution.
+
+## For AI agents
+
+This package ships an [Agent Skill](https://agentskills.io) in `skills/good-webhooks/` that matches the installed version. Docs for agents: [llms.txt](https://good-webhooks.vercel.app/llms.txt).
+
+## Guarantees
+
+Delivery is at least once, with no ordering. Receivers must verify signatures and record each event ID with their change. See [delivery guarantees](https://good-webhooks.vercel.app/docs/concepts/delivery-guarantees).
+
+MIT licensed. See the [contribution guide](https://github.com/pplytas/good-webhooks/blob/main/CONTRIBUTING.md) and [security policy](https://github.com/pplytas/good-webhooks/blob/main/SECURITY.md).

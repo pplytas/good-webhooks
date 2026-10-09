@@ -109,11 +109,28 @@ try {
   assert.equal(full.status, 200, 'llms-full.txt is missing.')
   const search = await fetch(`${url}/api/search?query=replay`).then((response) => response.json())
   assert(Array.isArray(search) && search.length > 0, 'Search returned no results for "replay".')
+
+  // The MCP server answers a stateless tools/call with the page's Markdown.
+  const mcp = await fetch(`${url}/api/mcp`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      accept: 'application/json, text/event-stream',
+      'mcp-protocol-version': '2025-06-18',
+    },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'tools/call',
+      params: { name: 'get_page', arguments: { url: '/docs/quick-start' } },
+    }),
+  }).then((response) => response.text())
+  assert.match(mcp, /# Quick start/, 'The MCP get_page tool did not return the quick start.')
 } finally {
   await stop()
 }
 
 assert.equal(errors.length, 0, `Broken links:\n${errors.join('\n')}`)
 console.log(
-  `Verified ${pages.size} responses and ${checked} internal links, Markdown exports, content negotiation, and search.`,
+  `Verified ${pages.size} responses and ${checked} internal links, Markdown exports, content negotiation, search, and MCP.`,
 )

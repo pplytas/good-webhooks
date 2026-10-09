@@ -17,6 +17,7 @@ pnpm --filter @good-webhooks/docs preview
 - `app/(home)/page.tsx` is the landing page at `/`.
 - `app/docs/[[...slug]]/page.tsx` renders `content/docs/` under `/docs`. `content/docs/index.mdx` is the introduction.
 - `app/llms.txt`, `app/llms-full.txt`, and `app/llms.mdx/docs/[[...slug]]` export Markdown for AI tools. Every page is also Markdown at its own URL plus `.md` (`/docs/quick-start.md`, `/docs.md` for the introduction) through the rewrites in `next.config.mjs`. `proxy.ts` serves the same Markdown at the page URL itself when a request prefers `text/markdown`. `lib/llms.ts` builds the sectioned `llms.txt` index from the sidebar and rewrites docs links in exports to absolute Markdown URLs. Each docs page links to its `.md` export through the copy and open actions and a `rel="alternate"` link. `app/sitemap.ts` and `app/robots.ts` export `sitemap.xml` and `robots.txt`.
+- `app/api/search` serves search and `app/api/mcp` is a stateless MCP server (`list_pages`, `get_page`, `search`). Both use the index in `lib/search.ts`.
 - `lib/site.ts` reads the package version for the sidebar badge and npm link. `lib/layout.shared.tsx` holds the shared navigation.
 
 ## Authoring
@@ -73,4 +74,4 @@ pnpm --filter @good-webhooks/docs exec playwright install chromium
 pnpm --filter @good-webhooks/docs check:browser
 ```
 
-The checks compile the app and reference examples, verify that generated tables track their TypeScript inputs, and build every page and Markdown export. `check:links` starts `next start` on a free port, crawls every sitemap page and every Markdown export listed in `llms.txt`, and validates links, assets, fragments, content negotiation, and search. The browser smoke check starts its own server the same way. It verifies the landing page, docs routes, a Markdown export, a generated table, search navigation, the theme switch, and mobile navigation. Install Chromium once locally; CI installs it with system dependencies. Use `preview` for visual review and code copying.
+The checks compile the app and reference examples, verify that generated tables track their TypeScript inputs, and build every page and Markdown export. `check:links` starts `next start` on a free port, crawls every sitemap page and every Markdown export listed in `llms.txt`, and validates links, assets, fragments, content negotiation, search, and the MCP server. The browser smoke check starts its own server the same way. It verifies the landing page, docs routes, a Markdown export, a generated table, search navigation, the theme switch, and mobile navigation. Install Chromium once locally; CI installs it with system dependencies. Use `preview` for visual review and code copying.

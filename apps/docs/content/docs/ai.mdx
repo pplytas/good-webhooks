@@ -1,6 +1,6 @@
 ---
 title: Use with AI agents
-description: Give coding agents the docs as Markdown, the rules they most often get wrong, and prompts that work.
+description: Give coding agents the docs as Markdown, an Agent Skill, an MCP server, the rules they most often get wrong, and prompts that work.
 ---
 
 Every page is available as plain Markdown. Coding agents read it more reliably than HTML.
@@ -15,9 +15,78 @@ Every page is available as plain Markdown. Coding agents read it more reliably t
 
 The Markdown includes the type-checked example files and the generated type tables, so an agent sees the same code you do. The docs describe the latest alpha; pin that version.
 
-## Add the rules to your project
+## Install the skill
 
-Paste this into your `AGENTS.md`, `CLAUDE.md`, or your editor's rules file. It points the agent at the docs and lists the mistakes agents make most often with this library.
+The package ships an [Agent Skill](https://agentskills.io) with setup steps, code templates, and the rules below. It lives in `node_modules/good-webhooks/skills/good-webhooks/`, so it always matches your installed version.
+
+<Tabs groupId="skill" items={['From GitHub', 'From node_modules', 'Manually']}>
+<Tab>
+
+```sh
+npx skills add pplytas/good-webhooks
+```
+
+</Tab>
+<Tab>
+
+Install skills from every installed package that ships one:
+
+```sh
+npx skills experimental_sync
+```
+
+</Tab>
+<Tab>
+
+Copy the folder into your agent's skills directory, for example for Claude Code:
+
+```sh
+mkdir -p .claude/skills
+cp -R node_modules/good-webhooks/skills/good-webhooks .claude/skills/
+```
+
+</Tab>
+</Tabs>
+
+## Connect the MCP server
+
+`https://good-webhooks.vercel.app/api/mcp` is a [Model Context Protocol](https://modelcontextprotocol.io) server with three tools: `list_pages`, `get_page`, and `search`. No sign-in needed.
+
+<Tabs groupId="mcp-client" persist items={['Claude Code', 'Cursor', 'VS Code']}>
+<Tab>
+
+```sh
+claude mcp add --transport http good-webhooks https://good-webhooks.vercel.app/api/mcp
+```
+
+</Tab>
+<Tab>
+
+```json title=".cursor/mcp.json"
+{
+  "mcpServers": {
+    "good-webhooks": { "url": "https://good-webhooks.vercel.app/api/mcp" }
+  }
+}
+```
+
+</Tab>
+<Tab>
+
+```json title=".vscode/mcp.json"
+{
+  "servers": {
+    "good-webhooks": { "type": "http", "url": "https://good-webhooks.vercel.app/api/mcp" }
+  }
+}
+```
+
+</Tab>
+</Tabs>
+
+## Or add the rules to your project
+
+Without the skill, paste this into your `AGENTS.md`, `CLAUDE.md`, or your editor's rules file. It points the agent at the docs and lists the mistakes agents make most often with this library.
 
 ```md title="AGENTS.md"
 ## Good Webhooks
