@@ -3,17 +3,18 @@ title: Manage endpoints
 description: Create, update, pause, resume, rotate, and retire endpoints with the standalone PostgreSQL provider or the combined API.
 ---
 
-Endpoint management records where events go. It stores URLs, subscriptions, status, and encrypted signing secrets. For user-facing management through authenticated routes, use the [Better Auth plugin](/docs/better-auth) instead.
+An endpoint is a URL that receives some of your event types. Management stores endpoints with their status and encrypted signing secrets. To let signed-in users manage their own endpoints over HTTP, use the [Better Auth plugin](/docs/better-auth) instead.
 
 ## Two ways in
 
 <Tabs items={['Combined API', 'Standalone provider']}>
 <Tab>
 
-`createWebhooks()` exposes an endpoint client bound to a scope. The root client uses application scope; `forScope()` selects a named one.
+The `webhooks` client from [installation](/docs/installation#create-the-client) has an `endpoints` API. The root client works in application scope; `forScope()` selects a customer.
 
 ```ts
-const webhooks = createWebhooks({ database, encryptionKey, events })
+import { webhooks } from './webhooks.js'
+
 const tenant = webhooks.forScope({ type: 'organization', id: orgId })
 
 const { endpoint, secret } = await tenant.endpoints.create({
@@ -30,9 +31,10 @@ const { endpoint, secret } = await tenant.endpoints.create({
 
 ```ts
 import { createPostgresManagement } from 'good-webhooks/management/postgres'
+import { pool } from './db.js'
 
 const management = createPostgresManagement({
-  database,
+  database: pool,
   eventTypes: ['invoice.created', 'invoice.paid'],
   encryptionKey: process.env.WEBHOOK_ENCRYPTION_KEY!,
 })
@@ -47,7 +49,7 @@ const { endpoint, secret } = await management.create(
 Apply the management-only migration first:
 
 ```sh
-node --input-type=module -e 'import { getPostgresMigration } from "good-webhooks/migrations"; process.stdout.write(getPostgresMigration({ component: "management" }))' > 001-webhook-management.sql
+node -e 'import("good-webhooks/migrations").then(m => process.stdout.write(m.getPostgresMigration({ component: "management" })))' > 001-webhook-management.sql
 psql "$DATABASE_URL" --single-transaction -v ON_ERROR_STOP=1 -f 001-webhook-management.sql
 ```
 
@@ -57,7 +59,7 @@ psql "$DATABASE_URL" --single-transaction -v ON_ERROR_STOP=1 -f 001-webhook-mana
 Both need a storage encryption key. Generate it once and keep it in your secret manager:
 
 ```sh
-node --input-type=module -e 'import { generateEncryptionKey } from "good-webhooks"; console.log(generateEncryptionKey())'
+node -e 'import("good-webhooks").then(m => console.log(m.generateEncryptionKey()))'
 ```
 
 <Callout type="warn">

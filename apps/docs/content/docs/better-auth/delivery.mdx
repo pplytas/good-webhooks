@@ -22,7 +22,7 @@ pg zod
 Generate delivery-only SQL and apply it once with your migration runner. This creates the delivery tables in `public`; pass `schema` to [target another schema](/docs/operations/migrations).
 
 ```sh
-node --input-type=module -e 'import { getPostgresMigration } from "good-webhooks/migrations"; process.stdout.write(getPostgresMigration({ component: "delivery" }))' > 001-webhook-delivery.sql
+node -e 'import("good-webhooks/migrations").then(m => process.stdout.write(m.getPostgresMigration({ component: "delivery" })))' > 001-webhook-delivery.sql
 psql "$DELIVERY_DATABASE_URL" --single-transaction -v ON_ERROR_STOP=1 -f 001-webhook-delivery.sql
 ```
 

@@ -1,11 +1,26 @@
 ---
 title: Quick start
-description: Send a signed webhook from a fresh application to a local receiver in about five minutes.
+description: Send your first signed webhook in about five minutes. One database, one file, one command.
 ---
 
-You will create an endpoint, publish an `invoice.paid` event, run the worker once, and verify the signed request in a receiver running in the same process.
+You will publish an `invoice.paid` event and watch a local receiver verify it. The script does four things:
 
-You need Node.js 24, npm, and Docker. For Better Auth management instead, follow the [Better Auth quick start](/docs/better-auth/quick-start).
+<Flow title="What the quick-start script does">
+  <FlowStep title="Register" actor="your app">
+    Create an endpoint for a local receiver. Get its signing secret once.
+  </FlowStep>
+  <FlowStep title="Publish" actor="your app">
+    `publish()` validates the payload and stores one delivery per endpoint.
+  </FlowStep>
+  <FlowStep title="Deliver" actor="worker">
+    The worker signs the event and POSTs it to the receiver.
+  </FlowStep>
+  <FlowStep title="Verify" actor="receiver">
+    `parseWebhook()` checks the signature and returns a typed event.
+  </FlowStep>
+</Flow>
+
+You need **Node.js 24** and **Docker**. Using Better Auth? Follow the [Better Auth quick start](/docs/better-auth/quick-start) instead.
 
 <Steps>
 <Step>
@@ -24,42 +39,20 @@ good-webhooks@alpha pg zod
 <Step>
 ### Start PostgreSQL
 
-A disposable database on a non-default port:
+A throwaway database on port 55439:
 
 ```sh
-docker run --name good-webhooks-quickstart \
-  -e POSTGRES_PASSWORD=webhooks_dev_only \
-  -e POSTGRES_DB=webhooks \
-  -p 127.0.0.1:55439:5432 \
-  -d postgres:16
-export DATABASE_URL='postgres://postgres:webhooks_dev_only@127.0.0.1:55439/webhooks'
-```
-
-Wait until this prints `accepting connections`:
-
-```sh
-docker exec good-webhooks-quickstart pg_isready -U postgres -d webhooks
+docker run --name good-webhooks-quickstart -d \
+  -e POSTGRES_PASSWORD=dev_only -e POSTGRES_DB=webhooks \
+  -p 127.0.0.1:55439:5432 postgres:16
+until docker exec good-webhooks-quickstart pg_isready -h 127.0.0.1 -U postgres -d webhooks; do sleep 1; done
 ```
 
 </Step>
 <Step>
-### Apply the migration
+### Write the script
 
-The package generates its SQL. Apply it once to the fresh database:
-
-```sh
-node --input-type=module -e 'import { getPostgresMigration } from "good-webhooks/migrations"; process.stdout.write(getPostgresMigration())' > 001-webhooks.sql
-docker exec -i good-webhooks-quickstart psql -U postgres -d webhooks \
-  --single-transaction -v ON_ERROR_STOP=1 < 001-webhooks.sql
-```
-
-In a real application, your migration runner applies this file. See [migrations](/docs/operations/migrations).
-
-</Step>
-<Step>
-### Write the sender and receiver
-
-Save this as `quick-start.mts`. Node.js 24 runs TypeScript directly.
+Save this as `quick-start.mts`. The numbered comments match the four stages above.
 
 ```ts title="quick-start.mts"
 import { once } from 'node:events'
@@ -67,38 +60,47 @@ import { createServer } from 'node:http'
 import { Pool } from 'pg'
 import { z } from 'zod'
 import { createWebhooks, generateEncryptionKey } from 'good-webhooks'
-import { parseWebhook, WebhookError } from 'good-webhooks/verify'
+import { getPostgresMigration } from 'good-webhooks/migrations'
+import { parseWebhook } from 'good-webhooks/verify'
 
-// 1. Define events once. The publisher and the receiver share this map.
+// Your event catalog. The publisher and the receiver share it.
 const events = {
-  'invoice.paid': z.object({ invoiceId: z.string(), amount: z.number().int().nonnegative() }),
+  'invoice.paid': z.object({ invoiceId: z.string(), amount: z.number().int() }),
 }
 
-const pool = new Pool({ connectionString: process.env.DATABASE_URL })
+const pool = new Pool({
+  connectionString: 'postgres://postgres:dev_only@127.0.0.1:55439/webhooks',
+})
+
+// Throwaway database only: create the tables once. Real apps use their migration runner.
+const { rows } = await pool.query(`SELECT to_regclass('webhook_events') AS found`)
+if (!rows[0].found) await pool.query(getPostgresMigration())
+
 const webhooks = createWebhooks({
   database: pool,
   events,
-  encryptionKey: generateEncryptionKey(), // Persist this in a real app.
-  allowLocalhost: true, // Development only.
+  encryptionKey: generateEncryptionKey(), // Real apps load a stored key.
+  allowLocalhost: true, // Development only: allows http://127.0.0.1 receivers.
 })
 
-// 2. A receiver that verifies the signature before trusting the body.
+// A receiver. Normally this is someone else's server.
 let secret = ''
 const receiver = createServer(async (request, response) => {
   const chunks: Buffer[] = []
   for await (const chunk of request) chunks.push(chunk)
   try {
+    // 4. Verify: authenticate the raw bytes, then decode a typed event.
     const event = await parseWebhook({
       body: Buffer.concat(chunks),
       headers: request.headers,
       secret,
       events,
     })
-    console.log(`Received ${event.type} for ${event.data.invoiceId}: ${event.data.amount}`)
+    console.log(`✓ Receiver verified ${event.type} for ${event.data.invoiceId}`)
     response.writeHead(200).end()
   } catch (error) {
-    const rejected = error instanceof WebhookError && error.code !== 'INVALID_CONFIG'
-    response.writeHead(rejected ? 400 : 500).end()
+    console.error('✗ Receiver rejected the request:', error)
+    response.writeHead(400).end()
   }
 })
 receiver.listen(0, '127.0.0.1')
@@ -106,25 +108,23 @@ await once(receiver, 'listening')
 const { port } = receiver.address() as { port: number }
 
 try {
-  await webhooks.check()
-
-  // 3. Register the destination. Hand the secret to the receiver.
+  // 1. Register: the secret is returned once. Hand it to the receiver.
   const created = await webhooks.endpoints.create({
     url: `http://127.0.0.1:${port}/webhooks`,
     eventTypes: ['invoice.paid'],
   })
   secret = created.secret
 
-  // 4. Publish. This commits the event and one delivery per matching endpoint.
-  const publication = await webhooks.publish({
+  // 2. Publish: stores the event and one delivery per subscribed endpoint.
+  const published = await webhooks.publish({
     type: 'invoice.paid',
     data: { invoiceId: 'inv_123', amount: 4200 },
   })
-  console.log(`Published ${publication.eventId} to ${publication.deliveryCount} endpoint(s)`)
+  console.log(`✓ Published to ${published.deliveryCount} endpoint`)
 
-  // 5. Send it. In production a long-running worker calls run() instead.
+  // 3. Deliver: one batch. Production workers call run() and keep going.
   const result = await webhooks.worker.runOnce()
-  console.log(`Worker finished: ${result.succeeded} succeeded, ${result.failed} failed`)
+  console.log(`✓ Worker delivered ${result.succeeded}, failed ${result.failed}`)
 
   await webhooks.endpoints.remove(created.endpoint.id)
 } finally {
@@ -141,13 +141,15 @@ try {
 node quick-start.mts
 ```
 
+You should see:
+
 ```text
-Published 7a0c3f3e-… to 1 endpoint(s)
-Received invoice.paid for inv_123: 4200
-Worker finished: 1 succeeded, 0 failed
+✓ Published to 1 endpoint
+✓ Receiver verified invoice.paid for inv_123
+✓ Worker delivered 1, failed 0
 ```
 
-The receiver authenticated the raw request bytes against the endpoint secret, then decoded the payload with the shared Zod schema.
+That's a signed [Standard Webhooks](https://www.standardwebhooks.com) request, sent by the worker and verified against the endpoint's secret.
 
 </Step>
 <Step>
@@ -160,27 +162,33 @@ docker rm -f good-webhooks-quickstart
 </Step>
 </Steps>
 
-## What to change for a real application
+## From script to application
 
-- **Persist the encryption key.** `generateEncryptionKey()` once, store it in your secret manager, and pass the same value to every process. See [workers](/docs/operations/workers).
-- **Drop `allowLocalhost`.** It permits HTTP loopback destinations for development only.
-- **Run the worker as its own process.** Use `worker.run({ signal })` with graceful shutdown. See [workers](/docs/operations/workers).
-- **Deduplicate in the receiver.** Commit the event ID with the business change so retries and replays cannot repeat it. See [receive webhooks](/docs/guides/receive).
-- **Publish inside your transaction.** Pass your open client so a rolled-back order never produces an event. See [publish events](/docs/guides/publish).
+The script cut five corners. Each one has a guide:
+
+| In the script                          | In your application                                                      | Guide                                      |
+| -------------------------------------- | ------------------------------------------------------------------------ | ------------------------------------------ |
+| `pool.query(getPostgresMigration())`   | Your migration runner applies the SQL once                               | [Migrations](/docs/operations/migrations)  |
+| `generateEncryptionKey()` on every run | Generate once, store in a secret manager, load in every process          | [Manage endpoints](/docs/guides/endpoints) |
+| `worker.runOnce()` in the same file    | A separate worker process calling `worker.run({ signal })`               | [Run workers](/docs/operations/workers)    |
+| `publish()` on its own                 | `publish()` inside the transaction that changes your data                | [Publish events](/docs/guides/publish)     |
+| The receiver only logs                 | The receiver records `event.id` with its change, so retries are harmless | [Receive webhooks](/docs/guides/receive)   |
+
+Drop `allowLocalhost` outside development. The [production checklist](/docs/operations/production) collects the rest.
 
 ## Next steps
 
 <Cards>
   <Card title="Publish events" href="/docs/guides/publish">
-    Idempotency keys, scopes, and transactional publication.
+    Typed events, idempotency keys, and transactional publish.
   </Card>
   <Card title="Receive webhooks" href="/docs/guides/receive">
-    Bounded bodies, error mapping, and durable deduplication.
+    Verify in Express, Next.js, or Hono, and process each event once.
   </Card>
-  <Card title="Run workers" href="/docs/operations/workers">
-    A supervised worker with bounded shutdown.
+  <Card title="How it works" href="/docs/concepts/how-it-works">
+    The pieces behind the four stages above.
   </Card>
   <Card title="Complete examples" href="/docs/examples">
-    Order fulfillment and billing apps with retries and replay.
+    Two runnable apps with retries, replay, and a browser UI.
   </Card>
 </Cards>

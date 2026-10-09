@@ -1,31 +1,172 @@
 ---
 title: Receive webhooks
-description: Verify the raw request, decode a typed event, and commit your work exactly once.
+description: Verify the raw request, decode a typed event, and process each event exactly once. Examples for Next.js, Hono, Express, and Node.js.
 ---
 
-A receiver does three things in order: bound the body, verify and parse it, then commit the business change together with the event ID. `parseWebhook()` from `good-webhooks/verify` handles the middle step. The import loads no database or worker code.
+A receiver checks that a request really came from the sender, then acts on it once. `parseWebhook()` from `good-webhooks/verify` does the checking. That import loads no database or worker code, so it fits in any Node.js service.
 
-```ts title="receiver.ts"
-import { parseWebhook } from 'good-webhooks/verify'
-import { events } from './events.js'
+<Flow title="What a receiver does">
+  <FlowStep title="Read the raw body">Bounded in size, as bytes. Not parsed JSON.</FlowStep>
+  <FlowStep title="Verify and parse">
+    `parseWebhook()` checks the signature and returns a typed event.
+  </FlowStep>
+  <FlowStep title="Process once">Record `event.id` with your change in one transaction.</FlowStep>
+  <FlowStep title="Respond">
+    `2xx` when done. `400` for bad requests, `500` to get a retry.
+  </FlowStep>
+</Flow>
 
-const event = await parseWebhook({
-  body: rawBody, // string or Uint8Array, exactly as received
-  headers: request.headers, // Headers or Node.js IncomingHttpHeaders
-  secret: process.env.WEBHOOK_SECRET!, // or an array during rotation
-  events,
-})
+## Add a webhook route
 
-if (event.type === 'invoice.paid') {
-  event.data.amount // number
+Each handler is complete. Put your event map in `events.ts` ([shown below](#share-the-event-map)) and the endpoint's signing secret in `WEBHOOK_SECRET`.
+
+<Tabs groupId="framework" persist items={['Next.js', 'Hono', 'Express', 'Node.js http']}>
+<Tab>
+
+```ts title="app/webhooks/route.ts"
+import { parseWebhook, WebhookError } from 'good-webhooks/verify'
+import { events } from '@/lib/events'
+
+export async function POST(request: Request) {
+  // Reject oversized bodies before buffering. Your platform's body limit also applies.
+  if (Number(request.headers.get('content-length')) > 512 * 1024) {
+    return new Response('Webhook body is too large', { status: 413 })
+  }
+  try {
+    const event = await parseWebhook({
+      body: new Uint8Array(await request.arrayBuffer()),
+      headers: request.headers,
+      secret: process.env.WEBHOOK_SECRET!,
+      events,
+    })
+    console.log(event.type, event.id) // Process once: see below.
+    return new Response(null, { status: 204 })
+  } catch (error) {
+    if (error instanceof WebhookError && isRejection(error)) {
+      return new Response('Invalid webhook', { status: 400 })
+    }
+    throw error // 500: the sender retries.
+  }
 }
+
+const isRejection = (error: WebhookError) =>
+  ['SIGNATURE_INVALID', 'SIGNATURE_EXPIRED', 'PAYLOAD_INVALID'].includes(error.code)
 ```
 
-`event` is a discriminated union over the event map. Narrowing on `type` gives you the payload type for that event.
+</Tab>
+<Tab>
+
+```ts title="server.ts"
+import { Hono } from 'hono'
+import { bodyLimit } from 'hono/body-limit'
+import { parseWebhook, WebhookError } from 'good-webhooks/verify'
+import { events } from './events.js'
+
+const app = new Hono()
+
+app.post('/webhooks', bodyLimit({ maxSize: 512 * 1024 }), async (c) => {
+  try {
+    const event = await parseWebhook({
+      body: new Uint8Array(await c.req.arrayBuffer()),
+      headers: c.req.raw.headers,
+      secret: process.env.WEBHOOK_SECRET!,
+      events,
+    })
+    console.log(event.type, event.id) // Process once: see below.
+    return c.body(null, 204)
+  } catch (error) {
+    if (error instanceof WebhookError && isRejection(error)) return c.text('Invalid webhook', 400)
+    throw error // 500: the sender retries.
+  }
+})
+
+const isRejection = (error: WebhookError) =>
+  ['SIGNATURE_INVALID', 'SIGNATURE_EXPIRED', 'PAYLOAD_INVALID'].includes(error.code)
+
+export default app
+```
+
+</Tab>
+<Tab>
+
+```ts title="server.ts"
+import express from 'express'
+import { parseWebhook, WebhookError } from 'good-webhooks/verify'
+import { events } from './events.js'
+
+const app = express()
+
+// Raw bytes, not parsed JSON: the signature covers the exact body.
+app.post(
+  '/webhooks',
+  express.raw({ type: 'application/json', limit: '512kb' }),
+  async (request, response) => {
+    try {
+      const event = await parseWebhook({
+        body: request.body,
+        headers: request.headers,
+        secret: process.env.WEBHOOK_SECRET!,
+        events,
+      })
+      console.log(event.type, event.id) // Process once: see below.
+      response.sendStatus(204)
+    } catch (error) {
+      if (error instanceof WebhookError && isRejection(error)) {
+        response.status(400).send('Invalid webhook')
+        return
+      }
+      throw error // Express 5 turns this into a 500: the sender retries.
+    }
+  },
+)
+
+const isRejection = (error: WebhookError) =>
+  ['SIGNATURE_INVALID', 'SIGNATURE_EXPIRED', 'PAYLOAD_INVALID'].includes(error.code)
+
+app.listen(3000)
+```
+
+Register `express.raw()` on this route before any global `express.json()`. Parsed JSON cannot be verified.
+
+</Tab>
+<Tab>
+
+The plain `node:http` version needs a bounded reader. These helpers come from the checked examples:
+
+<include cwd lang="ts" meta='title="examples/basic/receiver.ts"'>
+  ../../packages/good-webhooks/examples/basic/receiver.ts
+</include>
+
+```ts title="server.ts"
+import { createServer } from 'node:http'
+import { parseWebhook } from 'good-webhooks/verify'
+import { events } from './events.js'
+import { readBody, respondToRequestError } from './receiver.js'
+
+createServer(async (request, response) => {
+  try {
+    const event = await parseWebhook({
+      body: await readBody(request),
+      headers: request.headers,
+      secret: process.env.WEBHOOK_SECRET!,
+      events,
+    })
+    console.log(event.type, event.id) // Process once: see below.
+    response.writeHead(204).end()
+  } catch (error) {
+    respondToRequestError(error, response)
+  }
+}).listen(3000)
+```
+
+</Tab>
+</Tabs>
+
+During a [secret rotation](/docs/operations/key-rotation), pass both secrets: `secret: [newSecret, oldSecret]`.
 
 ## Share the event map
 
-Keep the map in a module that imports no server configuration or secrets, and use it on both sides.
+Use the same map as the sender, from a module that imports no server configuration or secrets:
 
 ```ts title="events.ts"
 import { z } from 'zod'
@@ -35,47 +176,53 @@ export const events = {
 }
 ```
 
-Receiver schemas may decode JSON into local values such as `Date`. If a producer schema _transforms_ input, reusing it on the receiver would transform the transmitted value again. In that case keep a separate receiver map that accepts the producer's output.
+`event` is a union over the map. Checking `event.type` narrows `event.data`:
 
-<Callout type="idea" title="Async Zod transforms">
-  Zod 4's Standard Schema implementation probes synchronously and retries asynchronously, which can
-  run an async transform twice. Wrap such schemas with the [`asyncZod`
-  helper](https://github.com/pplytas/good-webhooks/blob/main/packages/good-webhooks/examples/basic/async-zod.ts)
-  from the examples. Synchronous schemas need nothing.
-</Callout>
+```ts
+if (event.type === 'invoice.paid') {
+  event.data.amount // number
+}
+```
 
-## Bound the body before you buffer it
+An event type that is not in your map is rejected as `PAYLOAD_INVALID`. There is no "ignore unknown events" mode.
 
-`parseWebhook()` rejects envelopes above 512 KiB, but it cannot undo memory your HTTP layer already allocated. Enforce a limit while streaming, or in your framework or proxy. This helper from the examples does it for Node.js `http`:
+<Accordions>
+<Accordion title="My sender's schema transforms values">
 
-<include cwd lang="ts" meta='title="examples/basic/receiver.ts"'>
-  ../../packages/good-webhooks/examples/basic/receiver.ts
-</include>
+Receiver schemas may decode JSON into local values such as `Date`. But if a sender schema _transforms_ its input, reusing it here would transform the already-transformed value again. Keep a separate receiver map that accepts the sender's output.
 
-## Map errors to responses
+</Accordion>
+<Accordion title="My Zod schema has an async transform">
 
-The sender treats most `4xx` responses as terminal and retries `5xx`. Return `400` only for requests you are sure are bad:
+Zod 4's Standard Schema implementation tries synchronously first, then retries asynchronously, which can run an async transform twice. Wrap such schemas with the [`asyncZod` helper](https://github.com/pplytas/good-webhooks/blob/main/packages/good-webhooks/examples/basic/async-zod.ts) from the examples. Synchronous schemas need nothing.
 
-| Error code          | Meaning                                                          | Respond |
-| ------------------- | ---------------------------------------------------------------- | ------- |
-| `SIGNATURE_INVALID` | Missing, malformed, or mismatched signature headers              | `400`   |
-| `SIGNATURE_EXPIRED` | Attempt timestamp outside the tolerance (default five minutes)   | `400`   |
-| `PAYLOAD_INVALID`   | Bad encoding, JSON, envelope, unknown event, or schema rejection | `400`   |
-| `INVALID_CONFIG`    | Your event map or secret configuration is wrong                  | `500`   |
-| Anything else       | Thrown validator, database failure, business failure             | `500`   |
+</Accordion>
+</Accordions>
 
-Expected errors carry no payload values in their messages. Unexpected errors keep a `cause` for your logs. Do not return it to the sender.
+## Respond with the right status
 
-There is no "ignore unknown events" mode. An event type that is not in your map is `PAYLOAD_INVALID`.
+The sender retries `5xx` and network errors, and gives up on most `4xx`. Return `400` only when the request itself is bad:
 
-## Commit before you acknowledge
+| Error code          | Meaning                                                            | Respond |
+| ------------------- | ------------------------------------------------------------------ | ------- |
+| `SIGNATURE_INVALID` | Missing, malformed, or wrong signature headers                     | `400`   |
+| `SIGNATURE_EXPIRED` | Timestamp outside the tolerance (five minutes by default)          | `400`   |
+| `PAYLOAD_INVALID`   | Bad encoding, JSON, or envelope, an unknown event, or schema error | `400`   |
+| `INVALID_CONFIG`    | Your event map or secret configuration is wrong                    | `500`   |
+| Anything else       | Your database, your business logic, a thrown validator             | `500`   |
 
-Retries and replays repeat the same `event.id` and body. Your receiver must make the business change at most once:
+Expected errors carry no payload values in their messages. Unexpected errors keep a `cause` for your logs; don't send it back.
 
-1. In one transaction, insert the event ID into a receipts table with a unique constraint.
-2. If the insert succeeded, apply the business change.
-3. Commit, then respond `2xx`.
-4. If the ID was already there, respond `2xx` without repeating the change.
+## Process each event once
+
+The sender delivers **at least once**. A retry or a [replay](/docs/operations/retries-and-replay) repeats the same `event.id` and body. Make the change and record the ID in one transaction, and only then respond. A table with a unique ID column is enough:
+
+```sql title="receipts.sql"
+CREATE TABLE webhook_receipts (
+  event_id text PRIMARY KEY,
+  received_at timestamptz NOT NULL DEFAULT now()
+);
+```
 
 ```ts
 await client.query('BEGIN')
@@ -84,29 +231,31 @@ const receipt = await client.query(
   [event.id],
 )
 if (receipt.rowCount) {
+  // First time we see this event: apply the change.
   await client.query('INSERT INTO invoices (id, amount) VALUES ($1, $2)', [
     event.data.invoiceId,
     event.data.amount,
   ])
 }
 await client.query('COMMIT')
+// Respond 2xx whether or not the event was new.
 ```
 
 The [basic example](https://github.com/pplytas/good-webhooks/blob/main/packages/good-webhooks/examples/basic/demo.ts) runs exactly this and checks that a retry and a replay produce one invoice.
 
 ## Keep old events decodable
 
-Retries and replays can deliver an event published before your latest deploy. Keep existing event names backward compatible and introduce `invoice.paid.v2` for a breaking payload change. Deploy receiver support before enabling a new producer event.
+Retries and replays can deliver an event published before your latest deploy. Keep existing event names backward compatible, and add `invoice.paid.v2` for a breaking payload change. Deploy receiver support before the sender starts publishing a new event.
 
-## Verify a different format
+## Verify another sender's format
 
-If a sender uses Standard Webhooks signing with its own body format, `verifyWebhook()` authenticates the bytes and timestamp without parsing:
+`verifyWebhook()` authenticates any [Standard Webhooks](https://www.standardwebhooks.com) request, then leaves parsing to you:
 
 ```ts
 import { verifyWebhook } from 'good-webhooks/verify'
 
 verifyWebhook({ body: rawBody, headers: request.headers, secret })
-// Parse your format only after this returns.
+// Parse the body only after this returns.
 ```
 
-See the [verify reference](/docs/reference/verify) for header rules, secret formats, and the full input contract.
+See the [verify reference](/docs/reference/verify) for header rules, secret formats, and every option.

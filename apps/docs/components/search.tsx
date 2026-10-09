@@ -1,7 +1,7 @@
 'use client'
 
 import { useDocsSearch } from 'fumadocs-core/search/client'
-import { staticClient } from 'fumadocs-core/search/client/orama-static'
+import { fetchClient } from 'fumadocs-core/search/client/fetch'
 import {
   SearchDialog,
   SearchDialogClose,
@@ -14,7 +14,7 @@ import {
   type SharedProps,
 } from 'fumadocs-ui/components/dialog/search'
 
-const client = staticClient({ from: '/api/search' })
+const client = fetchClient({ api: '/api/search' })
 
 export default function DocsSearchDialog(props: SharedProps) {
   const { search, setSearch, query } = useDocsSearch({ client })

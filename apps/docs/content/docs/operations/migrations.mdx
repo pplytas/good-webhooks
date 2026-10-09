@@ -29,7 +29,7 @@ const deliveryOnly = getPostgresMigration({ component: 'delivery', schema: 'noti
 Or from the shell:
 
 ```sh
-node --input-type=module -e 'import { getPostgresMigration } from "good-webhooks/migrations"; process.stdout.write(getPostgresMigration())' > 001-webhooks.sql
+node -e 'import("good-webhooks/migrations").then(m => process.stdout.write(m.getPostgresMigration()))' > 001-webhooks.sql
 psql "$DATABASE_URL" --single-transaction -v ON_ERROR_STOP=1 -f 001-webhooks.sql
 ```
 

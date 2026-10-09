@@ -50,7 +50,7 @@ The standalone PostgreSQL provider decrypts with the current key first, then any
 ### Generate and store the new key
 
 ```sh
-node --input-type=module -e 'import { generateEncryptionKey } from "good-webhooks"; console.log(generateEncryptionKey())'
+node -e 'import("good-webhooks").then(m => console.log(m.generateEncryptionKey()))'
 ```
 
 </Step>

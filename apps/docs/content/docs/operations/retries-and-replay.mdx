@@ -54,4 +54,4 @@ Rules:
 - The replay gets a new delivery ID and a fresh retry budget, the same event ID and body, and the endpoint's current URL and secrets.
 - The worker still has to run.
 
-Because the event ID is unchanged, a [deduplicating receiver](/docs/guides/receive#commit-before-you-acknowledge) ignores a replay of an event it already processed. That is the intended way to replay safely.
+Because the event ID is unchanged, a [deduplicating receiver](/docs/guides/receive#process-each-event-once) ignores a replay of an event it already processed. That is the intended way to replay safely.

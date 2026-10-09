@@ -1,0 +1,91 @@
+---
+title: How it works
+description: Endpoint management decides who receives events. Delivery sends them. Your application connects the two and owns the processes.
+---
+
+Good Webhooks has two parts with separate storage:
+
+- **Endpoint management** decides _who_ receives an event: URLs, subscriptions, status, and encrypted signing secrets.
+- **Delivery** decides _how_ events get there: it stores events, sends signed requests from a worker, retries, and keeps history.
+
+<Flow title="Who does what">
+  <FlowStep title="Endpoint management" actor="Better Auth or PostgreSQL">
+    Your users register URLs and choose event types.
+  </FlowStep>
+  <FlowStep title="EndpointSource" actor="the link">
+    Two reads: who subscribes to this event, and where to send it now.
+  </FlowStep>
+  <FlowStep title="Delivery" actor="PostgreSQL + worker">
+    Stores events and deliveries, signs, sends, and retries.
+  </FlowStep>
+  <FlowStep title="Receiver" actor="your customer">
+    Verifies the signature and processes each event once.
+  </FlowStep>
+</Flow>
+
+The split lets you mix and match. Manage endpoints with Better Auth and deliver with the PostgreSQL worker. Or keep your own sender and use only the endpoint management.
+
+## Endpoint management
+
+Two providers offer the same lifecycle API: create, update, pause, resume, rotate secret, remove.
+
+| Provider                                        | Stores endpoints in                    | Who calls it                        |
+| ----------------------------------------------- | -------------------------------------- | ----------------------------------- |
+| [Better Auth plugin](/docs/better-auth)         | Your Better Auth database, any adapter | Signed-in users through HTTP routes |
+| [Standalone PostgreSQL](/docs/guides/endpoints) | A `webhook_endpoints` table            | Your server code                    |
+
+Management never creates events or deliveries.
+
+## The link: EndpointSource
+
+Both providers expose `management.source` with the two reads a sender needs:
+
+| Method                         | Called                           | Returns                                            |
+| ------------------------------ | -------------------------------- | -------------------------------------------------- |
+| `matchRecipients(scope, type)` | Once, when an event is published | Every subscribed endpoint ID, paused ones included |
+| `resolveEndpoint(scope, id)`   | Before each delivery attempt     | Current status, URL, and signing secrets           |
+
+Because delivery asks again before every attempt, a paused, moved, or deleted endpoint takes effect at the next attempt.
+
+`resolveEndpoint` returns plaintext secrets. Keep `source` in trusted server code.
+
+## Delivery
+
+The [delivery engine](/docs/reference/delivery) works with four records:
+
+| Record       | One per                     | Example                                            |
+| ------------ | --------------------------- | -------------------------------------------------- |
+| **Event**    | `publish()` call            | `invoice.paid` for `inv_123`, with a UUID          |
+| **Delivery** | event × subscribed endpoint | That event, bound for one customer's URL           |
+| **Attempt**  | HTTP request                | The first try got a `503`; the second got `200`    |
+| **Replay**   | manual re-send              | A new delivery of the same event, same ID and body |
+
+Delivery storage is always PostgreSQL. Management storage is separate: the same database, another schema, another database, or for Better Auth even SQLite, MySQL, or MongoDB.
+
+## Putting them together
+
+`createWebhooks()` builds both parts on one PostgreSQL database. That's the default setup.
+
+To combine them differently, build delivery yourself and hand it a source. This is also all a separate worker process needs:
+
+```ts
+import { createBetterAuthManagement } from 'good-webhooks/better-auth'
+import { createDelivery } from 'good-webhooks/delivery'
+import { auth } from './auth.js'
+import { events } from './events.js'
+import { pool } from './db.js'
+
+const management = await createBetterAuthManagement(auth)
+const delivery = createDelivery({ database: pool, events, source: management.source })
+```
+
+## What you run
+
+Nothing starts by itself. Creating a client opens no connections, runs no migrations, and starts no workers. Your application:
+
+- applies the [migrations](/docs/operations/migrations),
+- owns the PostgreSQL pool and closes it on shutdown,
+- runs the [worker](/docs/operations/workers) and schedules [cleanup](/docs/operations/retention),
+- checks who may act for which customer before choosing a [scope](/docs/concepts/scopes).
+
+Next, see what a successful publish promises in [delivery guarantees](/docs/concepts/delivery-guarantees).

@@ -56,7 +56,7 @@ pnpm --filter @good-webhooks/docs check:links
 pnpm --filter @good-webhooks/docs preview
 ```
 
-The docs build consumes the local package's public declarations and checked example source. Keep server/database dependencies out of client components. Run browser checks against the exported site, including direct links, search, copy buttons, keyboard navigation, mobile navigation, and both color themes. Deployment is separate from the build.
+The docs build consumes the local package's public declarations and checked example source. Keep server/database dependencies out of client components. Run browser checks against the production build (`preview` runs `next start`), including direct links, search, copy buttons, keyboard navigation, mobile navigation, and both color themes. Deployment is separate from the build.
 
 `pnpm-workspace.yaml` explicitly allows the dependency build scripts needed by Prisma, esbuild, and workerd. Review new lifecycle scripts when changing dependencies; keep the default isolated dependency layout. Commit the root `pnpm-lock.yaml` and verify `pnpm install --frozen-lockfile` succeeds.
 

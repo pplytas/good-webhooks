@@ -58,7 +58,7 @@ For Better Auth management, the worker also constructs the auth instance and pro
 
 Without `onError`, an internal failure rejects `run()` and the process exits. Let your supervisor restart it with backoff. If you pass `onError` to log and continue, watch that deliveries keep making progress. Receiver failures are not internal failures; they follow the retry policy.
 
-Errors are emitted as JSON lines (`webhooks.worker.started`, `webhooks.worker.failed`, `webhooks.worker.stopped`) without configuration, payloads, or secrets.
+The example entrypoint logs JSON lines (`webhooks.worker.started`, `webhooks.worker.failed`, `webhooks.worker.stopped`) without configuration, payloads, or secrets. The library itself writes no logs.
 
 ## Shut down cleanly
 
@@ -71,7 +71,7 @@ Abort the signal to stop. The worker then:
 
 Await the worker before closing the pool. Then give your supervisor a final deadline that covers the grace period, database writes, pool closure, and your own cleanup. The grace period is not a process exit deadline.
 
-A cancelled HTTP request may still have been processed by the receiver. Such attempts are retried, which is one more reason [receivers deduplicate](/docs/guides/receive#commit-before-you-acknowledge).
+A cancelled HTTP request may still have been processed by the receiver. Such attempts are retried, which is one more reason [receivers deduplicate](/docs/guides/receive#process-each-event-once).
 
 ## Bound database waits
 
