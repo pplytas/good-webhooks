@@ -1,0 +1,24 @@
+---
+title: AI resources
+description: Feed these docs to coding assistants and agents.
+---
+
+Every page has a **Copy Markdown** button and an **Open in** menu at the top for ChatGPT, Claude, and other assistants.
+
+| Resource                           | Contents                                                                                 |
+| ---------------------------------- | ---------------------------------------------------------------------------------------- |
+| [`/llms.txt`](/llms.txt)           | An index of every page with a one-line description                                       |
+| [`/llms-full.txt`](/llms-full.txt) | The complete documentation as one Markdown file                                          |
+| `/llms.mdx/<path>.md`              | One page as Markdown, for example [`/llms.mdx/quick-start.md`](/llms.mdx/quick-start.md) |
+
+The Markdown output includes the type-checked example files that the HTML pages embed, so an assistant sees the same code you do.
+
+## Point an agent at the docs
+
+Add this line to your project's `AGENTS.md`, `CLAUDE.md`, or equivalent:
+
+```md
+Good Webhooks documentation: https://good-webhooks.vercel.app/llms-full.txt
+```
+
+The source for the documentation is in the repository under [`apps/docs/content/docs`](https://github.com/pplytas/good-webhooks/tree/main/apps/docs/content/docs). The public API lives in [`packages/good-webhooks/src`](https://github.com/pplytas/good-webhooks/tree/main/packages/good-webhooks/src) with shipped declarations.

@@ -1,0 +1,131 @@
+---
+title: Add delivery to Better Auth
+description: Keep Better Auth as the source of endpoints and send events with the PostgreSQL delivery engine from a separate worker.
+---
+
+Better Auth management and PostgreSQL delivery connect through `management.source`. The app publishes; a worker process delivers. Both construct the provider from the same auth configuration and must read the same management database.
+
+Complete the [plugin setup](/docs/better-auth) first.
+
+<Steps>
+<Step>
+### Install delivery dependencies
+
+```package-install
+pg zod
+```
+
+</Step>
+<Step>
+### Create delivery storage
+
+Generate delivery-only SQL and apply it once with your migration runner. This creates the delivery tables in `public`; pass `schema` to [target another schema](/docs/operations/migrations).
+
+```sh
+node --input-type=module -e 'import { getPostgresMigration } from "good-webhooks/migrations"; process.stdout.write(getPostgresMigration({ component: "delivery" }))' > 001-webhook-delivery.sql
+psql "$DELIVERY_DATABASE_URL" --single-transaction -v ON_ERROR_STOP=1 -f 001-webhook-delivery.sql
+```
+
+Better Auth keeps owning the management model's migrations. The delivery SQL does not touch it.
+
+</Step>
+<Step>
+### Construct the delivery engine
+
+```ts title="delivery.ts"
+import { Pool } from 'pg'
+import { z } from 'zod'
+import { createBetterAuthManagement } from 'good-webhooks/better-auth'
+import { createDelivery } from 'good-webhooks/delivery'
+import { auth } from './auth.js'
+
+export const deliveryDatabase = new Pool({ connectionString: process.env.DELIVERY_DATABASE_URL })
+
+const management = await createBetterAuthManagement(auth) // [!code highlight]
+export const delivery = createDelivery({
+  database: deliveryDatabase,
+  source: management.source, // [!code highlight]
+  events: {
+    'invoice.created': z.object({ invoiceId: z.string(), total: z.number().nonnegative() }),
+    'invoice.paid': z.object({ invoiceId: z.string() }),
+  },
+})
+await delivery.check()
+```
+
+The provider uses Better Auth's adapter and encryption keys. It needs no session and no HTTP listener.
+
+</Step>
+<Step>
+### Publish in the owner's scope
+
+A personal endpoint belongs to `{ type: 'user', id }`. Publishing on the root instance uses application scope and will not reach it.
+
+```ts
+const publisher = delivery.forScope({ type: 'user', id: user.id })
+await publisher.publish({
+  type: 'invoice.created',
+  data: { invoiceId: 'inv_123', total: 4200 },
+  idempotencyKey: 'invoice.created:inv_123',
+})
+```
+
+Authorize the business action in your application before selecting the scope. The publication commits in PostgreSQL; it is not atomic with a Better Auth write. See [publish events](/docs/guides/publish#publish-inside-your-transaction).
+
+</Step>
+<Step>
+### Run a separate worker
+
+The worker rebuilds the auth instance and provider with the same options, then runs until signalled. The checked example splits auth, delivery, and worker setup into three modules:
+
+<include cwd lang="ts" meta='title="examples/better-auth/worker.ts"'>
+  ../../packages/good-webhooks/examples/better-auth/worker.ts
+</include>
+
+An entrypoint wires signals and environment:
+
+```ts title="start-worker.ts"
+import { runExampleWorker } from './worker.js'
+
+const stop = new AbortController()
+process.once('SIGTERM', () => stop.abort())
+process.once('SIGINT', () => stop.abort())
+
+await runExampleWorker({
+  auth: {
+    managementFilename: process.env.AUTH_DATABASE_FILE!,
+    baseURL: process.env.AUTH_BASE_URL!,
+    secret: process.env.BETTER_AUTH_SECRET!,
+  },
+  deliveryDatabaseUrl: process.env.DELIVERY_DATABASE_URL!,
+  signal: stop.signal,
+  onError(error) {
+    console.error('Webhook worker failed:', error)
+    process.exitCode = 1
+    stop.abort()
+  },
+})
+```
+
+</Step>
+</Steps>
+
+<Callout type="warn" title="App and worker must share management storage">
+  With SQLite, both processes open the same persistent file. Two `:memory:` databases or two
+  container-local files do not share endpoints. With other adapters, both need the same database and
+  the same model configuration. Both also need the same current and retained Better Auth secrets.
+</Callout>
+
+## Next steps
+
+<Cards>
+  <Card title="Run workers" href="/docs/operations/workers">
+    Supervision, polling, and bounded shutdown.
+  </Card>
+  <Card title="Key rotation" href="/docs/operations/key-rotation">
+    Rotate Better Auth secrets without losing endpoint secrets.
+  </Card>
+  <Card title="Billing example" href="/docs/examples#better-auth-billing">
+    A complete app with sessions, a worker, and a receiver.
+  </Card>
+</Cards>

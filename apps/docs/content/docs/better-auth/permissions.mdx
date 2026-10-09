@@ -1,0 +1,104 @@
+---
+title: Permissions
+description: How the plugin authorizes personal, organization, application, and custom scopes on every route.
+---
+
+Every plugin route runs with Better Auth's session middleware and then checks the requested scope:
+
+| Requested `scope`              | Who may act                                                          |
+| ------------------------------ | -------------------------------------------------------------------- |
+| omitted                        | The signed-in user, in their personal scope                          |
+| `{ type: 'user', id }`         | Only if `id` is the signed-in user                                   |
+| `{ type: 'organization', id }` | Current members with the `webhookEndpoint` permission for the action |
+| `null` (application)           | Only if your `authorizeScope` policy allows it. Denied by default    |
+| any other `type`               | Only if your `authorizeScope` policy allows it. Denied by default    |
+
+Actions are `create`, `read`, `update`, and `delete`. Pause, resume, and rotate count as `update`.
+
+## Organization endpoints
+
+Install Better Auth's organization plugin alongside `goodWebhooks` and add the `webhookEndpoint` resource to its access control:
+
+```ts title="auth.ts"
+import { createAccessControl } from 'better-auth/plugins/access'
+import { organization } from 'better-auth/plugins/organization'
+import {
+  adminAc,
+  defaultStatements,
+  memberAc,
+  ownerAc,
+} from 'better-auth/plugins/organization/access'
+
+const ac = createAccessControl({
+  ...defaultStatements,
+  webhookEndpoint: ['create', 'read', 'update', 'delete'] as const, // [!code highlight]
+})
+
+export const auth = betterAuth({
+  // ...
+  plugins: [
+    organization({
+      ac,
+      roles: {
+        owner: ac.newRole(ownerAc.statements),
+        admin: ac.newRole({
+          ...adminAc.statements,
+          webhookEndpoint: ['create', 'read', 'update', 'delete'], // [!code highlight]
+        }),
+        member: ac.newRole(memberAc.statements),
+      },
+    }),
+    goodWebhooks({ eventTypes }),
+  ],
+})
+```
+
+The organization's creator role (`owner` by default) gets full access automatically. Every other role needs an explicit grant. A role called `admin` has no webhook permissions just because of its name.
+
+Then pass the scope explicitly:
+
+```ts
+await authClient.goodWebhooks.create({
+  scope: { type: 'organization', id: organizationId },
+  url: 'https://receiver.example/webhooks',
+  eventTypes: ['invoice.created'],
+})
+```
+
+Each request re-checks membership and permission. Removing a member removes their access; it does not pause the organization's endpoints.
+
+## Application and custom scopes
+
+Supply `authorizeScope` to allow application scope (`null`) or your own scope types. It receives the exact scope, the action, the user, and the session:
+
+```ts
+goodWebhooks({
+  eventTypes,
+  async authorizeScope({ scope, action, user, session }) {
+    if (scope === null) return isPlatformAdmin(user)
+    if (scope.type === 'project') return canManageProject(user, scope.id, action)
+    return false
+  },
+})
+```
+
+Return `false` for anything you do not recognize. The policy cannot loosen personal-scope or organization checks; those run regardless.
+
+Organization API keys do not authenticate these routes. User API-key session impersonation is not a supported path in this version.
+
+## Trusted server access
+
+`createBetterAuthManagement(auth)` returns the provider the plugin uses internally. Its methods skip route authorization, which is what a worker needs:
+
+```ts
+import { createBetterAuthManagement } from 'good-webhooks/better-auth'
+
+const management = await createBetterAuthManagement(auth)
+await management.list({ type: 'user', id: userId }) // no session required
+```
+
+Keep it in server code. If you expose any of it through your own API, authorize each request first.
+
+## Owner deletion
+
+Deleting a user retires their personal endpoints. Deleting an organization through the organization plugin retires its endpoints. The sender also checks that an owner still exists before delivering; a failed owner lookup is an error, not an empty result.

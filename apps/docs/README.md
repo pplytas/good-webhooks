@@ -12,9 +12,19 @@ pnpm --filter @good-webhooks/docs preview
 
 The preview serves `out/` on `http://localhost:3000`. Set `PORT` to use another port. The exported site requires no Node.js server, auth instance, or database.
 
+## Structure
+
+- `app/(home)/page.tsx` is the landing page at `/`.
+- `app/docs/[[...slug]]/page.tsx` renders `content/docs/` under `/docs`. `content/docs/index.mdx` is the introduction.
+- `app/llms.txt`, `app/llms-full.txt`, and `app/llms.mdx/[[...slug]]` export Markdown for AI tools. Each docs page links to its own `.md` export through the copy and open actions.
+- `vercel.json` redirects the pre-`/docs` URLs. Add an entry when a page moves.
+- `lib/site.ts` reads the package version for the sidebar badge and npm link. `lib/layout.shared.tsx` holds the shared navigation.
+
 ## Authoring
 
-Write public pages in `content/docs/`. Each page needs `title` and `description` frontmatter. Use `meta.json` files to order navigation. Public URLs start at `/`; `content/docs/index.mdx` is the overview.
+Write public pages in `content/docs/`. Each page needs `title` and `description` frontmatter. The root `content/docs/meta.json` lists every page in sidebar order; `---Group---` entries are section labels and `[Title](url)` entries are external links.
+
+Pages follow the same shape: a one-paragraph lead, code before caveats, `Steps` for tutorials, `Tabs` for alternative APIs, `Callout` for things that bite, and a `Cards` block of next steps at the end. Install commands use the `package-install` code language, which renders npm, pnpm, yarn, and bun tabs.
 
 The shared MDX components include `Callout`, `Card`, `Cards`, `Step`, `Steps`, `Tab`, `Tabs`, and `TypeTable`.
 
@@ -47,4 +57,4 @@ pnpm --filter @good-webhooks/docs exec playwright install chromium
 pnpm --filter @good-webhooks/docs check:browser
 ```
 
-The checks compile the app and reference examples, verify that generated tables track their TypeScript inputs, export every page and the search index, and validate local links, assets, and fragment targets. The browser smoke check starts its own static preview on an available port. It verifies routes, a generated table, search navigation, the theme switch, and mobile navigation. Install Chromium once locally; CI installs it with system dependencies. Use the interactive preview for visual review and code copying.
+The checks compile the app and reference examples, verify that generated tables track their TypeScript inputs, export every page, the search index, and the Markdown exports, and validate local links, assets, and fragment targets. The browser smoke check starts its own static preview on an available port. It verifies the landing page, docs routes, a Markdown export, a generated table, search navigation, the theme switch, and mobile navigation. Install Chromium once locally; CI installs it with system dependencies. Use the interactive preview for visual review and code copying.

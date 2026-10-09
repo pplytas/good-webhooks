@@ -1,0 +1,47 @@
+---
+title: Security model
+description: Signing secrets, storage encryption, destination checks, and the boundaries your application must enforce.
+---
+
+## Two kinds of secrets
+
+| Secret                         | Who holds it                                   | What it does                                                         |
+| ------------------------------ | ---------------------------------------------- | -------------------------------------------------------------------- |
+| **Signing secret** (`whsec_…`) | The receiver, and management encrypted at rest | Signs each request body and timestamp. The receiver verifies with it |
+| **Storage encryption key**     | Your app and worker processes                  | Encrypts signing secrets inside management storage                   |
+
+Standalone PostgreSQL management takes a 32-byte key you generate with `generateEncryptionKey()`. Better Auth management uses the auth instance's `secret` or versioned `secrets`.
+
+Rotating a signing secret changes what the receiver verifies, with a configurable overlap. Rotating a storage key re-encrypts stored values and leaves receivers untouched. Both procedures are in [key rotation](/docs/operations/key-rotation).
+
+Create and rotate calls return the plaintext signing secret once. Ordinary reads never include it. Transfer it to the receiver over a secure channel and do not log it.
+
+## Request signing
+
+Requests follow the [Standard Webhooks](https://github.com/standard-webhooks/standard-webhooks/blob/main/spec/standard-webhooks.md) specification:
+
+```http
+webhook-id: 7a0c3f3e-5b2c-4f8e-9d1a-2e6b8c4d9f10
+webhook-timestamp: 1760000000
+webhook-signature: v1,K5oZfzN95Z9UVu1EsfQmfVNQhnkZ2pj6D2hFcTjqRVo=
+```
+
+The signature is HMAC-SHA256 over `{id}.{timestamp}.{body}`. During a secret rotation the header carries one signature per usable secret. `parseWebhook()` accepts a request if any signature matches, and rejects timestamps outside a five-minute tolerance by default.
+
+## Destination checks
+
+Management rejects URLs with credentials, non-HTTPS schemes, and unsafe IP literals. The standalone PostgreSQL provider also resolves DNS at registration. Before every connection, the delivery engine resolves the hostname again, rejects private and otherwise unsafe addresses, pins the validated address for that connection, and refuses redirects.
+
+`allowLocalhost: true` permits HTTP loopback destinations for local development. It does not open other private ranges. [Custom senders](/docs/guides/custom-senders) must implement equivalent protection.
+
+## What you must enforce
+
+- **Authorization.** Scopes isolate, they do not authorize. Check the caller before using `forScope()` or a direct provider method. See [scopes](/docs/concepts/scopes).
+- **Trusted sources.** `management.source` returns plaintext signing secrets. Keep it in server code.
+- **Receiver limits.** Bound the request body before buffering it. `parseWebhook()` caps the envelope at 512 KiB but cannot undo an allocation that already happened.
+- **Receiver deduplication.** Verification authenticates bytes. It does not record which event IDs you have processed.
+- **Sensitive history.** Recorded response bodies and event payloads may contain customer data. Treat delivery history as application data.
+
+## Migrations
+
+Constructors and `check()` never apply DDL. The shipped SQL creates `webhook_`-prefixed tables in `public`, or in a schema you choose. Better Auth management uses Better Auth's own schema workflow. See [migrations](/docs/operations/migrations).

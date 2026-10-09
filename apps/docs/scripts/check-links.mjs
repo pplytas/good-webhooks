@@ -47,7 +47,14 @@ const html = new Map(
       }),
   ),
 )
-assert(exported.has(path.join(output, 'index.html')), 'The overview was not exported at /.')
+assert(exported.has(path.join(output, 'index.html')), 'The landing page was not exported at /.')
+assert(
+  exported.has(path.join(output, 'docs/index.html')),
+  'The introduction was not exported at /docs/.',
+)
+for (const name of ['llms.txt', 'llms-full.txt']) {
+  assert(exported.has(path.join(output, name)), `${name} was not exported.`)
+}
 const search = path.join(output, 'api/search')
 assert(exported.has(search), 'The static search index was not exported.')
 JSON.parse(await readFile(search, 'utf8'))

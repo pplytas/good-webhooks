@@ -1,0 +1,75 @@
+---
+title: Installation
+description: Install Good Webhooks and the dependencies for your setup.
+---
+
+<Steps>
+<Step>
+### Install the package
+
+```package-install
+good-webhooks@alpha
+```
+
+The `alpha` tag resolves to the latest alpha release. Commit your lockfile and read the [release notes](https://github.com/pplytas/good-webhooks/releases) before upgrading.
+
+</Step>
+<Step>
+### Add a database driver and a validator
+
+Delivery and standalone management use PostgreSQL through [node-postgres](https://node-postgres.com). Event payloads are validated with any [Standard Schema](https://standardschema.dev) library. The docs use Zod.
+
+```package-install
+pg zod
+```
+
+```package-install
+npm install --save-dev @types/pg
+```
+
+Receivers that only verify webhooks need neither. `good-webhooks/verify` has no database dependency.
+
+</Step>
+<Step>
+### Add Better Auth (optional)
+
+Only if you want signed-in users to manage endpoints through [the plugin](/docs/better-auth):
+
+```package-install
+better-auth@1.7.7
+```
+
+Better Auth is an optional peer dependency in the range `>=1.7.7 <1.8.0`. Standalone management, delivery, and verification do not import it.
+
+</Step>
+<Step>
+### Check your TypeScript settings
+
+TypeScript 5.9.3 or later, with `moduleResolution` set to `NodeNext` or `Bundler`. If you use the Better Auth plugin, enable `skipLibCheck` for its upstream declarations. Your own event and payload types stay fully checked.
+
+</Step>
+</Steps>
+
+## Entry points
+
+| Import                              | Use it for                                                           |
+| ----------------------------------- | -------------------------------------------------------------------- |
+| `good-webhooks`                     | `createWebhooks()`: management and delivery together on PostgreSQL   |
+| `good-webhooks/delivery`            | `createDelivery()`: the sender alone, fed by any `EndpointSource`    |
+| `good-webhooks/management`          | The management contracts and `createManagement()` for custom storage |
+| `good-webhooks/management/postgres` | Standalone endpoint management without delivery tables               |
+| `good-webhooks/better-auth`         | The Better Auth server plugin and trusted management provider        |
+| `good-webhooks/better-auth/client`  | The Better Auth client plugin for browsers                           |
+| `good-webhooks/verify`              | `parseWebhook()` and `verifyWebhook()` for receivers                 |
+| `good-webhooks/migrations`          | `getPostgresMigration()` and the shipped SQL files                   |
+
+## Next steps
+
+<Cards>
+  <Card title="Quick start" href="/docs/quick-start">
+    Standalone PostgreSQL: create an endpoint, publish, deliver, verify.
+  </Card>
+  <Card title="Better Auth quick start" href="/docs/better-auth/quick-start">
+    Register an endpoint through an authenticated session. No PostgreSQL needed.
+  </Card>
+</Cards>

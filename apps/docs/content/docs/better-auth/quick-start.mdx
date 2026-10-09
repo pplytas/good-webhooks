@@ -1,0 +1,143 @@
+---
+title: Better Auth quick start
+description: Create a user, register a personal endpoint through authenticated routes, and list it. One file, SQLite, no PostgreSQL.
+---
+
+This runs the plugin end to end in a single script: migrate, sign up, call the routes with the session cookie, and watch unauthorized requests get rejected. It does not send a webhook.
+
+You need Node.js 24 and npm.
+
+<Steps>
+<Step>
+### Create a project
+
+```sh
+mkdir good-webhooks-auth-quickstart && cd good-webhooks-auth-quickstart
+npm init -y
+```
+
+```package-install
+good-webhooks@alpha better-auth@1.7.7
+```
+
+Generate an auth secret for this shell session:
+
+```sh
+export BETTER_AUTH_SECRET="$(node -e 'console.log(require("node:crypto").randomBytes(32).toString("base64"))')"
+```
+
+</Step>
+<Step>
+### Write the script
+
+Save as `quick-start.mjs`. It applies Better Auth's schema programmatically because this is a disposable SQLite database. A real application uses its [normal schema workflow](/docs/better-auth#generate-and-apply-the-schema).
+
+```js title="quick-start.mjs"
+import assert from 'node:assert/strict'
+import { randomUUID } from 'node:crypto'
+import { DatabaseSync } from 'node:sqlite'
+import { betterAuth } from 'better-auth'
+import { getMigrations } from 'better-auth/db/migration'
+import { goodWebhooks } from 'good-webhooks/better-auth'
+
+const origin = 'http://localhost:3000'
+const options = {
+  database: new DatabaseSync('./quick-start.sqlite'),
+  baseURL: origin,
+  secret: process.env.BETTER_AUTH_SECRET,
+  emailAndPassword: { enabled: true },
+  plugins: [goodWebhooks({ eventTypes: ['invoice.created', 'invoice.paid'] })],
+}
+
+await (await getMigrations(options)).runMigrations()
+const auth = betterAuth(options)
+
+// Call a plugin route the way a browser would, with a JSON body and cookies.
+async function call(operation, body = {}, cookie = '') {
+  return auth.handler(
+    new Request(`${origin}/api/auth/good-webhooks/${operation}`, {
+      method: 'POST',
+      headers: { origin, 'content-type': 'application/json', cookie },
+      body: JSON.stringify(body),
+    }),
+  )
+}
+
+// Sign up and keep the session cookie.
+const signup = await auth.api.signUpEmail({
+  body: { name: 'Quick start', email: `${randomUUID()}@example.com`, password: randomUUID() },
+  asResponse: true,
+})
+const cookie = signup.headers
+  .getSetCookie()
+  .map((value) => value.split(';')[0])
+  .join('; ')
+
+// No session: rejected.
+assert.equal((await call('list')).status, 401)
+console.log('Anonymous list rejected with 401')
+
+// Create a personal endpoint.
+const created = await (
+  await call(
+    'create',
+    { url: 'https://receiver.example/webhooks', eventTypes: ['invoice.created'] },
+    cookie,
+  )
+).json()
+assert.match(created.secret, /^whsec_/)
+console.log('Created endpoint', created.endpoint.id, 'with a one-time secret')
+
+// List it. Secrets never appear in reads.
+const endpoints = await (await call('list', {}, cookie)).json()
+assert.equal(endpoints.length, 1)
+assert.equal('secret' in endpoints[0], false)
+console.log('Listed 1 endpoint without its secret')
+
+// Application scope needs an explicit policy.
+assert.equal((await call('list', { scope: null }, cookie)).status, 403)
+console.log('Application scope rejected with 403')
+
+await call('remove', { id: created.endpoint.id }, cookie)
+options.database.close()
+```
+
+</Step>
+<Step>
+### Run it
+
+```sh
+node quick-start.mjs
+```
+
+```text
+Anonymous list rejected with 401
+Created endpoint <id> with a one-time secret
+Listed 1 endpoint without its secret
+Application scope rejected with 403
+```
+
+`auth.handler()` receives real `Request` objects, so there is no HTTP server to start. On repeated runs Better Auth's SQLite inspector may warn that array fields use `TEXT` storage. That is expected.
+
+</Step>
+<Step>
+### Clean up
+
+Delete `quick-start.sqlite` when you are done.
+
+</Step>
+</Steps>
+
+## Next steps
+
+<Cards>
+  <Card title="Add the plugin to your app" href="/docs/better-auth">
+    Server plugin, schema, and client plugin in an existing auth instance.
+  </Card>
+  <Card title="Permissions" href="/docs/better-auth/permissions">
+    Organization roles and custom scope policies.
+  </Card>
+  <Card title="Add delivery" href="/docs/better-auth/delivery">
+    Send the events these endpoints subscribe to.
+  </Card>
+</Cards>

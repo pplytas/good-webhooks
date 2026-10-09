@@ -1,0 +1,27 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "redirects": [
+    { "source": "/getting-started/installation", "destination": "/docs/installation" },
+    { "source": "/getting-started/first-delivery", "destination": "/docs/quick-start" },
+    { "source": "/getting-started", "destination": "/docs/installation" },
+    { "source": "/examples", "destination": "/docs/examples" },
+    { "source": "/better-auth/first-endpoint", "destination": "/docs/better-auth/quick-start" },
+    { "source": "/better-auth/configuration", "destination": "/docs/better-auth" },
+    { "source": "/better-auth/add-delivery", "destination": "/docs/better-auth/delivery" },
+    {
+      "source": "/better-auth/database-adapters",
+      "destination": "/docs/better-auth/database-adapters"
+    },
+    { "source": "/management/endpoints", "destination": "/docs/guides/endpoints" },
+    { "source": "/management/scopes", "destination": "/docs/concepts/scopes" },
+    { "source": "/management/custom-senders", "destination": "/docs/guides/custom-senders" },
+    { "source": "/delivery/enqueue", "destination": "/docs/guides/publish" },
+    { "source": "/delivery/transactions", "destination": "/docs/guides/transactions" },
+    { "source": "/delivery/receiving", "destination": "/docs/guides/receive" },
+    { "source": "/concepts/storage-and-security", "destination": "/docs/concepts/security" },
+    { "source": "/concepts/:slug", "destination": "/docs/concepts/:slug" },
+    { "source": "/operations/:slug", "destination": "/docs/operations/:slug" },
+    { "source": "/reference", "destination": "/docs/reference" },
+    { "source": "/reference/:slug", "destination": "/docs/reference/:slug" }
+  ]
+}

@@ -1,7 +1,17 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
-import { DocsBody, DocsDescription, DocsPage, DocsTitle } from 'fumadocs-ui/layouts/docs/page'
+import {
+  DocsBody,
+  DocsDescription,
+  DocsPage,
+  DocsTitle,
+  EditOnGitHub,
+  MarkdownCopyButton,
+  ViewOptionsPopover,
+} from 'fumadocs-ui/layouts/docs/page'
 import { source } from '@/lib/source'
+import { markdownUrl } from '@/lib/llms'
+import { site } from '@/lib/site'
 import { getMDXComponents } from '@/mdx-components'
 
 type Props = { params: Promise<{ slug?: string[] }> }
@@ -24,14 +34,27 @@ export default async function Page({ params }: Props) {
   const page = source.getPage(slug)
   if (!page) notFound()
   const MDX = page.data.body
+  const markdown = markdownUrl(slug)
+  const sourceUrl = `${site.contentUrl}/${page.path}`
 
   return (
     <DocsPage toc={page.data.toc} full={page.data.full}>
       <DocsTitle>{page.data.title}</DocsTitle>
-      <DocsDescription>{page.data.description}</DocsDescription>
+      <DocsDescription className="mb-4">{page.data.description}</DocsDescription>
+      <div className="mb-6 flex flex-row flex-wrap items-center gap-2 border-b pb-6">
+        <MarkdownCopyButton markdownUrl={markdown} />
+        <ViewOptionsPopover
+          markdownUrl={markdown}
+          githubUrl={sourceUrl}
+          pageUrl={`${site.url}${page.url}`}
+        />
+      </div>
       <DocsBody>
         <MDX components={getMDXComponents()} />
       </DocsBody>
+      <div className="mt-8">
+        <EditOnGitHub href={sourceUrl} />
+      </div>
     </DocsPage>
   )
 }

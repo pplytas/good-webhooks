@@ -1,0 +1,112 @@
+---
+title: Receive webhooks
+description: Verify the raw request, decode a typed event, and commit your work exactly once.
+---
+
+A receiver does three things in order: bound the body, verify and parse it, then commit the business change together with the event ID. `parseWebhook()` from `good-webhooks/verify` handles the middle step. The import loads no database or worker code.
+
+```ts title="receiver.ts"
+import { parseWebhook } from 'good-webhooks/verify'
+import { events } from './events.js'
+
+const event = await parseWebhook({
+  body: rawBody, // string or Uint8Array, exactly as received
+  headers: request.headers, // Headers or Node.js IncomingHttpHeaders
+  secret: process.env.WEBHOOK_SECRET!, // or an array during rotation
+  events,
+})
+
+if (event.type === 'invoice.paid') {
+  event.data.amount // number
+}
+```
+
+`event` is a discriminated union over the event map. Narrowing on `type` gives you the payload type for that event.
+
+## Share the event map
+
+Keep the map in a module that imports no server configuration or secrets, and use it on both sides.
+
+```ts title="events.ts"
+import { z } from 'zod'
+
+export const events = {
+  'invoice.paid': z.object({ invoiceId: z.string(), amount: z.number().int().nonnegative() }),
+}
+```
+
+Receiver schemas may decode JSON into local values such as `Date`. If a producer schema _transforms_ input, reusing it on the receiver would transform the transmitted value again. In that case keep a separate receiver map that accepts the producer's output.
+
+<Callout type="idea" title="Async Zod transforms">
+  Zod 4's Standard Schema implementation probes synchronously and retries asynchronously, which can
+  run an async transform twice. Wrap such schemas with the [`asyncZod`
+  helper](https://github.com/pplytas/good-webhooks/blob/main/packages/good-webhooks/examples/basic/async-zod.ts)
+  from the examples. Synchronous schemas need nothing.
+</Callout>
+
+## Bound the body before you buffer it
+
+`parseWebhook()` rejects envelopes above 512 KiB, but it cannot undo memory your HTTP layer already allocated. Enforce a limit while streaming, or in your framework or proxy. This helper from the examples does it for Node.js `http`:
+
+<include cwd lang="ts" meta='title="examples/basic/receiver.ts"'>
+  ../../packages/good-webhooks/examples/basic/receiver.ts
+</include>
+
+## Map errors to responses
+
+The sender treats most `4xx` responses as terminal and retries `5xx`. Return `400` only for requests you are sure are bad:
+
+| Error code          | Meaning                                                          | Respond |
+| ------------------- | ---------------------------------------------------------------- | ------- |
+| `SIGNATURE_INVALID` | Missing, malformed, or mismatched signature headers              | `400`   |
+| `SIGNATURE_EXPIRED` | Attempt timestamp outside the tolerance (default five minutes)   | `400`   |
+| `PAYLOAD_INVALID`   | Bad encoding, JSON, envelope, unknown event, or schema rejection | `400`   |
+| `INVALID_CONFIG`    | Your event map or secret configuration is wrong                  | `500`   |
+| Anything else       | Thrown validator, database failure, business failure             | `500`   |
+
+Expected errors carry no payload values in their messages. Unexpected errors keep a `cause` for your logs. Do not return it to the sender.
+
+There is no "ignore unknown events" mode. An event type that is not in your map is `PAYLOAD_INVALID`.
+
+## Commit before you acknowledge
+
+Retries and replays repeat the same `event.id` and body. Your receiver must make the business change at most once:
+
+1. In one transaction, insert the event ID into a receipts table with a unique constraint.
+2. If the insert succeeded, apply the business change.
+3. Commit, then respond `2xx`.
+4. If the ID was already there, respond `2xx` without repeating the change.
+
+```ts
+await client.query('BEGIN')
+const receipt = await client.query(
+  'INSERT INTO webhook_receipts (event_id) VALUES ($1) ON CONFLICT DO NOTHING RETURNING event_id',
+  [event.id],
+)
+if (receipt.rowCount) {
+  await client.query('INSERT INTO invoices (id, amount) VALUES ($1, $2)', [
+    event.data.invoiceId,
+    event.data.amount,
+  ])
+}
+await client.query('COMMIT')
+```
+
+The [basic example](https://github.com/pplytas/good-webhooks/blob/main/packages/good-webhooks/examples/basic/demo.ts) runs exactly this and checks that a retry and a replay produce one invoice.
+
+## Keep old events decodable
+
+Retries and replays can deliver an event published before your latest deploy. Keep existing event names backward compatible and introduce `invoice.paid.v2` for a breaking payload change. Deploy receiver support before enabling a new producer event.
+
+## Verify a different format
+
+If a sender uses Standard Webhooks signing with its own body format, `verifyWebhook()` authenticates the bytes and timestamp without parsing:
+
+```ts
+import { verifyWebhook } from 'good-webhooks/verify'
+
+verifyWebhook({ body: rawBody, headers: request.headers, secret })
+// Parse your format only after this returns.
+```
+
+See the [verify reference](/docs/reference/verify) for header rules, secret formats, and the full input contract.

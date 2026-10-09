@@ -1,0 +1,82 @@
+---
+title: Transactional recipient selection
+description: Choose recipients from your own routing table inside the same PostgreSQL transaction that commits the business write.
+---
+
+Use this recipe when **who receives an event depends on the payload** or on business data that is not committed yet. Instead of the normal subscription lookup, you query the recipient list on your transaction client, freeze it, and hand it to `publish()` through a one-off `EndpointSource`.
+
+The business tables and the delivery tables must share one PostgreSQL database. This recipe uses only the public API and starts no worker.
+
+## Routing rules in your schema
+
+The example routes `invoice.paid` to endpoints whose currency and minimum amount match the invoice. An `invoice_routes` table owned by your application decides recipients for this event.
+
+Include every eligible endpoint, paused ones too. Check endpoint ownership when you create routes. If you also require managed subscriptions, add that to the routing query.
+
+<include cwd lang="sql" meta='title="examples/transactions/schema.sql"'>
+  ../../packages/good-webhooks/examples/transactions/schema.sql
+</include>
+
+## Capture recipients, then publish
+
+The function updates the invoice and queries routes on the transaction client. It then builds an inert delivery instance whose `matchRecipients` returns the frozen list. Each call gets its own source, so concurrent requests cannot overwrite each other.
+
+<include cwd lang="ts" meta='title="examples/transactions/invoices.ts"'>
+  ../../packages/good-webhooks/examples/transactions/invoices.ts
+</include>
+
+Two details are easy to miss:
+
+- `matchRecipients()` receives only the scope and event type. The closure supplies the selection and rejects any other scope or type.
+- `resolveEndpoint()` delegates to the normal source. It must keep returning current URLs, secrets, and status. Never capture the transaction client in it.
+
+## Commit from the caller
+
+```ts title="pay-invoice.ts"
+import { recordInvoicePayment } from './invoices.js'
+
+const pgClient = await pool.connect()
+try {
+  await pgClient.query('BEGIN')
+  const publication = await recordInvoicePayment({
+    database: pool,
+    pgClient,
+    source,
+    organizationId: 'org_123',
+    invoiceId: 'inv_123',
+  })
+  await pgClient.query('COMMIT')
+  // Only now is the publication durable.
+} catch (error) {
+  await pgClient.query('ROLLBACK').catch(() => {})
+  throw error
+} finally {
+  pgClient.release()
+}
+```
+
+A later rollback removes the invoice update, the event, and its pending deliveries together. The routing query runs at your transaction's isolation level. Default `READ COMMITTED` sees your earlier writes and a per-statement snapshot. Choose stronger isolation only if the business rule needs it.
+
+## Retrying and running the worker
+
+If the transaction aborts, retry the whole operation with a fresh transaction and a fresh call. Do not reuse a captured selection.
+
+After a commit, repeating the same key, type, and payload returns the original event with its original recipients. The wrapper still queries routes first, so it can fail on a routing-storage outage even though the publication is already accepted. Different content with the same key throws `IDEMPOTENCY_CONFLICT`.
+
+The worker needs only the normal source and the same events, database, and schema:
+
+```ts title="worker.ts"
+import { createDelivery } from 'good-webhooks/delivery'
+import { deliverySchema, events } from './invoices.js'
+
+const delivery = createDelivery({ database: pool, schema: deliverySchema, events, source })
+await delivery.worker.run({ signal: shutdown.signal })
+```
+
+It uses the committed recipient IDs and resolves current endpoint state before each attempt. It never reruns your routing query.
+
+<Callout type="warn">
+  This recipe cannot pull a separate management database into the PostgreSQL transaction. If
+  recipient authorization lives elsewhere, define how that state is synchronized or use a durable
+  recovery workflow.
+</Callout>

@@ -1,0 +1,119 @@
+---
+title: Publish events
+description: Define typed events, publish with idempotency keys, select the right scope, and commit publication with your business write.
+---
+
+`publish()` is available on `createWebhooks()` and `createDelivery()` instances. It validates the payload, selects recipients, and records the event and its deliveries. It sends nothing. A [worker](/docs/operations/workers) does that.
+
+## Define events
+
+Keep the event map in a module that both the publisher and your receivers can import. Any [Standard Schema](https://standardschema.dev) validator works.
+
+```ts title="events.ts"
+import { z } from 'zod'
+
+export const events = {
+  'invoice.paid': z.object({
+    invoiceId: z.string(),
+    amount: z.number().int().nonnegative(),
+  }),
+  'account.activated': z.object({ accountId: z.string() }),
+}
+```
+
+Pass the map to the factory. TypeScript infers the event names and payload types for `publish()`, `endpoints.create()`, and `parseWebhook()`.
+
+```ts
+const webhooks = createWebhooks({ database, encryptionKey, events })
+
+await webhooks.publish({ type: 'invoice.paid', data: { invoiceId: 'inv_1', amount: '42' } })
+//                                                                             ^ type error
+```
+
+<Callout title="Rules for payloads">
+  Validated output must be plain JSON: at most 256 KiB, 64 levels deep, finite numbers, no cycles.
+  Event names match `^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,119}$`. Prefer schemas that preserve values
+  rather than transform them, so the receiver can reuse the same map. Convert dollars to cents
+  before publishing, not inside the schema.
+</Callout>
+
+## Publish with an idempotency key
+
+```ts
+const publication = await webhooks.publish({
+  type: 'invoice.paid',
+  data: { invoiceId: 'inv_123', amount: 4200 },
+  idempotencyKey: 'invoice.paid:inv_123',
+})
+
+publication.eventId // UUID of the accepted event
+publication.deliveryCount // one per matching endpoint, may be 0
+publication.duplicate // true if this key was already accepted
+```
+
+Derive the key from the business fact, not from a random value. A repeat with the same key and the same content returns the original event. The same key with different content throws `IDEMPOTENCY_CONFLICT`. Keys are unique per scope and released when the event is [pruned](/docs/operations/retention).
+
+`deliveryCount` of zero is not an error. It means nobody in this scope subscribes to that event.
+
+## Publish in the right scope
+
+The root instance publishes in application scope. To reach a customer's endpoints, select their scope after your application has authorized the action:
+
+```ts
+const tenant = webhooks.forScope({ type: 'organization', id: organizationId })
+await tenant.publish({ type: 'invoice.paid', data, idempotencyKey })
+```
+
+A named scope never falls back to application endpoints. See [scopes](/docs/concepts/scopes).
+
+## Publish inside your transaction
+
+When the business tables and the delivery tables share a PostgreSQL database, pass your open client. The event is written in the same transaction and disappears with it on rollback.
+
+```ts
+const client = await pool.connect()
+try {
+  await client.query('BEGIN')
+  await client.query('UPDATE invoices SET paid = true WHERE id = $1', ['inv_123'])
+  await webhooks.publish(
+    { type: 'invoice.paid', data: { invoiceId: 'inv_123', amount: 4200 }, idempotencyKey },
+    { transaction: client }, // [!code highlight]
+  )
+  await client.query('COMMIT')
+} catch (error) {
+  await client.query('ROLLBACK')
+  throw error
+} finally {
+  client.release()
+}
+```
+
+What this does and does not cover:
+
+- The returned publication is provisional until you commit. Workers cannot see it before then.
+- Good Webhooks uses a savepoint, so a failed `publish()` does not abort your transaction.
+- Recipient lookup is still a separate call to the management provider. Passing a transaction does not make a Better Auth database or a second PostgreSQL database part of the commit. For that, use an application-owned outbox.
+- Do not pass the pool itself, and do not run other queries on the client concurrently.
+
+If recipients depend on the payload or on uncommitted business data, use the [transactional recipient selection](/docs/guides/transactions) recipe.
+
+## Limit concurrency per endpoint
+
+Delivery capacity is a sender setting, separate from endpoint management:
+
+```ts
+await tenant.deliverySettings.set(endpointId, { maxInFlight: 4 })
+```
+
+The default is 2 in-flight requests per endpoint, shared across all workers on that delivery database. See the [delivery reference](/docs/reference/delivery#deliverysettings).
+
+## Next steps
+
+<Cards>
+  <Card title="Run workers" href="/docs/operations/workers">
+    Deliver what you published.
+  </Card>
+  <Card title="Delivery guarantees" href="/docs/concepts/delivery-guarantees">
+    What acceptance promises.
+  </Card>
+</Cards>

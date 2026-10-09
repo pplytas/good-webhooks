@@ -57,7 +57,7 @@ type EndpointResolution =
 
 `resolveEndpoint` returns current state before an attempt. Active results contain the current URL and usable Standard Webhooks signing secrets. Deleted or missing records return `'deleted'`. A missing Better Auth user or organization also makes its endpoints ineligible. Lookup and decryption failures reject.
 
-The built-in management source returns the new signing secret first and the previous secret only while the overlap remains active. The source is not an API for untrusted callers. Custom senders also own [recipient persistence and safe transport](/management/custom-senders).
+The built-in management source returns the new signing secret first and the previous secret only while the overlap remains active. The source is not an API for untrusted callers. Custom senders also own [recipient persistence and safe transport](/docs/guides/custom-senders).
 
 ## createManagement
 
@@ -76,7 +76,7 @@ Creates shared lifecycle behavior over custom persistence and encryption.
 | `validateUrl(url)`   | Optional async host check after portable URL validation.                                                             |
 | `scopeExists(scope)` | Optional async ownership check. Returns `false` for a missing owner and rejects on lookup failure.                   |
 
-With `scopeExists`, ordinary reads and writes reject missing owners with `NOT_FOUND`. Sender matching returns no recipients for a missing owner, and resolution returns `'deleted'`. Creation also checks ownership after the insert so a concurrent owner deletion cannot leave a live orphan.
+With `scopeExists`, ordinary reads and writes reject missing owners with `NOT_FOUND`. `remove` and `removeScope` skip that check so an owner can still be cleaned up after deletion. Sender matching returns no recipients for a missing owner, and resolution returns `'deleted'`. Creation also checks ownership after the insert so a concurrent owner deletion cannot leave a live orphan.
 
 ## ManagementRepository
 

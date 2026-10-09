@@ -39,16 +39,23 @@ try {
   const errors = []
   page.on('pageerror', (error) => errors.push(error.message))
 
-  const overview = await page.goto(url)
-  assert.equal(overview.status(), 200)
-  await page.getByRole('heading', { name: 'Good Webhooks', exact: true }).waitFor()
+  const landing = await page.goto(url)
+  assert.equal(landing.status(), 200)
+  await page.getByRole('heading', { level: 1 }).waitFor()
+  await page.getByRole('link', { name: 'Documentation', exact: true }).first().click()
+  await page.waitForURL((target) => target.pathname === '/docs/')
+  await page.getByRole('heading', { name: 'Introduction', exact: true }).waitFor()
 
-  const deep = await page.goto(`${url}/reference/delivery/`)
+  const markdown = await page.goto(`${url}/llms.mdx/quick-start.md`)
+  assert.equal(markdown.status(), 200)
+  assert.match(await markdown.text(), /^# Quick start/)
+
+  const deep = await page.goto(`${url}/docs/reference/delivery/`)
   assert.equal(deep.status(), 200)
   await page.getByRole('heading', { level: 1 }).waitFor()
   await page.locator('#type-table-reference-types\\.ts-DeliverySettings').waitFor()
 
-  await page.goto(url)
+  await page.goto(`${url}/docs/`)
   await page.getByRole('button', { name: /^Search/ }).click()
   await page.getByRole('combobox', { name: 'Search', exact: true }).fill('replay')
   const result = page
@@ -57,7 +64,7 @@ try {
     .first()
   await result.waitFor()
   await result.click()
-  await page.waitForURL((target) => target.pathname !== '/')
+  await page.waitForURL((target) => target.pathname !== '/docs/')
   await page.getByRole('heading', { level: 1 }).waitFor()
 
   await page.getByRole('button', { name: 'Toggle Theme', exact: true }).click()
@@ -76,7 +83,7 @@ try {
 
   assert.deepEqual(errors, [], 'Browser page errors occurred.')
   console.log(
-    'Verified static routes, generated table, search navigation, theme switch, and mobile sidebar.',
+    'Verified landing, docs routes, markdown export, generated table, search, theme switch, and mobile sidebar.',
   )
 } finally {
   await browser?.close()

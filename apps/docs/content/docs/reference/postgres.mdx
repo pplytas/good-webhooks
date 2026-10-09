@@ -20,7 +20,7 @@ import type {
 createPostgresManagement(options: PostgresManagementOptions): PostgresManagement
 ```
 
-Returns the complete [EndpointManagement interface](/reference/management) plus `check()`. It uses only the configured schema's `webhook_endpoints` table. It creates no delivery records and starts no sender.
+Returns the complete [EndpointManagement interface](/docs/reference/management) plus `check()`. It uses only the configured schema's `webhook_endpoints` table. It creates no delivery records and starts no sender.
 
 | Option           | Default    | Contract                                                                                  |
 | ---------------- | ---------- | ----------------------------------------------------------------------------------------- |
@@ -33,7 +33,7 @@ Returns the complete [EndpointManagement interface](/reference/management) plus 
 
 The provider resolves hostnames during endpoint creation, URL updates, and resume. It rejects destinations that resolve to unsafe addresses. This admission check does not replace the sender's checks before each connection.
 
-Signing secrets use AES-256-GCM storage encryption. Decryption tries the current key followed by the retained keys. `reencrypt(scope)` writes live records with the current key while preserving receiver-facing signing values. The host must keep old keys until every affected scope has been rewritten. See [key rotation](/operations/key-rotation).
+Signing secrets use AES-256-GCM storage encryption. Decryption tries the current key followed by the retained keys. `reencrypt(scope)` writes live records with the current key while preserving receiver-facing signing values. The host must keep old keys until every affected scope has been rewritten. See [key rotation](/docs/operations/key-rotation).
 
 ### check
 
@@ -43,7 +43,7 @@ check(): Promise<void>
 
 Reads the expected table columns without returning rows. Missing schema, table, or columns produce `SCHEMA_MISMATCH`. Other database failures propagate. This method neither executes migrations nor validates an injected delivery engine.
 
-`good-webhooks/migrations/management.sql` initializes this provider in `public`. [Generated migration SQL](/reference/migrations) can target a custom schema. The host owns the pool and closes it on shutdown.
+`good-webhooks/migrations/management.sql` initializes this provider in `public`. [Generated migration SQL](/docs/reference/migrations) can target a custom schema. The host owns the pool and closes it on shutdown.
 
 ## createPostgresManagementRepository
 
@@ -58,4 +58,4 @@ Creates the storage implementation without the lifecycle API or cipher. This is 
 
 The repository scopes every query and uses revision-guarded updates. Creation uses a transaction and an advisory lock to enforce the 1,000 nondeleted endpoint limit. Enumeration rejects `INVALID_STATE` if storage exceeds that limit rather than returning a partial recipient set.
 
-`schema` defaults to `public` and follows the [PostgreSQL identifier rules](/reference/migrations#schema-names). Invalid database or schema configuration produces `INVALID_CONFIG`.
+`schema` defaults to `public` and follows the [PostgreSQL identifier rules](/docs/reference/migrations#schema-names). Invalid database or schema configuration produces `INVALID_CONFIG`.
