@@ -140,7 +140,7 @@ export default function HomePage() {
             className="whitespace-nowrap font-semibold leading-none tracking-tighter text-[clamp(2.5rem,9vw,4rem)] lg:text-[clamp(2.75rem,4.5vw,4rem)]"
             aria-label="good-webhooks"
           >
-            good<span className="text-fd-muted-foreground/50">-</span>webhooks
+            good<span className="text-fd-muted-foreground">-</span>webhooks
           </p>
           <h1 className="mt-6 max-w-lg text-pretty text-2xl font-normal leading-snug tracking-tight sm:text-3xl">
             Signed, retried, replayable webhooks for TypeScript and PostgreSQL.

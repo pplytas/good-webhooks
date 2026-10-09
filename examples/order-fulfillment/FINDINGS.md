@@ -1,6 +1,6 @@
 # Integration findings
 
-This application consumes `good-webhooks@0.1.0-alpha.3` from npm. It was initially built against alpha.2 using public guides and installed declarations. Implementation did not require reading library internals or importing private files. The lockfile resolves the package from `registry.npmjs.org`.
+This application consumes `good-webhooks@0.1.0-alpha.4` from npm. It was initially built against alpha.2 using public guides and installed declarations. Implementation did not require reading library internals or importing private files. The lockfile resolves the package from `registry.npmjs.org`.
 
 ## Observed friction
 
