@@ -12,6 +12,8 @@ pnpm --filter @good-webhooks/docs preview
 
 `preview` runs `next start` on the production build at `http://localhost:3000`. Set `PORT` to use another port. The site needs no auth instance or database.
 
+Vercel Web Analytics collects automatic page views only when `VERCEL_ENV=production`. Vercel supplies this variable for production deployments. Local builds and preview deployments omit the tracker. There are no custom events. See the [analytics scope](../../docs/website-analytics.md).
+
 ## Structure
 
 - `app/(home)/page.tsx` is the landing page at `/`.
