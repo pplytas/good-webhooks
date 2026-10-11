@@ -1,6 +1,6 @@
 # Documentation website analytics
 
-Status: implemented and verified locally, 11 October 2026. Vercel activation and production rollout pending.
+Implemented and verified locally on 11 October 2026. Release: [PR #20](https://github.com/pplytas/good-webhooks/pull/20).
 
 ## Accepted decisions
 
@@ -31,7 +31,7 @@ Browser verification of a build with `VERCEL_ENV` unset found no analytics scrip
 
 After deployment, verify that Vercel receives page views. Report implementation, deployment, and live data verification separately.
 
-Activation is pending. The Vercel CLI requires a person to confirm enabling the paid feature in an interactive terminal:
+Vercel Web Analytics was enabled on 11 October 2026 before the production release. The API confirmed activation with a zero-page-view baseline. For a replacement project, the Vercel CLI requires a person to confirm enabling the paid feature in an interactive terminal:
 
 ```sh
 vercel project web-analytics enable good-webhooks --scope consola-technologies
