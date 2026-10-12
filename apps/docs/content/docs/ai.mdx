@@ -50,13 +50,13 @@ cp -R node_modules/good-webhooks/skills/good-webhooks .claude/skills/
 
 ## Connect the MCP server
 
-`https://good-webhooks.vercel.app/api/mcp` is a [Model Context Protocol](https://modelcontextprotocol.io) server with three tools: `list_pages`, `get_page`, and `search`. No sign-in needed.
+`https://good-webhooks.dev/api/mcp` is a [Model Context Protocol](https://modelcontextprotocol.io) server with three tools: `list_pages`, `get_page`, and `search`. No sign-in needed.
 
 <Tabs groupId="mcp-client" persist items={['Claude Code', 'Cursor', 'VS Code']}>
 <Tab>
 
 ```sh
-claude mcp add --transport http good-webhooks https://good-webhooks.vercel.app/api/mcp
+claude mcp add --transport http good-webhooks https://good-webhooks.dev/api/mcp
 ```
 
 </Tab>
@@ -65,7 +65,7 @@ claude mcp add --transport http good-webhooks https://good-webhooks.vercel.app/a
 ```json title=".cursor/mcp.json"
 {
   "mcpServers": {
-    "good-webhooks": { "url": "https://good-webhooks.vercel.app/api/mcp" }
+    "good-webhooks": { "url": "https://good-webhooks.dev/api/mcp" }
   }
 }
 ```
@@ -76,7 +76,7 @@ claude mcp add --transport http good-webhooks https://good-webhooks.vercel.app/a
 ```json title=".vscode/mcp.json"
 {
   "servers": {
-    "good-webhooks": { "type": "http", "url": "https://good-webhooks.vercel.app/api/mcp" }
+    "good-webhooks": { "type": "http", "url": "https://good-webhooks.dev/api/mcp" }
   }
 }
 ```
@@ -91,7 +91,7 @@ Without the skill, paste this into your `AGENTS.md`, `CLAUDE.md`, or your editor
 ```md title="AGENTS.md"
 ## Good Webhooks
 
-Docs: https://good-webhooks.vercel.app/llms.txt (fetch the linked .md pages for details)
+Docs: https://good-webhooks.dev/llms.txt (fetch the linked .md pages for details)
 
 - Receivers must pass the raw request body (string or bytes) to `parseWebhook()`. Never parsed JSON.
 - Receivers must record `event.id` in the same transaction as their change. Delivery is at least once.
@@ -110,7 +110,7 @@ Docs: https://good-webhooks.vercel.app/llms.txt (fetch the linked .md pages for 
 <Tab>
 
 ```text
-Read https://good-webhooks.vercel.app/docs/quick-start.md and follow it in a new
+Read https://good-webhooks.dev/docs/quick-start.md and follow it in a new
 directory. Run the script and show me the output.
 ```
 
@@ -118,7 +118,7 @@ directory. Run the script and show me the output.
 <Tab>
 
 ```text
-Read https://good-webhooks.vercel.app/llms.txt, then the installation, publish-events,
+Read https://good-webhooks.dev/llms.txt, then the installation, publish-events,
 and run-workers pages. Add Good Webhooks to this app: migration file, client module,
 publish an `order.created` event inside the transaction that creates the order, and a
 separate worker entrypoint. Follow the production checklist page.
@@ -128,7 +128,7 @@ separate worker entrypoint. Follow the production checklist page.
 <Tab>
 
 ```text
-Read https://good-webhooks.vercel.app/docs/guides/receive.md. Add a webhook route
+Read https://good-webhooks.dev/docs/guides/receive.md. Add a webhook route
 to this app for the events in events.ts. Verify with parseWebhook, deduplicate by
 event.id in the same transaction as the change, and map errors to status codes as the
 page describes.

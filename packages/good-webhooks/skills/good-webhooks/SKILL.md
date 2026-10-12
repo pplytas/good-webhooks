@@ -8,7 +8,7 @@ license: MIT
 
 `good-webhooks` stores published events in the app's PostgreSQL database, delivers signed Standard Webhooks requests from a worker the app runs, retries failures, and keeps attempt history. Receivers verify with `parseWebhook()`.
 
-This skill ships inside the npm package, so it matches the installed version. Full docs as Markdown: https://good-webhooks.vercel.app/llms.txt (append `.md` to any docs URL). Checked examples ship in `node_modules/good-webhooks/examples/`.
+This skill ships inside the npm package, so it matches the installed version. Full docs as Markdown: https://good-webhooks.dev/llms.txt (append `.md` to any docs URL). Checked examples ship in `node_modules/good-webhooks/examples/`.
 
 ## Rules
 
@@ -149,13 +149,13 @@ Server: `goodWebhooks({ eventTypes })` from `good-webhooks/better-auth` in `bett
 
 ## Where to read more
 
-| Task                            | Page                                                                  |
-| ------------------------------- | --------------------------------------------------------------------- |
-| First run end to end            | https://good-webhooks.vercel.app/docs/quick-start.md                  |
-| Add to an existing app          | https://good-webhooks.vercel.app/docs/installation.md                 |
-| Publishing, idempotency, scopes | https://good-webhooks.vercel.app/docs/guides/publish.md               |
-| Receivers for each framework    | https://good-webhooks.vercel.app/docs/guides/receive.md               |
-| Workers and shutdown            | https://good-webhooks.vercel.app/docs/operations/workers.md           |
-| Better Auth plugin              | https://good-webhooks.vercel.app/docs/better-auth.md                  |
-| Guarantees and retry schedule   | https://good-webhooks.vercel.app/docs/concepts/delivery-guarantees.md |
-| Launch checklist                | https://good-webhooks.vercel.app/docs/operations/production.md        |
+| Task                            | Page                                                           |
+| ------------------------------- | -------------------------------------------------------------- |
+| First run end to end            | https://good-webhooks.dev/docs/quick-start.md                  |
+| Add to an existing app          | https://good-webhooks.dev/docs/installation.md                 |
+| Publishing, idempotency, scopes | https://good-webhooks.dev/docs/guides/publish.md               |
+| Receivers for each framework    | https://good-webhooks.dev/docs/guides/receive.md               |
+| Workers and shutdown            | https://good-webhooks.dev/docs/operations/workers.md           |
+| Better Auth plugin              | https://good-webhooks.dev/docs/better-auth.md                  |
+| Guarantees and retry schedule   | https://good-webhooks.dev/docs/concepts/delivery-guarantees.md |
+| Launch checklist                | https://good-webhooks.dev/docs/operations/production.md        |

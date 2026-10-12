@@ -9,7 +9,7 @@ import {
   MarkdownCopyButton,
   ViewOptionsPopover,
 } from 'fumadocs-ui/layouts/docs/page'
-import { source } from '@/lib/source'
+import { getPageImage, source } from '@/lib/source'
 import { markdownUrl } from '@/lib/llms'
 import { site } from '@/lib/site'
 import { getMDXComponents } from '@/mdx-components'
@@ -26,9 +26,12 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params
   const page = source.getPage(slug)
   if (!page) notFound()
+  const image = getPageImage(page).url
   return {
     title: page.data.title,
     description: page.data.description,
+    openGraph: { siteName: site.name, type: 'article', url: page.url, images: image },
+    twitter: { images: image },
     alternates: {
       canonical: page.url,
       types: { 'text/markdown': markdownUrl(slug) },

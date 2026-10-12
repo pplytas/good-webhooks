@@ -2,6 +2,14 @@
   "name": "good-webhooks",
   "version": "0.1.0-beta.2",
   "description": "Build webhook delivery into your TypeScript application.",
+  "keywords": [
+    "webhooks",
+    "standard-webhooks",
+    "postgresql",
+    "typescript",
+    "better-auth",
+    "outbox"
+  ],
   "license": "MIT",
   "author": "pplytas",
   "repository": {
@@ -9,7 +17,7 @@
     "url": "git+https://github.com/pplytas/good-webhooks.git",
     "directory": "packages/good-webhooks"
   },
-  "homepage": "https://good-webhooks.vercel.app",
+  "homepage": "https://good-webhooks.dev",
   "bugs": {
     "url": "https://github.com/pplytas/good-webhooks/issues"
   },

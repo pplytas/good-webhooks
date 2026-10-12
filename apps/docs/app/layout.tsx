@@ -1,4 +1,4 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import type { ReactNode } from 'react'
 import { Geist, Geist_Mono } from 'next/font/google'
 import { RootProvider } from 'fumadocs-ui/provider/next'
@@ -17,6 +17,16 @@ export const metadata: Metadata = {
     template: `%s | ${site.name}`,
   },
   description: site.description,
+  alternates: { canonical: '/' },
+  openGraph: { siteName: site.name, type: 'website', locale: 'en_US', url: '/' },
+  twitter: { card: 'summary_large_image' },
+}
+
+export const viewport: Viewport = {
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#ffffff' },
+    { media: '(prefers-color-scheme: dark)', color: '#09090b' },
+  ],
 }
 
 export default function RootLayout({ children }: { children: ReactNode }) {

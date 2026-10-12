@@ -3,7 +3,7 @@ import pkg from '../../../packages/good-webhooks/package.json' with { type: 'jso
 export const site = {
   name: 'Good Webhooks',
   description: 'Build webhook delivery into your TypeScript application.',
-  url: 'https://good-webhooks.vercel.app',
+  url: 'https://good-webhooks.dev',
   version: pkg.version,
   npmUrl: `https://www.npmjs.com/package/good-webhooks/v/${pkg.version}`,
   githubUrl: 'https://github.com/pplytas/good-webhooks',

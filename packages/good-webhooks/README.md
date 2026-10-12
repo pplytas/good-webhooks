@@ -7,10 +7,10 @@ publish()  →  PostgreSQL  →  worker  →  signed POST  →  parseWebhook()
 your app      event + deliveries    retries + history      the receiver
 ```
 
-**[Documentation](https://good-webhooks.vercel.app/docs)** · [Quick start](https://good-webhooks.vercel.app/docs/quick-start) · [API reference](https://good-webhooks.vercel.app/docs/reference) · [For AI agents](https://good-webhooks.vercel.app/docs/ai)
+**[Documentation](https://good-webhooks.dev/docs)** · [Quick start](https://good-webhooks.dev/docs/quick-start) · [API reference](https://good-webhooks.dev/docs/reference) · [For AI agents](https://good-webhooks.dev/docs/ai)
 
 > [!WARNING]
-> Beta. The public API is frozen except for correctness and security fixes. Pin the exact version and read the [stability policy](https://good-webhooks.vercel.app/docs/operations/compatibility#stability-policy).
+> Beta. The public API is frozen except for correctness and security fixes. Pin the exact version and read the [stability policy](https://good-webhooks.dev/docs/operations/compatibility#stability-policy).
 
 ## Install
 
@@ -26,7 +26,7 @@ For Better Auth endpoint management, install:
 npm install good-webhooks@beta better-auth@1.7.7
 ```
 
-The plugin uses your existing Better Auth database adapter. PostgreSQL is only required if you add built-in delivery. Follow the [Better Auth quick start](https://good-webhooks.vercel.app/docs/better-auth/quick-start).
+The plugin uses your existing Better Auth database adapter. PostgreSQL is only required if you add built-in delivery. Follow the [Better Auth quick start](https://good-webhooks.dev/docs/better-auth/quick-start).
 
 ## Use
 
@@ -72,22 +72,22 @@ Apply the SQL from `getPostgresMigration()` (in `good-webhooks/migrations`) with
 
 ## Setups
 
-| You want                                     | Start with                                                                    |
-| -------------------------------------------- | ----------------------------------------------------------------------------- |
-| Everything on PostgreSQL                     | [Quick start](https://good-webhooks.vercel.app/docs/quick-start)              |
-| Signed-in users managing their own endpoints | [Better Auth plugin](https://good-webhooks.vercel.app/docs/better-auth)       |
-| Better Auth endpoints with built-in delivery | [Add delivery](https://good-webhooks.vercel.app/docs/better-auth/delivery)    |
-| Endpoint management for your own sender      | [Custom senders](https://good-webhooks.vercel.app/docs/guides/custom-senders) |
-| Only receiving webhooks                      | [Receive webhooks](https://good-webhooks.vercel.app/docs/guides/receive)      |
+| You want                                     | Start with                                                             |
+| -------------------------------------------- | ---------------------------------------------------------------------- |
+| Everything on PostgreSQL                     | [Quick start](https://good-webhooks.dev/docs/quick-start)              |
+| Signed-in users managing their own endpoints | [Better Auth plugin](https://good-webhooks.dev/docs/better-auth)       |
+| Better Auth endpoints with built-in delivery | [Add delivery](https://good-webhooks.dev/docs/better-auth/delivery)    |
+| Endpoint management for your own sender      | [Custom senders](https://good-webhooks.dev/docs/guides/custom-senders) |
+| Only receiving webhooks                      | [Receive webhooks](https://good-webhooks.dev/docs/guides/receive)      |
 
 Better Auth `>=1.7.7 <1.8.0` is an optional peer dependency, tested against 1.7.7. TypeScript consumers need 5.9.3 or later with `NodeNext` or `Bundler` resolution.
 
 ## For AI agents
 
-This package ships an [Agent Skill](https://agentskills.io) in `skills/good-webhooks/` that matches the installed version. Docs for agents: [llms.txt](https://good-webhooks.vercel.app/llms.txt).
+This package ships an [Agent Skill](https://agentskills.io) in `skills/good-webhooks/` that matches the installed version. Docs for agents: [llms.txt](https://good-webhooks.dev/llms.txt).
 
 ## Guarantees
 
-Delivery is at least once, with no ordering. Receivers must verify signatures and record each event ID with their change. See [delivery guarantees](https://good-webhooks.vercel.app/docs/concepts/delivery-guarantees).
+Delivery is at least once, with no ordering. Receivers must verify signatures and record each event ID with their change. See [delivery guarantees](https://good-webhooks.dev/docs/concepts/delivery-guarantees).
 
 MIT licensed. See the [contribution guide](https://github.com/pplytas/good-webhooks/blob/main/CONTRIBUTING.md) and [security policy](https://github.com/pplytas/good-webhooks/blob/main/SECURITY.md).

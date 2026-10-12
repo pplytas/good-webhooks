@@ -25,7 +25,7 @@ See the [documentation overview](apps/docs/content/docs/index.mdx) for guides, c
 npm install good-webhooks@beta
 ```
 
-Follow the [installation guide](https://good-webhooks.vercel.app/docs/installation) for the dependencies your setup needs. Pin the exact version in applications and read the [release notes](https://github.com/pplytas/good-webhooks/releases) before upgrading.
+Follow the [installation guide](https://good-webhooks.dev/docs/installation) for the dependencies your setup needs. Pin the exact version in applications and read the [release notes](https://github.com/pplytas/good-webhooks/releases) before upgrading.
 
 ## Work on the repository
 
