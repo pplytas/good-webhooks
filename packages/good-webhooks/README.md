@@ -18,7 +18,15 @@ your app      event + deliveries    retries + history      the receiver
 npm install good-webhooks@alpha pg zod
 ```
 
-Requires Node.js 24 or later and PostgreSQL 16 or 17. Payload schemas can use any [Standard Schema](https://standardschema.dev) library.
+Requires Node.js 24 or later. Built-in delivery and standalone PostgreSQL management require PostgreSQL 16 or 17. Payload schemas can use any [Standard Schema](https://standardschema.dev) library.
+
+For Better Auth endpoint management, install:
+
+```sh
+npm install good-webhooks@alpha better-auth@1.7.7
+```
+
+The plugin uses your existing Better Auth database adapter. PostgreSQL is only required if you add built-in delivery. Follow the [Better Auth quick start](https://good-webhooks.vercel.app/docs/better-auth/quick-start).
 
 ## Use
 
@@ -72,7 +80,7 @@ Apply the SQL from `getPostgresMigration()` (in `good-webhooks/migrations`) with
 | Endpoint management for your own sender      | [Custom senders](https://good-webhooks.vercel.app/docs/guides/custom-senders) |
 | Only receiving webhooks                      | [Receive webhooks](https://good-webhooks.vercel.app/docs/guides/receive)      |
 
-Better Auth `>=1.7.7 <1.8.0` is an optional peer dependency. TypeScript consumers need 5.9.3 or later with `NodeNext` or `Bundler` resolution.
+Better Auth `>=1.7.7 <1.8.0` is an optional peer dependency, tested against 1.7.7. TypeScript consumers need 5.9.3 or later with `NodeNext` or `Bundler` resolution.
 
 ## For AI agents
 

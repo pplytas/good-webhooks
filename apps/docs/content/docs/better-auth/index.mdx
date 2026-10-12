@@ -35,7 +35,7 @@ The plugin manages endpoints only; it sends nothing. To send events, add the [bu
 good-webhooks@alpha better-auth@1.7.7
 ```
 
-The tested range is `>=1.7.7 <1.8.0`.
+Supports Better Auth `>=1.7.7 <1.8.0`; tested against 1.7.7.
 
 </Step>
 <Step>
@@ -68,8 +68,8 @@ Mount `auth.handler` the way your framework already does. The routes appear unde
 Use [Better Auth's CLI](https://better-auth.com/docs/concepts/cli) with the version that matches your installation:
 
 ```sh
-npx @better-auth/cli migrate --config ./src/auth.ts   # built-in SQL adapters
-npx @better-auth/cli generate --config ./src/auth.ts  # Drizzle or Prisma, then run their migrations
+npx auth@1.7.7 migrate --config ./src/auth.ts   # built-in SQL adapters
+npx auth@1.7.7 generate --config ./src/auth.ts  # Drizzle or Prisma, then run their migrations
 ```
 
 The plugin declares a `webhookEndpoint` model with a unique `allocationKey` index. Keep every generated field and that index; it enforces the per-scope endpoint limit under concurrent creates. MongoDB creates the index before writes.

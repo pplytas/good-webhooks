@@ -56,8 +56,18 @@ For a subsequent approved alpha, update the package version and changelog in a P
 
 ## Verify and announce a release
 
-Check the package version, dist-tag, contents, integrity, and provenance where applicable. Install `good-webhooks@<exact-version>` into a fresh consumer and verify the supported entry points. Confirm `alpha` resolves to the intended version. Do not move `latest` when publishing subsequent alphas.
+Check the package version, dist-tag, contents, integrity, and provenance where applicable. Install `good-webhooks@<exact-version>` into a fresh consumer and verify the supported entry points. Confirm `alpha` resolves to the intended version. Publishing with `--tag alpha` does not update `latest`. Move `latest` only when the release decision explicitly approves that version for default installs.
 
-On the first publication, npm also assigned `latest` to `0.1.0-alpha.1` despite `--tag alpha`, and rejected `npm dist-tag rm good-webhooks latest` with HTTP 400. This matches the [reported npm first-publication behavior](https://github.com/npm/cli/issues/8490). Plain `npm install good-webhooks` therefore selects the initial alpha. Keep documentation explicit about alpha status and use `@alpha` or an exact version in installation commands.
+On the first publication, npm also assigned `latest` to `0.1.0-alpha.1` despite `--tag alpha`, and rejected `npm dist-tag rm good-webhooks latest` with HTTP 400. This matches the [reported npm first-publication behavior](https://github.com/npm/cli/issues/8490). On 2026-10-12, the maintainer approved moving `latest` to `0.1.0-alpha.4` so default installs receive the supported alpha.
+
+For an approved tag change, authenticate as the package maintainer, move the tag, then verify the registry and a fresh default install:
+
+```sh
+npm whoami
+npm dist-tag add good-webhooks@0.1.0-alpha.4 latest
+npm view good-webhooks dist-tags --json
+```
+
+Keep documentation explicit about alpha status and use `@alpha` or an exact version in installation commands. Moving a tag does not change the published archive or its README. Package README changes require a new release.
 
 Create a GitHub prerelease named `v<version>` targeting the verified commit, with its changelog entry and installation command. Update the installation docs to use `npm install good-webhooks@alpha` only after confirming registry availability. Link the release's compatibility and migration notes. Retain old versions so existing lockfiles continue to work; use npm deprecation messages for superseded or broken versions when needed.
