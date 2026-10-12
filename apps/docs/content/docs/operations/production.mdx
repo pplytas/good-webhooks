@@ -29,6 +29,7 @@ Work through this list once before launch. Each item links to the page that expl
 - [ ] At least one worker runs as its own supervised process, restarted with backoff on failure. [Run workers](/docs/operations/workers)
 - [ ] `SIGTERM` aborts the worker's signal, and the supervisor's kill deadline is longer than `shutdownGraceMs`.
 - [ ] Worker failures are logged and alerted on: either `run()` rejects and the process exits, or your `onError` logs and you watch that deliveries keep moving. [Handle failures](/docs/operations/workers#handle-failures)
+- [ ] You have read what a crash, a dropped connection, and a hard kill do to in-flight work. [Failure behavior](/docs/operations/failure-behavior)
 
 ## History
 

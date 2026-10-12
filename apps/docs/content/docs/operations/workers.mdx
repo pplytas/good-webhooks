@@ -76,7 +76,7 @@ For Better Auth management, the worker also constructs the auth instance and pro
 
 Without `onError`, an internal failure rejects `run()` and the process exits. Let your supervisor restart it with backoff. If you pass `onError` to log and continue, watch that deliveries keep making progress. Receiver failures are not internal failures; they follow the retry policy.
 
-The example entrypoint logs JSON lines (`webhooks.worker.started`, `webhooks.worker.failed`, `webhooks.worker.stopped`) without configuration, payloads, or secrets. The library itself writes no logs.
+The example entrypoint logs JSON lines (`webhooks.worker.started`, `webhooks.worker.failed`, `webhooks.worker.stopped`) without configuration, payloads, or secrets. The library itself writes no logs. [Failure behavior](/docs/operations/failure-behavior) lists what each kind of failure does to in-flight work.
 
 ## Shut down cleanly
 
