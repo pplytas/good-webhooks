@@ -16,7 +16,11 @@ export async function migrate(config: Config) {
     await client.query(
       `CREATE TABLE IF NOT EXISTS ${schema}.app_migrations (name text PRIMARY KEY, checksum text NOT NULL, applied_at timestamptz NOT NULL DEFAULT now())`,
     )
-    for (const name of ['001-app.sql', '002-good-webhooks-alpha.2.sql']) {
+    for (const name of [
+      '001-app.sql',
+      '002-good-webhooks-alpha.2.sql',
+      '003-good-webhooks-schema-4.sql',
+    ]) {
       const source = await readFile(new URL(`../migrations/${name}`, import.meta.url), 'utf8')
       const checksum = createHash('sha256').update(source).digest('hex')
       const existing = await client.query(
