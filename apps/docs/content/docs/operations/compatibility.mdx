@@ -36,7 +36,7 @@ The [entry points](/docs/installation#entry-points) and every name they export a
 - Breaking means a passing consumer type-check fails, observable runtime behavior changes, a supported runtime or database version is dropped, or SQL must run before upgrading.
 - Every breaking change is deprecated in at least one earlier minor with a runtime or type-level warning, and the release notes state the migration.
 - The latest minor receives all fixes. Security fixes also reach the previous minor for three months after the next minor ships.
-- `0.1.0` claims a stable API and upgrade path. It does not claim verified behavior at high throughput; the [production checklist](/docs/operations/production) and release notes state what has been measured.
+- `0.1.0` claims a stable API and upgrade path. It does not claim verified behavior at high throughput beyond the [measured profile](/docs/operations/performance); the [production checklist](/docs/operations/production) and release notes state what has been measured.
 
 ## Package versions and schema versions
 

@@ -50,6 +50,8 @@ jobs:
         run: pnpm test:operations
       - name: Rehearse the schema upgrade against the previous published package
         run: pnpm test:compat
+      - name: Run the benchmark profile as a smoke check
+        run: pnpm benchmark
       - name: Prepare a fresh demo database
         run: |
           psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -c 'CREATE DATABASE webhooks_demo'

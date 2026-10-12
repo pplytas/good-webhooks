@@ -29,6 +29,7 @@
     "operations/migrations",
     "operations/workers",
     "operations/retries-and-replay",
+    "operations/performance",
     "operations/retention",
     "operations/key-rotation",
     "operations/compatibility",

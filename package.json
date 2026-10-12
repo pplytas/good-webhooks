@@ -21,7 +21,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test:operations": "pnpm --filter good-webhooks test:operations",
-    "test:compat": "pnpm --filter good-webhooks test:compat"
+    "test:compat": "pnpm --filter good-webhooks test:compat",
+    "benchmark": "pnpm --filter good-webhooks benchmark"
   },
   "devDependencies": {
     "prettier": "^3.9.9"
