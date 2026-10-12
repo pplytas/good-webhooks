@@ -1,0 +1,56 @@
+---
+title: Performance
+description: Measured publish and delivery throughput for a fixed profile on one machine, how it was measured, and what the numbers do not say.
+---
+
+These numbers come from `pnpm benchmark` in the repository: a fixed profile, local receivers, one PostgreSQL instance. They show what the library costs on its own. They are not a capacity guarantee for your receivers, network, or database.
+
+## Profile
+
+| Setting                    | Value                                                                                  |
+| -------------------------- | -------------------------------------------------------------------------------------- |
+| Endpoints                  | 20, each in its own scope                                                              |
+| Events                     | 250 per endpoint, 5,000 in total                                                       |
+| Deliveries                 | 1 per event, 5,000 in total                                                            |
+| Workers                    | 2 processes, `concurrency: 32` each                                                    |
+| Per-endpoint in-flight cap | 8                                                                                      |
+| Receiver                   | Local HTTP, verifies the signature, 5 ms delay, `204`                                  |
+| Pool                       | 20 connections per process                                                             |
+| Publish                    | 20 endpoints in parallel, sequential per endpoint, each publish in its own transaction |
+
+## Results
+
+Measured on 12 October 2026. Three consecutive runs; the table shows the middle run.
+
+| Measurement                                | Result                                  |
+| ------------------------------------------ | --------------------------------------- |
+| Publish rate                               | 3,350 events/s                          |
+| Drain rate, 5,000 queued deliveries        | 1,550 deliveries/s                      |
+| Time to drain the backlog                  | 3.2 s                                   |
+| Attempt latency, claim to recorded outcome | p50 17 ms, p95 23 ms, p99 28 ms         |
+| Time in queue, publish to success          | p50 2.5 s, p95 3.2 s, max 3.4 s         |
+| Attempts                                   | 5,000 succeeded, 0 retried, 0 abandoned |
+
+Time in queue is dominated by backlog depth: every event was published before the first worker started, so the median event waited for half the backlog. With workers already running, time in queue for a single event is close to the attempt latency plus the poll interval.
+
+| Environment |                                     |
+| ----------- | ----------------------------------- |
+| Machine     | Apple M3 Pro, 12 cores, 18 GB       |
+| Node.js     | 24.21                               |
+| PostgreSQL  | 16.15 in Docker on the same machine |
+
+## What the numbers do not say
+
+- **Receiver time dominates in production.** The receiver here answers in 5 ms. A receiver that takes 300 ms makes delivery throughput a function of `concurrency` and `maxInFlight`, not of the library.
+- **One machine.** Workers, receivers, PostgreSQL, and the benchmark share CPU. Separate hosts change both directions: less contention, more network latency.
+- **No failures.** The profile has no retries, timeouts, or lease recoveries. [Failure behavior](/docs/operations/failure-behavior) and the operations rehearsal cover those paths; they are slower by design.
+- **Small history.** The tables start empty. Delivery claims use partial indexes on status, so a large succeeded history should not slow claims, but this profile does not prove it.
+
+## Run it yourself
+
+```sh
+export TEST_DATABASE_URL='postgres://postgres:webhooks_dev_only@127.0.0.1:55439/webhooks'
+pnpm benchmark
+```
+
+The script creates a unique schema, runs the profile, prints a JSON report, and drops the schema. It fails if any delivery does not succeed exactly once. Change `scripts/benchmark/config.mjs` to model your own receiver delay or concurrency, and compare runs on the same machine only.

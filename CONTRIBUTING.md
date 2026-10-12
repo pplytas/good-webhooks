@@ -46,6 +46,8 @@ The fresh-install SQL is defined in `packages/good-webhooks/src/migrations.ts`. 
 
 `pnpm test:chaos` needs `TEST_DATABASE_URL`. It drains a backlog through two supervised workers while PostgreSQL terminates their connections, a transaction holds an exclusive lock on the deliveries table past the statement timeout, one receiver answers `503` once per event, and another hangs once per event. It checks that workers are restarted, every delivery succeeds once, and every event reaches its receiver.
 
+`pnpm benchmark` needs `TEST_DATABASE_URL`. It runs the fixed profile behind the [performance page](apps/docs/content/docs/operations/performance.mdx) in a unique schema and prints a JSON report. CI runs it as a smoke check only; update the published numbers from a quiet local machine.
+
 `pnpm test:adapters` runs the [database matrix](docs/better-auth-database-compatibility.md). It requires local disposable server instances and creates its own temporary databases. You can select profiles, for example `pnpm test:adapters libsql,d1` without database servers or `pnpm test:adapters postgres,drizzle,prisma` with PostgreSQL. The CI adapter job supplies PostgreSQL, MySQL, MongoDB, and SQL Server services.
 
 ## Work on documentation

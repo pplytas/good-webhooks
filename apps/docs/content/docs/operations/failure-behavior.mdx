@@ -1,0 +1,66 @@
+---
+title: Failure behavior
+description: What happens when a worker crashes, the database drops, a receiver hangs, or a deploy restarts everything. Each statement here is checked by a test in the repository.
+---
+
+Delivery is at least once. Every failure below ends in one of two places: the delivery is retried with the same event ID, or the process exits so a supervisor restarts it. Nothing is lost silently, and nothing is sent without an attempt record.
+
+| Situation                                   | What you observe                                                                                                      |
+| ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Worker killed mid-request                   | The attempt is `abandoned` when its lease expires. The delivery goes back to `pending` and another worker retries it. |
+| Worker killed after the receiver accepted   | Same as above. The receiver sees the same `event.id` twice; its deduplication makes the second a no-op.               |
+| Receiver hangs                              | The request is cancelled at `timeoutMs`, recorded as `retry`, and the delivery waits for its next retry time.         |
+| Receiver returns `5xx`, `408`, `425`, `429` | Recorded as `retry`. Retries continue until the schedule runs out, then `failed`.                                     |
+| Receiver returns another `4xx` or any `3xx` | Recorded as `failed`. No retry. Redirects are never followed.                                                         |
+| Database connection drops mid-batch         | `run()` rejects. The attempt record stays `started` until its lease expires, then it is `abandoned` and retried.      |
+| Database unreachable at startup             | `check()` or the first query fails within your connection timeout. The process exits before claiming anything.        |
+| Startup query blocked by a lock             | The statement timeout cancels it. The process exits and the pool closes.                                              |
+| Wrong encryption key                        | The worker exits without consuming an attempt. Deliveries stay `pending` with their attempt count unchanged.          |
+| `SIGTERM` during an active request          | The request gets up to `shutdownGraceMs` to finish, its outcome is recorded, and `run()` resolves with exit code `0`. |
+| Schema older or newer than the package      | `check()` throws `SCHEMA_MISMATCH` naming the SQL to apply, before any work is claimed.                               |
+
+## Leases and crashes
+
+A worker claims a delivery by writing an attempt record with a lease token before it sends anything. The signed body is exactly the persisted body. If the worker dies, the lease expires after `leaseMs` (60 seconds by default, at least twice `timeoutMs`). The next worker to start a batch recovers expired leases: the attempt becomes `abandoned`, and the delivery returns to `pending` if retry budget remains, or becomes `failed` if it does not.
+
+Lease tokens are fenced. A worker that wakes up late and tries to complete an attempt whose lease already expired gets `stale`; the result is discarded even if a replacement worker has since claimed and finished the same delivery. Two workers can never both record success for one attempt.
+
+The recovered delivery is sent again with the same `event.id` and a fresh timestamp and signature. If the receiver accepted the first request and the worker died before recording it, the receiver sees a duplicate. This is the normal case the [receiver deduplication](/docs/guides/receive#process-each-event-once) exists for.
+
+## Database failures
+
+The library opens no connections of its own. It uses the pool you pass in, so pool-level failures surface as rejections from `run()`, `runOnce()`, `publish()`, or `check()`.
+
+- **Mid-batch disconnect.** If PostgreSQL terminates the connection while a transaction owns the client, `run()` rejects with the driver error. Nothing is retried inside the library; the supervisor restarts the process and lease recovery handles the half-finished attempt. The example entrypoint logs `webhooks.worker.failed` and exits with code `1` without an unhandled `error` event.
+- **Idle disconnect.** A connection terminated while the worker waits between polls produces the same exit. The pool's error is caught and reported, not thrown asynchronously.
+- **Blocked startup.** A startup query waiting on a lock is cancelled by the statement timeout you configure. The process exits within that bound and closes its connection.
+- **Accepted TCP, no handshake.** The connection timeout bounds a database that accepts the socket but never completes startup.
+
+Set `connectionTimeoutMillis`, `statement_timeout`, and `idle_in_transaction_session_timeout` on the pool. The [worker guide](/docs/operations/workers#bound-database-waits) shows the example configuration.
+
+## Restarts and deploys
+
+- **Graceful stop.** Abort the worker's signal on `SIGTERM`. Claims stop immediately, active requests get the grace period, outcomes are written, then `run()` resolves. The operations rehearsal confirms that a delivery accepted by the receiver during shutdown is recorded `succeeded` with one attempt, not retried.
+- **Hard kill.** `SIGKILL` leaves leases behind. They are recovered by the next worker after `leaseMs`. The rehearsal kills a worker during a backlog and checks that a replacement completes every delivery with no gaps and no duplicate receipts beyond what deduplication absorbs.
+- **Rolling deploy with a schema upgrade.** Apply the upgrade SQL first. Processes on the previous package keep running when the release notes say so, and a restarted old process fails at `check()`. See the [rollout order](/docs/operations/migrations#rollout-order).
+- **Multiple workers.** Workers coordinate through row locks and per-endpoint in-flight caps. A locked delivery is skipped, not waited for, so one slow endpoint does not stall a batch for other endpoints.
+
+## What is not covered
+
+These behaviors are verified on a single PostgreSQL instance with local receivers. They do not establish throughput limits, behavior under database failover, or internet-path delivery characteristics. Treat the [production checklist](/docs/operations/production) as the list of decisions that remain yours.
+
+## Where each claim is checked
+
+| Claim                                       | Test                                                                                          |
+| ------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| Crash after acceptance delivers again       | `test/worker.test.ts`, "recovers a crash after receiver acceptance"                           |
+| Expired tokens are fenced                   | `test/worker.test.ts`, "fences an expired token before and after a replacement claim"         |
+| Retry and permanent-failure status codes    | `test/worker.test.ts`, "retries HTTP" and "fails permanently on HTTP"                         |
+| Timeout and stalled responses retry         | `test/worker.test.ts`, "retries a timed out request" and the partial-response cases           |
+| Wrong key consumes no attempt               | `test/operations.test.ts`, "exits nonzero on a worker failure without consuming an attempt"   |
+| Mid-transaction and idle disconnects        | `test/operations.test.ts`, "handles a database disconnect" and "idle-pool connection error"   |
+| Blocked startup and stalled handshake bound | `test/operations.test.ts`, "bounds a blocked startup statement" and "never completes startup" |
+| `SIGTERM` finishes the active delivery      | `test/operations.test.ts`, "finishes an active delivery on SIGTERM before closing the pool"   |
+| Grace period and cancellation timing        | `test/worker-lifecycle.test.ts`, "worker shutdown deadlines"                                  |
+| `SIGKILL` recovery with a backlog           | `scripts/check-operations.mjs` (`pnpm test:operations`)                                       |
+| Old and new packages across an upgrade      | `scripts/check-upgrade-compat.mjs` (`pnpm test:compat`)                                       |
