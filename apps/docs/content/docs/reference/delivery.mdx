@@ -318,6 +318,6 @@ const customer = delivery.forScope({ type: 'organization', id: 'org_123' })
 await customer.deliveries.list()
 ```
 
-`check()` verifies delivery schema version `3` and throws `SCHEMA_MISMATCH` otherwise. It never applies migrations and does not check management storage.
+`check()` verifies delivery schema version `4` and throws `SCHEMA_MISMATCH` otherwise, naming the SQL to apply. It never applies migrations and does not check management storage.
 
 `forScope(scope)` returns `publish`, `deliveries`, and `deliverySettings` bound to one named scope. An invalid scope throws `INVALID_INPUT`. The root methods use application scope. Scope selection does not authorize access. See [scopes](/docs/concepts/scopes).

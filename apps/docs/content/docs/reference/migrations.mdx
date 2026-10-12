@@ -1,13 +1,17 @@
 ---
 title: PostgreSQL migrations
-description: Fresh-install SQL, component selection, custom schemas, and exported SQL assets.
+description: Fresh-install and upgrade SQL, component selection, custom schemas, and exported SQL assets.
 ---
 
-`good-webhooks/migrations` generates the fresh-install SQL for management and delivery tables; your migration tool applies it.
+`good-webhooks/migrations` generates the fresh-install and upgrade SQL for management and delivery tables; your migration tool applies it.
 
 ```ts
-import { getPostgresMigration } from 'good-webhooks/migrations'
-import type { PostgresMigrationOptions } from 'good-webhooks/migrations'
+import {
+  getPostgresMigration,
+  getPostgresUpgrade,
+  POSTGRES_SCHEMA_VERSION,
+} from 'good-webhooks/migrations'
+import type { PostgresMigrationOptions, PostgresUpgradeOptions } from 'good-webhooks/migrations'
 ```
 
 The [migrations guide](/docs/operations/migrations) covers applying, upgrading, and splitting storage.
@@ -41,13 +45,13 @@ Every generated script includes `CREATE SCHEMA IF NOT EXISTS` for its target nam
 
 ## Components and SQL assets
 
-| Component    | Created tables                                                                                                 | Equivalent shipped asset for `public`      |
-| ------------ | -------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
-| `management` | `webhook_endpoints`                                                                                            | `good-webhooks/migrations/management.sql`  |
-| `delivery`   | `webhook_schema_version`, `webhook_endpoint_state`, `webhook_events`, `webhook_deliveries`, `webhook_attempts` | `good-webhooks/migrations/delivery.sql`    |
-| `all`        | Both groups                                                                                                    | `good-webhooks/migrations/001-initial.sql` |
+| Component    | Created tables                                                                                                             | Equivalent shipped asset for `public`      |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| `management` | `webhook_schema_version` (if absent), `webhook_endpoints`                                                                  | `good-webhooks/migrations/management.sql`  |
+| `delivery`   | `webhook_schema_version` (if absent), `webhook_endpoint_state`, `webhook_events`, `webhook_deliveries`, `webhook_attempts` | `good-webhooks/migrations/delivery.sql`    |
+| `all`        | Both groups                                                                                                                | `good-webhooks/migrations/001-initial.sql` |
 
-All three `.sql` files are public package exports. They are text assets, not executable JavaScript imports. Resolve them with `import.meta.resolve` or `require.resolve` and read them with your migration tool:
+Each component records its version in `webhook_schema_version`; components that share a namespace share the table. The `.sql` files are public package exports. They are text assets, not executable JavaScript imports. Resolve them with `import.meta.resolve` or `require.resolve` and read them with your migration tool:
 
 ```ts
 import { readFile } from 'node:fs/promises'
@@ -58,15 +62,43 @@ const sql = await readFile(
 )
 ```
 
-The current delivery schema version is `3`. `createDelivery().check()` expects exactly that version. None of these assets upgrades existing data.
+The current schema version is `4`, exported as `POSTGRES_SCHEMA_VERSION`. Every `check()` expects exactly that version for its component. Fresh-install assets never upgrade existing data; use `getPostgresUpgrade` for that.
 
-<Accordions>
-<Accordion title="Upgrading from prototype storage">
+## getPostgresUpgrade
 
-Earlier prototype storage needs an explicit upgrade plan or fresh storage. The initial SQL does not upgrade it, and `check()` reports `SCHEMA_MISMATCH` until the version is `3`.
+```ts
+getPostgresUpgrade(options: PostgresUpgradeOptions): string
+```
 
-</Accordion>
-</Accordions>
+```ts title="scripts/write-upgrade.ts"
+import { writeFile } from 'node:fs/promises'
+import { getPostgresUpgrade } from 'good-webhooks/migrations'
+
+await writeFile(
+  'migrations/002-webhooks-schema-4.sql',
+  getPostgresUpgrade({ schema: 'webhooks', component: 'all', from: 3 }),
+)
+```
+
+Returns SQL that moves storage recorded at version `from` to the current version. It never connects to a database. The SQL first checks the recorded version and raises inside your transaction if it differs, so a wrong or repeated application rolls back cleanly.
+
+<auto-type-table path="../../reference-types.ts" name="PostgresUpgradeOptions" />
+
+| Option      | Default    | Meaning                                                               |
+| ----------- | ---------- | --------------------------------------------------------------------- |
+| `schema`    | `'public'` | Namespace of the installation being upgraded.                         |
+| `component` | `'all'`    | `'management'`, `'delivery'`, or `'all'` for a shared namespace.      |
+| `from`      | required   | The version recorded in the database. `3` is the only upgradable one. |
+
+`from: 4` throws `INVALID_CONFIG` because no upgrade is needed. Versions before `3` were never published and need fresh storage.
+
+| Upgrade | Shipped asset for `public`                             | What it changes                                                                           |
+| ------- | ------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
+| 3 to 4  | `good-webhooks/migrations/upgrades/004-all.sql`        | Records a version per component. Delivery rewrites its version row; management gains one. |
+|         | `good-webhooks/migrations/upgrades/004-management.sql` | Management in its own namespace: creates the version table and records `management`.      |
+|         | `good-webhooks/migrations/upgrades/004-delivery.sql`   | Delivery in its own namespace: rewrites the version row.                                  |
+
+In a shared namespace apply `all`, or `delivery` before `management`; the management step needs the rewritten table and fails otherwise. No data tables change in this upgrade, so processes on the previous package keep working until they restart. The [migrations guide](/docs/operations/migrations#upgrades) gives the rollout order.
 
 ## Schema names
 

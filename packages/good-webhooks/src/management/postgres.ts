@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { decryptSecret, encryptSecret, parseEncryptionKey } from '../crypto.js'
 import { WebhookError } from '../errors.js'
 import { postgresTables, resolvePostgresSchema } from '../postgres-schema.js'
+import { assertPostgresSchemaVersion } from '../schema-version.js'
 import { APPLICATION_SCOPE, scopeKey } from '../scope.js'
 import type { Database } from '../types.js'
 import { createManagement } from './index.js'
@@ -144,7 +145,7 @@ export interface PostgresManagementOptions {
 }
 
 export interface PostgresManagement extends EndpointManagement {
-  /** Verify management tables exist. Does not create or migrate storage. */
+  /** Verify management storage exists at the supported schema version. Does not create or migrate storage. */
   check(): Promise<void>
 }
 
@@ -180,6 +181,7 @@ export function createPostgresManagement(options: PostgresManagementOptions): Po
   return {
     ...management,
     async check() {
+      await assertPostgresSchemaVersion(database, schema, 'management')
       try {
         await database.query(`SELECT ${FIELDS} FROM ${table} LIMIT 0`)
       } catch (error) {

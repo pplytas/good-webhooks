@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+**Schema upgrade required.** Storage moves to schema version `4`: both components now record their version in `webhook_schema_version`, keyed by component, so management changes can be detected and gated like delivery changes. No data table changes.
+
+- Apply `getPostgresUpgrade({ from: 3 })` or `migrations/upgrades/004-all.sql` (or the per-component files for separate namespaces) with your migration runner before restarting on this version. Processes on `0.1.0-beta.1` keep working until they restart; a restarted old process fails at `check()`. See the [migrations guide](apps/docs/content/docs/operations/migrations.mdx#upgrades).
+- `good-webhooks/migrations` adds `getPostgresUpgrade()`, `PostgresUpgradeOptions`, and `POSTGRES_SCHEMA_VERSION`. Fresh-install SQL creates the version table with `IF NOT EXISTS` so management and delivery can be installed separately into one namespace.
+- `check()` messages name the SQL to apply next, and `createPostgresManagement().check()` now verifies the recorded version.
+- CI rehearses the upgrade against the previously published package with a pending backlog (`pnpm test:compat`). [ADR 0011](docs/adr/0011-versioned-schema-upgrades.md) records the contract.
+
 ## 0.1.0-beta.1 (unreleased)
 
 First beta. The public API is frozen: from this release, a breaking change is allowed only to fix a correctness or security defect, is labelled **Breaking** in the changelog, and ships with a migration note. The [stability policy](apps/docs/content/docs/operations/compatibility.mdx) defines the public surface, what counts as breaking, and the fix policy for `0.1.0` and later. Progress toward the stable release is tracked in [issue #22](https://github.com/pplytas/good-webhooks/issues/22).

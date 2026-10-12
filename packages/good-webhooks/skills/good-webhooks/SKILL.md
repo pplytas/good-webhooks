@@ -16,7 +16,7 @@ Follow these. They are the mistakes agents make most often with this library.
 
 1. `publish()` only stores the event. Nothing is sent unless a worker calls `worker.run({ signal })` (long-running) or `worker.runOnce()` (one batch).
 2. Load the storage encryption key from configuration (`WEBHOOK_ENCRYPTION_KEY`). Generate it once with `generateEncryptionKey()` and store it. Never generate it at startup: existing endpoints become unreadable.
-3. Never apply migrations at runtime. Write `getPostgresMigration()` output to a migration file and apply it with the project's migration tool. Call `check()` at startup.
+3. Never apply migrations at runtime. Write `getPostgresMigration()` output to a migration file and apply it with the project's migration tool. Call `check()` at startup. When `check()` reports `SCHEMA_MISMATCH` after a package upgrade, write `getPostgresUpgrade({ from })` output to a new migration file; the message names the call.
 4. Receivers pass the raw body (string or `Uint8Array`) to `parseWebhook()`, never parsed JSON. In Express use `express.raw({ type: 'application/json', limit: '512kb' })` on the route.
 5. Delivery is at least once with no ordering. Receivers insert `event.id` into a table with a unique key in the same transaction as their change, and respond `2xx` for repeats.
 6. Receivers respond `400` only for `WebhookError` codes `SIGNATURE_INVALID`, `SIGNATURE_EXPIRED`, `PAYLOAD_INVALID`. Everything else is `500`, so the sender retries.

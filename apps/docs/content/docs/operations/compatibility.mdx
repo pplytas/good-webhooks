@@ -27,7 +27,7 @@ The [entry points](/docs/installation#entry-points) and every name they export a
 - Pin the exact version and commit your lockfile. Only the latest beta receives fixes.
 - The public API is frozen. A breaking change is allowed only to fix a correctness or security defect. The changelog labels it **Breaking**, states the migration, and the release is a new beta.
 - Behavior that consumers can observe is part of the API: option defaults, error codes, the request format, and the signature scheme.
-- The delivery schema is at version `3`. Any schema change ships upgrade SQL and a rollout order for producers and workers, never fresh-install SQL alone.
+- The schema is at version `4`. Any schema change ships upgrade SQL and a rollout order for producers and workers, never fresh-install SQL alone.
 - Test producers, workers, and receivers together before rolling out.
 
 ### From 0.1.0
@@ -40,7 +40,7 @@ The [entry points](/docs/installation#entry-points) and every name they export a
 
 ## Package versions and schema versions
 
-They are independent. Installing a package never runs SQL. The current delivery schema version is `3`, and `check()` refuses to start against any other. A future schema change ships its own upgrade SQL and a rollout order; do not assume old and new workers can share a changed schema or that downgrading is safe.
+They are independent. Installing a package never runs SQL. The current schema version is `4` for both components, and `check()` refuses to start against any other. Each schema change ships upgrade SQL through `getPostgresUpgrade()` and a rollout order in the [migrations guide](/docs/operations/migrations#upgrades). Do not assume old and new workers can share a changed schema unless the release notes say so, and never assume downgrading is safe.
 
 ## What stays constant
 

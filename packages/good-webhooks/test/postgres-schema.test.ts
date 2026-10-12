@@ -6,7 +6,7 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import { createWebhooks, verifyWebhook } from '../src/index.js'
 import { createPostgresManagement } from '../src/management/postgres.js'
-import { getPostgresMigration } from '../src/migrations.js'
+import { getPostgresMigration, getPostgresUpgrade } from '../src/migrations.js'
 import { postgresTables, quotePostgresSchema } from '../src/postgres-schema.js'
 import { closeDatabase, pool, resetDatabase, TEST_ENCRYPTION_KEY } from './db.js'
 
@@ -41,6 +41,13 @@ describe('PostgreSQL schema configuration', () => {
     ] as const) {
       const sql = await readFile(new URL(`../migrations/${file}.sql`, import.meta.url), 'utf8')
       expect(sql).toBe(getPostgresMigration({ component }))
+    }
+    for (const component of ['all', 'management', 'delivery'] as const) {
+      const sql = await readFile(
+        new URL(`../migrations/upgrades/004-${component}.sql`, import.meta.url),
+        'utf8',
+      )
+      expect(sql).toBe(getPostgresUpgrade({ component, from: 3 }))
     }
   })
 
