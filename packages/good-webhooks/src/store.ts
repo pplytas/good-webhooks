@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { scopeFromKey } from './scope.js'
 import { postgresTables, resolvePostgresSchema } from './postgres-schema.js'
+import { assertPostgresSchemaVersion } from './schema-version.js'
 import { WebhookError } from './errors.js'
 import type {
   Attempt,
@@ -146,27 +147,7 @@ export function createStore(config: ResolvedConfig) {
   }
 
   async function checkSchema(): Promise<void> {
-    try {
-      const result = await config.database.query<{ version: number }>(
-        `SELECT version FROM ${tables.schemaVersion} ORDER BY version`,
-      )
-      if (result.rows.length !== 1 || result.rows[0]?.version !== 3) {
-        throw new WebhookError(
-          'SCHEMA_MISMATCH',
-          'Expected webhook delivery schema version 3. Older prototypes require an explicit upgrade or a fresh database; the initial migration does not upgrade existing data.',
-        )
-      }
-    } catch (error) {
-      if (error instanceof WebhookError) throw error
-      if (['42P01', '3F000', '42703'].includes(postgresCode(error) ?? '')) {
-        throw new WebhookError(
-          'SCHEMA_MISMATCH',
-          `Webhook delivery schema ${JSON.stringify(schema)} is missing or incompatible. Generate matching SQL with getPostgresMigration({ schema: ${JSON.stringify(schema)}, component: 'delivery' }).`,
-          { cause: error },
-        )
-      }
-      throw error
-    }
+    await assertPostgresSchemaVersion(config.database, schema, 'delivery')
   }
 
   async function publish(

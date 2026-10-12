@@ -76,8 +76,30 @@ An injected management provider keeps its own schema. Delivery's `schema` option
 await webhooks.check()
 ```
 
-`check()` verifies that the expected tables and columns exist and that the delivery schema version is `3`. It throws `SCHEMA_MISMATCH` otherwise and never changes anything. Call it at startup in the app and in every worker.
+`check()` verifies that the expected tables and columns exist and that each component records schema version `4`. It throws `SCHEMA_MISMATCH` otherwise, with a message naming the SQL to apply next, and never changes anything. Call it at startup in the app and in every worker.
 
 ## Upgrades
 
-The current SQL initializes fresh storage. It does not upgrade pre-release prototype schemas. A future schema change will ship its own upgrade SQL and a rollout order for producers and workers. Package versions and schema versions are independent: installing a new package never runs SQL. See [compatibility](/docs/operations/compatibility) and the [migration reference](/docs/reference/migrations).
+Package versions and schema versions are independent: installing a new package never runs SQL. When a release needs a newer schema, its notes say so, and `check()` on the new package refuses to start until the upgrade is applied.
+
+Generate the upgrade from the version your database records:
+
+```ts
+import { getPostgresUpgrade } from 'good-webhooks/migrations'
+
+const sql = getPostgresUpgrade({ from: 3 }) // both components in 'public'
+```
+
+Or read the shipped file, for example `good-webhooks/migrations/upgrades/004-all.sql`. Separate namespaces take `component: 'management'` and `component: 'delivery'` with their own `schema`. The SQL checks the recorded version first and raises inside your transaction if it differs, so applying it twice or against the wrong version rolls back.
+
+### Rollout order
+
+1. Deploy nothing yet. Apply the upgrade SQL with your migration runner in one transaction. Processes on the previous package keep running when the release notes say the upgrade is compatible with them; the 3 to 4 upgrade is.
+2. Restart producers on the new package. Their `check()` now passes.
+3. Restart workers and cleanup jobs on the new package. A restarted process on the old package fails fast with `SCHEMA_MISMATCH`, so finish the rollout rather than mixing versions for long.
+
+Never run a new package against an old schema or an old package against a schema it does not know: both refuse at `check()`. If a process starts without calling `check()`, it may run unsupported queries. The repository rehearses this order against the previously published package in CI.
+
+### Prototype storage
+
+Storage from before version `3` was never published and has no upgrade path. Use fresh storage. See [compatibility](/docs/operations/compatibility) and the [migration reference](/docs/reference/migrations).

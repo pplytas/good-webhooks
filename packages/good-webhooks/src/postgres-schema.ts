@@ -1,5 +1,10 @@
 import { WebhookError } from './errors.js'
 
+/** Schema version this package reads and writes. Both components record it in webhook_schema_version. */
+export const POSTGRES_SCHEMA_VERSION = 4
+
+export type PostgresComponent = 'management' | 'delivery'
+
 /** PostgreSQL truncates identifiers beyond 63 bytes. Reject them instead of targeting another schema. */
 export function resolvePostgresSchema(schema: string = 'public'): string {
   if (

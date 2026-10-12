@@ -2,6 +2,10 @@
 
 CREATE SCHEMA IF NOT EXISTS "public";
 
+CREATE TABLE IF NOT EXISTS "public"."webhook_schema_version" (component text PRIMARY KEY, version integer NOT NULL CHECK (version > 0));
+
+INSERT INTO "public"."webhook_schema_version" (component, version) VALUES ('management', 4);
+
 CREATE TABLE "public"."webhook_endpoints" (
   id text PRIMARY KEY,
   scope_key text NOT NULL,
@@ -22,8 +26,7 @@ CREATE TABLE "public"."webhook_endpoints" (
 CREATE INDEX webhook_endpoints_scope_idx ON "public"."webhook_endpoints"(scope_key)
   WHERE status <> 'deleted';
 
-CREATE TABLE "public"."webhook_schema_version" (version integer PRIMARY KEY);
-INSERT INTO "public"."webhook_schema_version" VALUES (3);
+INSERT INTO "public"."webhook_schema_version" (component, version) VALUES ('delivery', 4);
 
 CREATE TABLE "public"."webhook_endpoint_state" (
   scope_key text NOT NULL,
