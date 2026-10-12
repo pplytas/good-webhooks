@@ -44,6 +44,8 @@ The fresh-install SQL is defined in `packages/good-webhooks/src/migrations.ts`. 
 
 `pnpm test:compat` also needs `TEST_DATABASE_URL` and network access. It installs the previously published package into a temporary directory, queues a backlog on its schema, applies this checkout's upgrade SQL, and verifies that the old process fails fast after restart while the new one drains the backlog. Set `PREVIOUS_GOOD_WEBHOOKS_VERSION` to rehearse against another version.
 
+`pnpm test:chaos` needs `TEST_DATABASE_URL`. It drains a backlog through two supervised workers while PostgreSQL terminates their connections, a transaction holds an exclusive lock on the deliveries table past the statement timeout, one receiver answers `503` once per event, and another hangs once per event. It checks that workers are restarted, every delivery succeeds once, and every event reaches its receiver.
+
 `pnpm test:adapters` runs the [database matrix](docs/better-auth-database-compatibility.md). It requires local disposable server instances and creates its own temporary databases. You can select profiles, for example `pnpm test:adapters libsql,d1` without database servers or `pnpm test:adapters postgres,drizzle,prisma` with PostgreSQL. The CI adapter job supplies PostgreSQL, MySQL, MongoDB, and SQL Server services.
 
 ## Work on documentation
