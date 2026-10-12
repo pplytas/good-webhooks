@@ -1,17 +1,21 @@
-<p align="center">
-  <img src="https://good-webhooks.dev/icon.svg" width="64" height="64" alt="" />
-</p>
+<div align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://good-webhooks.dev/readme/wordmark-dark.png" />
+    <img alt="Good Webhooks" src="https://good-webhooks.dev/readme/wordmark-light.png" width="320" />
+  </picture>
+</div>
 
-<h1 align="center">Good Webhooks</h1>
+<br />
+
+<p align="center">
+  <a href="https://www.npmjs.com/package/good-webhooks"><picture><source media="(prefers-color-scheme: dark)" srcset="https://shieldcn.dev/npm/v/good-webhooks.svg?size=xs&mode=dark" /><img alt="npm version" src="https://shieldcn.dev/npm/v/good-webhooks.svg?size=xs&mode=light" /></picture></a>
+  <a href="https://www.npmjs.com/package/good-webhooks"><picture><source media="(prefers-color-scheme: dark)" srcset="https://shieldcn.dev/npm/dw/good-webhooks.svg?variant=secondary&size=xs&mode=dark" /><img alt="npm downloads" src="https://shieldcn.dev/npm/dw/good-webhooks.svg?variant=secondary&size=xs&mode=light" /></picture></a>
+  <a href="https://github.com/pplytas/good-webhooks/blob/main/LICENSE"><picture><source media="(prefers-color-scheme: dark)" srcset="https://shieldcn.dev/github/license/pplytas/good-webhooks.svg?variant=secondary&size=xs&mode=dark" /><img alt="MIT license" src="https://shieldcn.dev/github/license/pplytas/good-webhooks.svg?variant=secondary&size=xs&mode=light" /></picture></a>
+  <a href="https://github.com/pplytas/good-webhooks/actions/workflows/ci.yml"><picture><source media="(prefers-color-scheme: dark)" srcset="https://shieldcn.dev/github/ci/pplytas/good-webhooks.svg?workflow=ci.yml&branch=main&variant=secondary&size=xs&mode=dark" /><img alt="CI status" src="https://shieldcn.dev/github/ci/pplytas/good-webhooks.svg?workflow=ci.yml&branch=main&variant=secondary&size=xs&mode=light" /></picture></a>
+</p>
 
 <p align="center">
   Build webhook delivery into your TypeScript application.
-</p>
-
-<p align="center">
-  <a href="https://www.npmjs.com/package/good-webhooks"><img src="https://img.shields.io/npm/v/good-webhooks/beta?label=npm%40beta&color=09090b" alt="npm beta version" /></a>
-  <a href="https://github.com/pplytas/good-webhooks/actions/workflows/ci.yml"><img src="https://github.com/pplytas/good-webhooks/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI status" /></a>
-  <a href="https://github.com/pplytas/good-webhooks/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/good-webhooks?color=09090b" alt="MIT license" /></a>
 </p>
 
 <p align="center">
@@ -23,7 +27,12 @@
 
 You publish typed events. Good Webhooks stores them in your PostgreSQL database, and a worker you run delivers signed [Standard Webhooks](https://www.standardwebhooks.com) requests, retries failures, and records every attempt. Receivers verify a request with one function.
 
-![Your app calls publish(), which records the event and one delivery per endpoint in PostgreSQL. A worker signs, sends, retries, and records each delivery. The receiver calls parseWebhook() to verify it and get a typed event.](https://good-webhooks.dev/readme/flow.png)
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://good-webhooks.dev/readme/flow-dark.png" />
+    <img alt="Your app calls publish(), which records the event and one delivery per endpoint in PostgreSQL. A worker signs, sends, retries, and records each delivery. The receiver calls parseWebhook() to verify it and get a typed event." src="https://good-webhooks.dev/readme/flow-light.png" />
+  </picture>
+</p>
 
 > **Beta.** The public API is frozen except for correctness and security fixes. Pin the exact version and read the [stability policy](https://good-webhooks.dev/docs/operations/compatibility#stability-policy).
 
@@ -42,11 +51,26 @@ You publish typed events. Good Webhooks stores them in your PostgreSQL database,
 npm install good-webhooks@beta pg zod
 ```
 
-Using Better Auth for endpoint management? See the [Better Auth quick start](https://good-webhooks.dev/docs/better-auth/quick-start). The plugin uses your existing database adapter, and PostgreSQL is only needed for built-in delivery.
+```sh
+pnpm add good-webhooks@beta pg zod
+```
+
+```sh
+yarn add good-webhooks@beta pg zod
+```
+
+<details>
+<summary>Using Better Auth for endpoint management</summary>
+
+The plugin uses your existing Better Auth database adapter. PostgreSQL is only needed for built-in delivery.
 
 ```sh
 npm install good-webhooks@beta better-auth@1.7.7
 ```
+
+Then follow the [Better Auth quick start](https://good-webhooks.dev/docs/better-auth/quick-start).
+
+</details>
 
 ## Usage
 
