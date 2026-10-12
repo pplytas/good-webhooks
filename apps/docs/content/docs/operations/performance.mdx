@@ -43,7 +43,7 @@ Time in queue is dominated by backlog depth: every event was published before th
 
 - **Receiver time dominates in production.** The receiver here answers in 5 ms. A receiver that takes 300 ms makes delivery throughput a function of `concurrency` and `maxInFlight`, not of the library.
 - **One machine.** Workers, receivers, PostgreSQL, and the benchmark share CPU. Separate hosts change both directions: less contention, more network latency.
-- **No failures.** The profile has no retries, timeouts, or lease recoveries. The operations rehearsal and the worker tests cover those paths; they are slower by design.
+- **No failures.** The profile has no retries, timeouts, or lease recoveries. [Failure behavior](/docs/operations/failure-behavior) and the operations rehearsal cover those paths; they are slower by design.
 - **Small history.** The tables start empty. Delivery claims use partial indexes on status, so a large succeeded history should not slow claims, but this profile does not prove it.
 
 ## Run it yourself
