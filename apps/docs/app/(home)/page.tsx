@@ -195,7 +195,7 @@ export default function HomePage() {
       <section className="mt-24">
         <SectionHeading>Start here</SectionHeading>
         <div className="mt-4 max-w-xl">
-          <Code code="npm install good-webhooks@alpha" lang="bash" />
+          <Code code="npm install good-webhooks@beta" lang="bash" />
         </div>
         <div className="grid-cells mt-6 sm:grid-cols-2 lg:grid-cols-4">
           {paths.map((path) => (

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.0-beta.1 (unreleased)
+
+First beta. The public API is frozen: from this release, a breaking change is allowed only to fix a correctness or security defect, is labelled **Breaking** in the changelog, and ships with a migration note. The [stability policy](apps/docs/content/docs/operations/compatibility.mdx) defines the public surface, what counts as breaking, and the fix policy for `0.1.0` and later. Progress toward the stable release is tracked in [issue #22](https://github.com/pplytas/good-webhooks/issues/22).
+
+The npm dist-tag moves from `alpha` to `beta`; install with `good-webhooks@beta` or an exact version. Runtime behavior, public APIs, dependencies, and database schema are unchanged from `0.1.0-alpha.4`. No migration is required.
+
 ## 0.1.0-alpha.4 (2026-10-09)
 
 Agent and documentation update. The package now ships an [Agent Skill](https://agentskills.io) in `skills/good-webhooks/` with setup steps, code templates, and common-mistake rules that match the installed version. Install it with `npx skills add pplytas/good-webhooks`, or copy it from `node_modules/good-webhooks/skills/`. The npm README is rewritten around one example.

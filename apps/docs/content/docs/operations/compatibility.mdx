@@ -1,6 +1,6 @@
 ---
 title: Compatibility
-description: Supported runtimes and databases, what the alpha promises, and how to upgrade.
+description: Supported runtimes and databases, what each release promises, and how to upgrade.
 ---
 
 ## Supported configurations
@@ -14,12 +14,29 @@ description: Supported runtimes and databases, what the alpha promises, and how 
 
 Standalone consumers are checked with `strict: true` and `skipLibCheck: false`. Better Auth consumers use `skipLibCheck` for upstream declarations while keeping application-level inference checks. Other JavaScript runtimes are not verified.
 
-## Alpha policy
+## Stability policy
 
-- Pin the exact version and commit your lockfile.
-- Any alpha may change the public API, behavior, or storage. Each release's notes say what changed and how to migrate.
-- Only the latest alpha receives fixes.
+Good Webhooks is in beta. The beta series leads to the stable `0.1.0` release; progress is tracked in [issue #22](https://github.com/pplytas/good-webhooks/issues/22).
+
+### Public surface
+
+The [entry points](/docs/installation#entry-points) and every name they export are the public API, together with the shipped SQL files. Imports from `dist/` or `src/` paths, and anything not reachable from an entry point, are internal and can change without notice. `Internal` in a type name means the same.
+
+### During beta
+
+- Pin the exact version and commit your lockfile. Only the latest beta receives fixes.
+- The public API is frozen. A breaking change is allowed only to fix a correctness or security defect. The changelog labels it **Breaking**, states the migration, and the release is a new beta.
+- Behavior that consumers can observe is part of the API: option defaults, error codes, the request format, and the signature scheme.
+- The delivery schema is at version `3`. Any schema change ships upgrade SQL and a rollout order for producers and workers, never fresh-install SQL alone.
 - Test producers, workers, and receivers together before rolling out.
+
+### From 0.1.0
+
+- Releases follow [semantic versioning](https://semver.org). While the major version is `0`, a minor release may contain breaking changes; a patch release never does.
+- Breaking means a passing consumer type-check fails, observable runtime behavior changes, a supported runtime or database version is dropped, or SQL must run before upgrading.
+- Every breaking change is deprecated in at least one earlier minor with a runtime or type-level warning, and the release notes state the migration.
+- The latest minor receives all fixes. Security fixes also reach the previous minor for three months after the next minor ships.
+- `0.1.0` claims a stable API and upgrade path. It does not claim verified behavior at high throughput; the [production checklist](/docs/operations/production) and release notes state what has been measured.
 
 ## Package versions and schema versions
 

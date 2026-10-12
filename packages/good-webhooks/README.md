@@ -10,12 +10,12 @@ your app      event + deliveries    retries + history      the receiver
 **[Documentation](https://good-webhooks.vercel.app/docs)** · [Quick start](https://good-webhooks.vercel.app/docs/quick-start) · [API reference](https://good-webhooks.vercel.app/docs/reference) · [For AI agents](https://good-webhooks.vercel.app/docs/ai)
 
 > [!WARNING]
-> Alpha. The API can change between releases. Pin the exact version.
+> Beta. The public API is frozen except for correctness and security fixes. Pin the exact version and read the [stability policy](https://good-webhooks.vercel.app/docs/operations/compatibility#stability-policy).
 
 ## Install
 
 ```sh
-npm install good-webhooks@alpha pg zod
+npm install good-webhooks@beta pg zod
 ```
 
 Requires Node.js 24 or later. Built-in delivery and standalone PostgreSQL management require PostgreSQL 16 or 17. Payload schemas can use any [Standard Schema](https://standardschema.dev) library.
@@ -23,7 +23,7 @@ Requires Node.js 24 or later. Built-in delivery and standalone PostgreSQL manage
 For Better Auth endpoint management, install:
 
 ```sh
-npm install good-webhooks@alpha better-auth@1.7.7
+npm install good-webhooks@beta better-auth@1.7.7
 ```
 
 The plugin uses your existing Better Auth database adapter. PostgreSQL is only required if you add built-in delivery. Follow the [Better Auth quick start](https://good-webhooks.vercel.app/docs/better-auth/quick-start).

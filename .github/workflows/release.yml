@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: Exact alpha version from packages/good-webhooks/package.json
+        description: Exact pre-release version from packages/good-webhooks/package.json
         required: true
         type: string
       publish:
@@ -26,6 +26,7 @@ jobs:
       actions: read
     outputs:
       archive: ${{ steps.manifest.outputs.archive }}
+      tag: ${{ steps.manifest.outputs.tag }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -40,7 +41,7 @@ jobs:
         run: |
           conclusion=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$GITHUB_SHA&event=push&per_page=1" --jq '.workflow_runs[0].conclusion')
           test "$conclusion" = success || { echo 'Wait for CI on this main commit to succeed, then retry.'; exit 1; }
-      - name: Check alpha version and publication decision
+      - name: Check version, dist-tag, and publication decision
         id: manifest
         env:
           RELEASE_VERSION: ${{ inputs.version }}
@@ -51,12 +52,14 @@ jobs:
           import { readFileSync, appendFileSync } from 'node:fs'
           const pkg = JSON.parse(readFileSync('packages/good-webhooks/package.json', 'utf8'))
           assert.equal(pkg.name, 'good-webhooks')
-          assert.match(pkg.version, /^0\.\d+\.\d+-alpha\.\d+$/)
+          assert.match(pkg.version, /^0\.\d+\.\d+-(alpha|beta)\.\d+$/)
+          assert.match(pkg.publishConfig?.tag ?? '', /^(alpha|beta)$/, 'publishConfig.tag must name the pre-release channel.')
+          assert.ok(pkg.version.includes(`-${pkg.publishConfig.tag}.`), 'publishConfig.tag must match the version pre-release channel.')
           assert.equal(pkg.version, process.env.RELEASE_VERSION, 'The requested version must match the reviewed manifest.')
           if (process.env.PUBLISH === 'true') {
             assert.equal(pkg.private, undefined, 'Remove private in a reviewed publication change before publishing.')
           }
-          appendFileSync(process.env.GITHUB_OUTPUT, `archive=good-webhooks-${pkg.version}.tgz\n`)
+          appendFileSync(process.env.GITHUB_OUTPUT, `archive=good-webhooks-${pkg.version}.tgz\ntag=${pkg.publishConfig.tag}\n`)
           NODE
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
@@ -67,7 +70,8 @@ jobs:
       - name: Dry-run publication without credentials
         env:
           ARCHIVE: ${{ steps.manifest.outputs.archive }}
-        run: npm publish "packages/good-webhooks/$ARCHIVE" --dry-run --ignore-scripts --access public --tag alpha
+          TAG: ${{ steps.manifest.outputs.tag }}
+        run: npm publish "packages/good-webhooks/$ARCHIVE" --dry-run --ignore-scripts --access public --tag "$TAG"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: release-package
@@ -81,7 +85,7 @@ jobs:
           echo "Verified $ARCHIVE from commit $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
           shasum -a 256 "packages/good-webhooks/$ARCHIVE" >> "$GITHUB_STEP_SUMMARY"
   publish:
-    name: Publish alpha
+    name: Publish pre-release
     needs: prepare
     if: inputs.publish
     runs-on: ubuntu-latest
@@ -104,4 +108,5 @@ jobs:
       - name: Publish the verified archive through OIDC
         env:
           ARCHIVE: ${{ needs.prepare.outputs.archive }}
-        run: npm publish "$ARCHIVE" --ignore-scripts --access public --tag alpha --provenance
+          TAG: ${{ needs.prepare.outputs.tag }}
+        run: npm publish "$ARCHIVE" --ignore-scripts --access public --tag "$TAG" --provenance

@@ -1,6 +1,6 @@
 {
   "name": "good-webhooks",
-  "version": "0.1.0-alpha.4",
+  "version": "0.1.0-beta.1",
   "description": "Build webhook delivery into your TypeScript application.",
   "license": "MIT",
   "author": "pplytas",
@@ -113,6 +113,6 @@
   },
   "publishConfig": {
     "access": "public",
-    "tag": "alpha"
+    "tag": "beta"
   }
 }

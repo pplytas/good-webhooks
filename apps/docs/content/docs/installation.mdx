@@ -15,7 +15,7 @@ Install the dependencies for your setup below. Better Auth endpoint management u
 <Tab>
 
 ```package-install
-good-webhooks@alpha pg zod
+good-webhooks@beta pg zod
 ```
 
 ```package-install
@@ -26,7 +26,7 @@ npm install --save-dev @types/pg
 <Tab>
 
 ```package-install
-good-webhooks@alpha better-auth@1.7.7
+good-webhooks@beta better-auth@1.7.7
 ```
 
 Add `pg zod` too if the same app will [send events](/docs/better-auth/delivery). Supported range: `better-auth >=1.7.7 <1.8.0`. Then follow the [Better Auth plugin](/docs/better-auth) guide; the steps below are for the PostgreSQL setup.
@@ -37,7 +37,7 @@ Add `pg zod` too if the same app will [send events](/docs/better-auth/delivery).
 You only receive webhooks from a Good Webhooks sender:
 
 ```package-install
-good-webhooks@alpha zod
+good-webhooks@beta zod
 ```
 
 Skip the steps below and go to [receive webhooks](/docs/guides/receive). `good-webhooks/verify` has no database dependency.
@@ -45,7 +45,7 @@ Skip the steps below and go to [receive webhooks](/docs/guides/receive). `good-w
 </Tab>
 </Tabs>
 
-The `alpha` tag installs the latest alpha. Commit your lockfile. Payload schemas can use any [Standard Schema](https://standardschema.dev) library; these docs use Zod.
+The `beta` tag installs the latest beta. Commit your lockfile. Payload schemas can use any [Standard Schema](https://standardschema.dev) library; these docs use Zod.
 
 </Step>
 <Step>

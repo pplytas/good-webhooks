@@ -6,9 +6,9 @@ Build webhook delivery into your TypeScript application.
 
 Good Webhooks is an embedded TypeScript package for outbound webhooks. Manage endpoints through Better Auth, connect your own sender, or use the PostgreSQL publisher and worker. Standalone PostgreSQL management is also available.
 
-Good Webhooks is in alpha. The package requires Node.js 24 or later. The built-in delivery engine and standalone management provider require PostgreSQL 16 or later. Better Auth management uses the host's supported database adapter.
+Good Webhooks is in beta. The package requires Node.js 24 or later. The built-in delivery engine and standalone management provider require PostgreSQL 16 or later. Better Auth management uses the host's supported database adapter.
 
-TypeScript consumers need TypeScript 5.9.3 or later. Read the [compatibility policy](apps/docs/content/docs/operations/compatibility.mdx) for tested configurations and alpha upgrades.
+TypeScript consumers need TypeScript 5.9.3 or later. Read the [compatibility policy](apps/docs/content/docs/operations/compatibility.mdx) for tested configurations and the stability policy.
 
 | Setup                                              | Start here                                                                    |
 | -------------------------------------------------- | ----------------------------------------------------------------------------- |
@@ -22,10 +22,10 @@ See the [documentation overview](apps/docs/content/docs/index.mdx) for guides, c
 ## Install
 
 ```sh
-npm install good-webhooks@alpha
+npm install good-webhooks@beta
 ```
 
-Follow the [installation guide](https://good-webhooks.vercel.app/docs/installation) for the dependencies your setup needs. Pin the exact alpha version in applications and read the [release notes](https://github.com/pplytas/good-webhooks/releases) before upgrading.
+Follow the [installation guide](https://good-webhooks.vercel.app/docs/installation) for the dependencies your setup needs. Pin the exact version in applications and read the [release notes](https://github.com/pplytas/good-webhooks/releases) before upgrading.
 
 ## Work on the repository
 
@@ -94,7 +94,7 @@ pnpm --dir packages/good-webhooks pack
 In your application, install the resulting archive using npm or your preferred package manager:
 
 ```sh
-npm install /absolute/path/to/packages/good-webhooks/good-webhooks-0.1.0-alpha.4.tgz
+npm install /absolute/path/to/packages/good-webhooks/good-webhooks-0.1.0-beta.1.tgz
 ```
 
 Follow the [installation guide](apps/docs/content/docs/installation.mdx) for the dependencies your chosen setup needs. `pnpm test:package` verifies the archive with fresh npm consumers, both with and without Better Auth, including the published declarations and SQL exports. Registry publication is a separate release step.

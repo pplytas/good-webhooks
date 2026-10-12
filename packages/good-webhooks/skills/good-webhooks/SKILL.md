@@ -29,7 +29,7 @@ Follow these. They are the mistakes agents make most often with this library.
 ## Setup (standalone PostgreSQL)
 
 ```sh
-npm install good-webhooks@alpha pg zod
+npm install good-webhooks@beta pg zod
 node -e 'import("good-webhooks").then(m => console.log(m.generateEncryptionKey()))'   # store as WEBHOOK_ENCRYPTION_KEY
 node -e 'import("good-webhooks/migrations").then(m => process.stdout.write(m.getPostgresMigration()))' > 001-webhooks.sql
 ```
