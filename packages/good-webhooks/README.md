@@ -1,16 +1,48 @@
-# Good Webhooks
+<p align="center">
+  <img src="https://good-webhooks.dev/icon.svg" width="64" height="64" alt="" />
+</p>
 
-Send webhooks from your TypeScript application. You publish typed events; Good Webhooks stores them in your PostgreSQL database, delivers signed [Standard Webhooks](https://www.standardwebhooks.com) requests from a worker you run, retries failures, keeps attempt history, and supports replay. Receivers verify requests with one function.
+<h1 align="center">Good Webhooks</h1>
+
+<p align="center">
+  Build webhook delivery into your TypeScript application.
+</p>
+
+<p align="center">
+  <a href="https://www.npmjs.com/package/good-webhooks"><img src="https://img.shields.io/npm/v/good-webhooks/beta?label=npm%40beta&color=09090b" alt="npm beta version" /></a>
+  <a href="https://github.com/pplytas/good-webhooks/actions/workflows/ci.yml"><img src="https://github.com/pplytas/good-webhooks/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI status" /></a>
+  <a href="https://github.com/pplytas/good-webhooks/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/good-webhooks?color=09090b" alt="MIT license" /></a>
+</p>
+
+<p align="center">
+  <a href="https://good-webhooks.dev/docs"><b>Documentation</b></a> ·
+  <a href="https://good-webhooks.dev/docs/quick-start">Quick start</a> ·
+  <a href="https://good-webhooks.dev/docs/reference">API reference</a> ·
+  <a href="https://good-webhooks.dev/docs/ai">For AI agents</a>
+</p>
+
+You publish typed events. Good Webhooks stores them in your PostgreSQL database, and a worker you run delivers signed [Standard Webhooks](https://www.standardwebhooks.com) requests, retries failures, and records every attempt. Receivers verify a request with one function.
 
 ```text
-publish()  →  PostgreSQL  →  worker  →  signed POST  →  parseWebhook()
-your app      event + deliveries    retries + history      the receiver
+publish()        your app records the event
+    ↓
+PostgreSQL       event + one delivery per endpoint
+    ↓
+worker.run()     signs, sends, retries, records
+    ↓
+parseWebhook()   the receiver gets a typed event
 ```
 
-**[Documentation](https://good-webhooks.dev/docs)** · [Quick start](https://good-webhooks.dev/docs/quick-start) · [API reference](https://good-webhooks.dev/docs/reference) · [For AI agents](https://good-webhooks.dev/docs/ai)
+> **Beta.** The public API is frozen except for correctness and security fixes. Pin the exact version and read the [stability policy](https://good-webhooks.dev/docs/operations/compatibility#stability-policy).
 
-> [!WARNING]
-> Beta. The public API is frozen except for correctness and security fixes. Pin the exact version and read the [stability policy](https://good-webhooks.dev/docs/operations/compatibility#stability-policy).
+## Features
+
+- **Typed events.** Any [Standard Schema](https://standardschema.dev) validator. Bad payloads are rejected on publish, and receivers decode into the same types.
+- **Standard Webhooks signing.** Every request carries `webhook-id`, `webhook-timestamp`, and an HMAC-SHA256 signature, so any compliant verifier works.
+- **Transactional publish.** Pass your open PostgreSQL client. If your write rolls back, the event never existed.
+- **Retries and replay.** A bounded retry schedule, every attempt recorded, and replay without changing the event ID.
+- **Better Auth plugin.** Signed-in users manage their own endpoints through authenticated routes.
+- **Nothing implicit.** No connections, migrations, or workers start on their own. You own the pool and the process.
 
 ## Install
 
@@ -18,57 +50,79 @@ your app      event + deliveries    retries + history      the receiver
 npm install good-webhooks@beta pg zod
 ```
 
-Requires Node.js 24 or later. Built-in delivery and standalone PostgreSQL management require PostgreSQL 16 or 17. Payload schemas can use any [Standard Schema](https://standardschema.dev) library.
-
-For Better Auth endpoint management, install:
+Using Better Auth for endpoint management? See the [Better Auth quick start](https://good-webhooks.dev/docs/better-auth/quick-start). The plugin uses your existing database adapter, and PostgreSQL is only needed for built-in delivery.
 
 ```sh
 npm install good-webhooks@beta better-auth@1.7.7
 ```
 
-The plugin uses your existing Better Auth database adapter. PostgreSQL is only required if you add built-in delivery. Follow the [Better Auth quick start](https://good-webhooks.dev/docs/better-auth/quick-start).
+## Usage
 
-## Use
+**1. Create the tables.** Apply the SQL from `getPostgresMigration()`, exported by `good-webhooks/migrations`, once with your migration tool.
+
+**2. Create the client.**
 
 ```ts
 import { createWebhooks } from 'good-webhooks'
 import { Pool } from 'pg'
 import { z } from 'zod'
 
-const webhooks = createWebhooks({
-  database: new Pool({ connectionString: process.env.DATABASE_URL }),
-  encryptionKey: process.env.WEBHOOK_ENCRYPTION_KEY!, // from generateEncryptionKey(), stored once
-  events: {
-    'invoice.paid': z.object({ invoiceId: z.string(), amount: z.number().int() }),
-  },
-})
+const events = {
+  'invoice.paid': z.object({
+    invoiceId: z.string(),
+    amount: z.number().int(),
+  }),
+}
 
-// A customer registers an endpoint. The signing secret is returned once.
+const webhooks = createWebhooks({
+  database: new Pool({
+    connectionString: process.env.DATABASE_URL,
+  }),
+  // Created once by generateEncryptionKey().
+  encryptionKey: process.env.WEBHOOK_ENCRYPTION_KEY!,
+  events,
+})
+```
+
+**3. Register an endpoint and publish.**
+
+```ts
+// The signing secret is returned only once.
 const { secret } = await webhooks.endpoints.create({
   url: 'https://customer.example/webhooks',
   eventTypes: ['invoice.paid'],
 })
 
-// Publish a typed event, optionally inside your own transaction.
+// Add { transaction: client } as a second argument
+// to publish inside your own transaction.
 await webhooks.publish({
   type: 'invoice.paid',
   data: { invoiceId: 'inv_123', amount: 4200 },
   idempotencyKey: 'invoice.paid:inv_123',
 })
-
-// In a separate process: sign, send, and retry until stopped.
-await webhooks.worker.run({ signal })
 ```
 
-The receiver verifies the raw body and gets a typed event:
+**4. Run a worker** in a separate process.
+
+```ts
+const stop = new AbortController()
+process.once('SIGTERM', () => stop.abort())
+
+await webhooks.worker.run({ signal: stop.signal })
+```
+
+**5. Verify on the receiving side.**
 
 ```ts
 import { parseWebhook } from 'good-webhooks/verify'
 
-const event = await parseWebhook({ body: rawBody, headers, secret, events })
+const event = await parseWebhook({
+  body: rawBody, // the unparsed request body
+  headers: request.headers,
+  secret, // the endpoint's signing secret
+  events, // the same event schemas
+})
 ```
-
-Apply the SQL from `getPostgresMigration()` (in `good-webhooks/migrations`) with your migration tool first. Nothing runs implicitly: no connections, migrations, or workers start on their own.
 
 ## Setups
 
@@ -80,14 +134,24 @@ Apply the SQL from `getPostgresMigration()` (in `good-webhooks/migrations`) with
 | Endpoint management for your own sender      | [Custom senders](https://good-webhooks.dev/docs/guides/custom-senders) |
 | Only receiving webhooks                      | [Receive webhooks](https://good-webhooks.dev/docs/guides/receive)      |
 
-Better Auth `>=1.7.7 <1.8.0` is an optional peer dependency, tested against 1.7.7. TypeScript consumers need 5.9.3 or later with `NodeNext` or `Bundler` resolution.
+## Requirements
 
-## For AI agents
-
-This package ships an [Agent Skill](https://agentskills.io) in `skills/good-webhooks/` that matches the installed version. Docs for agents: [llms.txt](https://good-webhooks.dev/llms.txt).
+| Dependency  | Supported                                                              |
+| ----------- | ---------------------------------------------------------------------- |
+| Node.js     | 24 or later                                                            |
+| PostgreSQL  | 16 or 17, for built-in delivery and standalone management              |
+| TypeScript  | 5.9.3 or later, with `NodeNext` or `Bundler` resolution                |
+| Better Auth | `>=1.7.7 <1.8.0`, optional peer dependency, tested against 1.7.7       |
+| Validators  | Any [Standard Schema](https://standardschema.dev) library, such as Zod |
 
 ## Guarantees
 
 Delivery is at least once, with no ordering. Receivers must verify signatures and record each event ID with their change. See [delivery guarantees](https://good-webhooks.dev/docs/concepts/delivery-guarantees).
 
-MIT licensed. See the [contribution guide](https://github.com/pplytas/good-webhooks/blob/main/CONTRIBUTING.md) and [security policy](https://github.com/pplytas/good-webhooks/blob/main/SECURITY.md).
+## For AI agents
+
+This package ships an [Agent Skill](https://agentskills.io) in `skills/good-webhooks/` that matches the installed version. Docs for agents are at [llms.txt](https://good-webhooks.dev/llms.txt).
+
+## License
+
+MIT. See the [contribution guide](https://github.com/pplytas/good-webhooks/blob/main/CONTRIBUTING.md) and [security policy](https://github.com/pplytas/good-webhooks/blob/main/SECURITY.md).

@@ -2,7 +2,7 @@
 
 ## 0.1.0-beta.3 (2026-10-12)
 
-Documentation update. The documentation moves to [good-webhooks.dev](https://good-webhooks.dev). The npm README, the bundled Agent Skill, and the package `homepage` now link there, and the package lists npm keywords. Links to `good-webhooks.vercel.app` from earlier versions redirect to the new domain.
+Documentation update. The documentation moves to [good-webhooks.dev](https://good-webhooks.dev). The npm README, the bundled Agent Skill, and the package `homepage` now link there, and the package lists npm keywords. The npm README is reorganized into numbered usage steps, a feature list, and a requirements table, with code that fits npm's page width. Links to `good-webhooks.vercel.app` from earlier versions redirect to the new domain.
 
 Runtime behavior, public APIs, dependencies, and database schema are unchanged from `0.1.0-beta.2`. No migration is required.
 
