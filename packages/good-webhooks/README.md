@@ -23,7 +23,7 @@
 
 You publish typed events. Good Webhooks stores them in your PostgreSQL database, and a worker you run delivers signed [Standard Webhooks](https://www.standardwebhooks.com) requests, retries failures, and records every attempt. Receivers verify a request with one function.
 
-![Your app calls publish(), which records the event and one delivery per endpoint in PostgreSQL. A worker signs, sends, retries, and records each delivery. The receiver calls parseWebhook() to verify it and get a typed event.](https://good-webhooks.dev/readme/flow.svg)
+![Your app calls publish(), which records the event and one delivery per endpoint in PostgreSQL. A worker signs, sends, retries, and records each delivery. The receiver calls parseWebhook() to verify it and get a typed event.](https://good-webhooks.dev/readme/flow.png)
 
 > **Beta.** The public API is frozen except for correctness and security fixes. Pin the exact version and read the [stability policy](https://good-webhooks.dev/docs/operations/compatibility#stability-policy).
 
