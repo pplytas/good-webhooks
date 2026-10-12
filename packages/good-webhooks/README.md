@@ -1,11 +1,8 @@
-<div align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://good-webhooks.dev/readme/wordmark-dark.png" />
-    <img alt="Good Webhooks" src="https://good-webhooks.dev/readme/wordmark-light.png" width="320" />
-  </picture>
-</div>
+<p align="center">
+  <img alt="" src="https://good-webhooks.dev/readme/mark.png" width="56" height="56" />
+</p>
 
-<br />
+<h1 align="center">Good Webhooks</h1>
 
 <p align="center">
   <a href="https://www.npmjs.com/package/good-webhooks"><picture><source media="(prefers-color-scheme: dark)" srcset="https://shieldcn.dev/npm/v/good-webhooks.svg?size=xs&mode=dark" /><img alt="npm version" src="https://shieldcn.dev/npm/v/good-webhooks.svg?size=xs&mode=light" /></picture></a>

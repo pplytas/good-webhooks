@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- The npm README title is now text instead of an image, so it stays readable when npm's theme toggle differs from the system color scheme.
+
 ## 0.1.0-beta.3 (2026-10-12)
 
 Documentation update. The documentation moves to [good-webhooks.dev](https://good-webhooks.dev). The npm README, the bundled Agent Skill, and the package `homepage` now link there, and the package lists npm keywords. The npm README is reorganized into numbered usage steps, a feature list, and a requirements table, with code that fits npm's page width. Links to `good-webhooks.vercel.app` from earlier versions redirect to the new domain.
