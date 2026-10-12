@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: Exact pre-release version from packages/good-webhooks/package.json
+        description: Exact version from packages/good-webhooks/package.json (pre-release or stable)
         required: true
         type: string
       publish:
@@ -52,9 +52,12 @@ jobs:
           import { readFileSync, appendFileSync } from 'node:fs'
           const pkg = JSON.parse(readFileSync('packages/good-webhooks/package.json', 'utf8'))
           assert.equal(pkg.name, 'good-webhooks')
-          assert.match(pkg.version, /^0\.\d+\.\d+-(alpha|beta)\.\d+$/)
-          assert.match(pkg.publishConfig?.tag ?? '', /^(alpha|beta)$/, 'publishConfig.tag must name the pre-release channel.')
-          assert.ok(pkg.version.includes(`-${pkg.publishConfig.tag}.`), 'publishConfig.tag must match the version pre-release channel.')
+          const prerelease = /^\d+\.\d+\.\d+-(alpha|beta)\.\d+$/.exec(pkg.version)
+          const stable = /^\d+\.\d+\.\d+$/.test(pkg.version)
+          assert.ok(prerelease || stable, 'Version must be x.y.z or x.y.z-(alpha|beta).n.')
+          const tag = pkg.publishConfig?.tag ?? ''
+          if (prerelease) assert.equal(tag, prerelease[1], 'publishConfig.tag must match the version pre-release channel.')
+          else assert.equal(tag, 'latest', 'A stable version must publish to the latest dist-tag.')
           assert.equal(pkg.version, process.env.RELEASE_VERSION, 'The requested version must match the reviewed manifest.')
           if (process.env.PUBLISH === 'true') {
             assert.equal(pkg.private, undefined, 'Remove private in a reviewed publication change before publishing.')
@@ -85,7 +88,7 @@ jobs:
           echo "Verified $ARCHIVE from commit $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
           shasum -a 256 "packages/good-webhooks/$ARCHIVE" >> "$GITHUB_STEP_SUMMARY"
   publish:
-    name: Publish pre-release
+    name: Publish
     needs: prepare
     if: inputs.publish
     runs-on: ubuntu-latest

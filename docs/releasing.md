@@ -14,7 +14,7 @@ Require these main-branch checks before merging:
 - `Package consumers`
 - `Documentation`
 
-After main CI passes, manually run `.github/workflows/release.yml` on `main`, enter the exact manifest version, and leave `publish` false. The workflow requires successful CI for that commit, checks that the version and `publishConfig.tag` name the same pre-release channel (`alpha` or `beta`), tests the archive in fresh consumers, audits runtime dependencies, and dry-runs npm publication. Download its `release-package` artifact. The run summary records the commit and archive SHA-256.
+After main CI passes, manually run `.github/workflows/release.yml` on `main`, enter the exact manifest version, and leave `publish` false. The workflow requires successful CI for that commit, checks that the version and `publishConfig.tag` agree (a pre-release channel such as `beta`, or `latest` for a stable `x.y.z` version), tests the archive in fresh consumers, audits runtime dependencies, and dry-runs npm publication. Download its `release-package` artifact. The run summary records the commit and archive SHA-256.
 
 ```sh
 gh workflow run release.yml --ref main -f version=0.1.0-beta.1 -f publish=false
@@ -24,7 +24,7 @@ A dry run proves package preparation. It does not authenticate to npm or establi
 
 ## Approve the first publication
 
-Registry publication is a separate decision. Before publishing, review the exact commit, archive, release notes, and npm account. The publication change removes `private` only from `packages/good-webhooks/package.json`. Verify its merged main commit through CI and the release dry run. Keep `publishConfig.tag` set to the current pre-release channel; the workflow publishes with that dist-tag.
+Registry publication is a separate decision. Before publishing, review the exact commit, archive, release notes, and npm account. The publication change removes `private` only from `packages/good-webhooks/package.json`. Verify its merged main commit through CI and the release dry run. Keep `publishConfig.tag` set to the current pre-release channel, or `latest` for a stable version; the workflow publishes with that dist-tag.
 
 An npm registry 404 does not reserve the name or prove that npm will accept it. The initial release requires an authenticated npm account with the right to publish `good-webhooks`. Never publish a placeholder package to claim the name.
 
@@ -71,3 +71,7 @@ npm view good-webhooks dist-tags --json
 Keep documentation explicit about pre-release status and use the channel tag (`@beta`) or an exact version in installation commands. Moving from `alpha` to `beta` started with `0.1.0-beta.1`; once it is published, move `latest` to it so default installs leave the alpha series. Moving a tag does not change the published archive or its README. Package README changes require a new release.
 
 Create a GitHub prerelease named `v<version>` targeting the verified commit, with its changelog entry and installation command. Install commands in the docs name the channel tag; publish promptly after merging a channel change so the deployed docs do not point at a tag that has no versions yet. Link the release's compatibility and migration notes. Retain old versions so existing lockfiles continue to work; use npm deprecation messages for superseded or broken versions when needed.
+
+## Promote to a stable version
+
+The first stable release is `0.1.0`, gated by the exit criteria in [issue #22](https://github.com/pplytas/good-webhooks/issues/22). In the prepare PR, set the package version to `0.1.0`, set `publishConfig.tag` to `latest`, date the changelog entry, and replace beta wording and `@beta` install commands with the plain package name. The release workflow accepts the stable version and publishes to `latest` directly, so no dist-tag move is needed afterwards. Create a normal (non-prerelease) GitHub release. Keep the `beta` tag on the last beta; do not delete pre-release versions.
