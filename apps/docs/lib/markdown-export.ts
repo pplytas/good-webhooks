@@ -38,6 +38,8 @@ export const stringifyComponent: Stringify = (input, _parent, state, info) => {
     case 'Step':
     case 'Accordions':
       return flowContent(node, state, info)
+    case 'AgentPrompt':
+      return ''
     case 'Accordion':
       return `**${attribute(node, 'title') ?? ''}**\n\n${flowContent(node, state, info)}`
   }

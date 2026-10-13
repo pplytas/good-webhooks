@@ -18,7 +18,7 @@ try {
   const landing = await page.goto(url)
   assert.equal(landing.status(), 200)
   await page.getByRole('heading', { level: 1 }).waitFor()
-  await page.getByRole('link', { name: 'Documentation', exact: true }).first().click()
+  await page.getByRole('link', { name: 'Read the docs', exact: true }).first().click()
   await page.waitForURL((target) => target.pathname === '/docs')
   await page.getByRole('heading', { name: 'Introduction', exact: true }).waitFor()
 

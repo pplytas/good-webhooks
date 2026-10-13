@@ -5,42 +5,60 @@
 @theme {
   --font-sans: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-mono), ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  /* Stronger than the browser curves, so short transitions still read as deliberate. */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
 }
 
-/* Monochrome, like nuqs and Better Auth: pure white and near-black surfaces, black primary,
-   hairline borders. Color appears only in syntax highlighting and status callouts. */
+/* Ink and signal: warm stone neutrals (paper in light mode, charcoal in dark mode) with one
+   orange accent for primary actions, active navigation, links, and the logo mark. Every
+   text color on every surface was checked for 4.5:1. */
 :root {
-  --color-fd-background: #ffffff;
-  --color-fd-foreground: #09090b;
-  --color-fd-card: #fafafa;
-  --color-fd-muted: #f4f4f5;
-  --color-fd-muted-foreground: #6b6b74;
-  --color-fd-secondary: #f4f4f5;
-  --color-fd-accent: #f4f4f5;
-  --color-fd-border: #e4e4e7;
-  --color-fd-primary: #09090b;
-  --color-fd-primary-foreground: #fafafa;
-  --color-fd-ring: #a1a1aa;
+  --color-fd-background: #fdfcfa;
+  --color-fd-foreground: #1c1917;
+  --color-fd-card: #f8f6f2;
+  --color-fd-card-foreground: #1c1917;
+  --color-fd-popover: #fdfcfa;
+  --color-fd-popover-foreground: #1c1917;
+  --color-fd-muted: #f3f0ea;
+  --color-fd-muted-foreground: #6b6560;
+  --color-fd-secondary: #f3f0ea;
+  --color-fd-secondary-foreground: #1c1917;
+  --color-fd-accent: #ece8e0;
+  --color-fd-accent-foreground: #1c1917;
+  --color-fd-border: #e5e0d7;
+  --color-fd-primary: #b23a0b;
+  --color-fd-primary-foreground: #fff7ed;
+  --color-fd-ring: #d9764a;
 }
 
 .dark {
-  --color-fd-background: #09090b;
-  --color-fd-foreground: #fafafa;
-  --color-fd-card: #0f0f11;
-  --color-fd-muted: #18181b;
-  --color-fd-muted-foreground: #a1a1aa;
-  --color-fd-secondary: #18181b;
-  --color-fd-accent: #1f1f23;
-  --color-fd-border: #27272a;
-  --color-fd-primary: #fafafa;
-  --color-fd-primary-foreground: #09090b;
-  --color-fd-ring: #52525b;
+  --color-fd-background: #0f0e0c;
+  --color-fd-foreground: #f5f2ec;
+  --color-fd-card: #171511;
+  --color-fd-card-foreground: #f5f2ec;
+  --color-fd-popover: #131210;
+  --color-fd-popover-foreground: #f5f2ec;
+  --color-fd-muted: #1f1c17;
+  --color-fd-muted-foreground: #a8a29e;
+  --color-fd-secondary: #1f1c17;
+  --color-fd-secondary-foreground: #f5f2ec;
+  --color-fd-accent: #29251f;
+  --color-fd-accent-foreground: #f5f2ec;
+  --color-fd-border: #2b2722;
+  --color-fd-primary: #fb923c;
+  --color-fd-primary-foreground: #1c1206;
+  --color-fd-ring: #c2410c;
 }
 
 .dark #nd-sidebar {
-  --color-fd-muted: #18181b;
-  --color-fd-secondary: #1f1f23;
-  --color-fd-muted-foreground: #a1a1aa;
+  --color-fd-muted: #1f1c17;
+  --color-fd-secondary: #29251f;
+  --color-fd-muted-foreground: #a8a29e;
+}
+
+::selection {
+  background: color-mix(in oklab, var(--color-fd-primary) 22%, transparent);
 }
 
 /* github-light-high-contrast comments (#66707b) reach only 3.7:1 on highlighted lines. Darken that one token. */
@@ -69,4 +87,38 @@ h3 {
 
 .grid-cells > * {
   background: var(--color-fd-background);
+}
+
+/* Pressable things answer on pointer-down, before anything navigates or runs. */
+.pressable:active {
+  transform: scale(0.97);
+}
+
+/* Inline links on the landing page. */
+.link {
+  color: var(--color-fd-foreground);
+  font-weight: 500;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in oklab, var(--color-fd-foreground) 30%, transparent);
+  text-underline-offset: 0.25em;
+  transition: text-decoration-color 150ms var(--ease-out);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .link:hover,
+  .group:hover .link {
+    text-decoration-color: var(--color-fd-primary);
+  }
+}
+
+/* Decorative motion on the landing page: the packets travelling through the delivery drawing.
+   The drawing itself shows its resolved frame (see components/landing/delivery.tsx). */
+@media (prefers-reduced-motion: reduce) {
+  .motion-only {
+    display: none;
+  }
+
+  .pressable:active {
+    transform: none;
+  }
 }

@@ -4,7 +4,7 @@ import { site } from '@/lib/site'
 export const ogSize = { width: 1200, height: 630 }
 
 /** The envelope mark from `components/logo.tsx`, with fixed colors for image rendering. */
-export function Mark({ size, color = '#fafafa', background = '#09090b' }: MarkProps) {
+export function Mark({ size, color = '#fb923c', background = '#1c1206' }: MarkProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 32 32" fill="none">
       <rect x="2" y="2" width="28" height="28" rx="6" fill={color} />
@@ -33,8 +33,8 @@ export function ogImage({ title, description }: { title: string; description?: s
         width: '100%',
         height: '100%',
         padding: '72px 80px',
-        backgroundColor: '#09090b',
-        color: '#fafafa',
+        backgroundColor: '#0f0e0c',
+        color: '#f5f2ec',
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
@@ -46,12 +46,12 @@ export function ogImage({ title, description }: { title: string; description?: s
           {title}
         </span>
         {description && (
-          <span style={{ fontSize: 34, lineHeight: 1.35, color: '#a1a1aa', marginTop: 24 }}>
+          <span style={{ fontSize: 34, lineHeight: 1.35, color: '#a8a29e', marginTop: 24 }}>
             {description}
           </span>
         )}
       </div>
-      <span style={{ fontSize: 28, color: '#6b6b74', marginTop: 48 }}>
+      <span style={{ fontSize: 28, color: '#fb923c', marginTop: 48 }}>
         {new URL(site.url).host}
       </span>
     </div>,

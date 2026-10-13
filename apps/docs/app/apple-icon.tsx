@@ -14,10 +14,10 @@ export default function AppleIcon() {
         justifyContent: 'center',
         width: '100%',
         height: '100%',
-        backgroundColor: '#09090b',
+        backgroundColor: '#ea580c',
       }}
     >
-      <Mark size={140} color="#fafafa" background="#09090b" />
+      <Mark size={140} color="#ea580c" background="#fff7ed" />
     </div>,
     size,
   )
