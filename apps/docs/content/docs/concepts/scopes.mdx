@@ -3,30 +3,16 @@ title: Scopes
 description: A scope keeps one customer's endpoints and events apart from everyone else's. It never grants access by itself.
 ---
 
-Every endpoint and every event belongs to exactly one scope. An event only reaches endpoints in its own scope. That is how one installation serves many customers without one customer's events reaching another's endpoints.
+Every endpoint and every event belongs to exactly one scope, and an event only reaches endpoints in its own scope. That is how one installation serves many customers without crossing their events.
 
-| Scope             | Value                          | Typical owner                  |
-| ----------------- | ------------------------------ | ------------------------------ |
-| Application scope | `null`                         | Your platform itself           |
-| Named scope       | `{ type: 'user', id }`         | One signed-in user             |
-| Named scope       | `{ type: 'organization', id }` | One organization or team       |
-| Named scope       | `{ type: 'project', id }`      | Any grouping your domain needs |
+| Scope             | Value                                                                 |
+| ----------------- | --------------------------------------------------------------------- |
+| Application scope | `null`: endpoints your platform registers for itself                  |
+| Named scope       | `{ type, id }`, for example `{ type: 'organization', id: 'org_123' }` |
 
-## Who receives what
-
-An event published in one scope reaches endpoints in that scope only. There is no inheritance and no fallback:
-
-| Event published in ↓ · Endpoint in → | application | user `u_1` | organization `o_1` |
-| ------------------------------------ | :---------: | :--------: | :----------------: |
-| application                          |      ✓      |            |                    |
-| user `u_1`                           |             |     ✓      |                    |
-| organization `o_1`                   |             |            |         ✓          |
-
-Application scope is not a parent of the named scopes. To reach a customer's endpoints, publish in that customer's exact scope.
+There is no inheritance and no fallback. Application scope is not a parent of the named scopes: to reach a customer's endpoints, publish in that customer's exact scope.
 
 ## Choosing a scope in code
-
-Each API selects the scope in its own way:
 
 <Tabs groupId="api" persist items={['createWebhooks', 'Management provider', 'Better Auth client']}>
 <Tab>
@@ -88,4 +74,4 @@ The Better Auth routes are the exception: they check the session, organization m
 
 ## When an owner goes away
 
-The Better Auth plugin retires a user's endpoints when the user is deleted, and an organization's endpoints when the organization is deleted. With standalone management, call `removeScope(scope)` on a `createPostgresManagement()` provider from your own deletion workflow. See [manage endpoints](/docs/guides/endpoints#when-a-scope-owner-leaves).
+The Better Auth plugin retires a user's or organization's endpoints when the owner is deleted. With standalone management, call [`removeScope(scope)`](/docs/guides/endpoints#when-a-scope-owner-leaves) from your own deletion workflow.

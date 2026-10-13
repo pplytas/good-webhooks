@@ -1,29 +1,16 @@
 ---
 title: Retries and replay
-description: Inspect delivery history, tell receiver failures from provider failures, and replay an event without changing its identity.
+description: Inspect delivery history, replay an event without changing its identity, and prune expired history on your schedule.
 ---
 
-History and replay are server operations on the delivery instance in the endpoint's scope. They are not exposed as Better Auth routes.
-
-## Retry policy
-
-| Response                                  | Outcome                              |
-| ----------------------------------------- | ------------------------------------ |
-| `2xx`                                     | Succeeded                            |
-| Network error, `408`, `425`, `429`, `5xx` | Retried on the schedule              |
-| Any other `4xx`                           | Failed, no retry                     |
-| `3xx`                                     | Failed. Redirects are never followed |
-
-Defaults: delays of 1s, 5s, 30s, 2m, 10m, and 30m (seven attempts in total), and a maximum delivery age of 24 hours. Configure both through `retry` on the factory. A retry keeps the event ID and body and gets a fresh timestamp and signature.
-
-Two things look like failures but are not receiver failures:
+Retries follow the [retry policy](/docs/concepts/delivery-guarantees#retries). Two things look like failures but are not receiver failures:
 
 - **Paused endpoint.** The delivery waits until resume or expiry.
 - **Provider lookup failure.** The delivery is deferred without consuming an attempt, and the error goes to the worker's `onError`.
 
-## Inspect deliveries
+History and replay are server operations on the client for the endpoint's scope. They are not exposed as Better Auth routes.
 
-History and replay work on the client for the endpoint's scope:
+## Inspect deliveries
 
 ```ts
 import { webhooks } from './webhooks.js'
@@ -37,26 +24,9 @@ for (const item of page.items) {
 }
 ```
 
-Filter by `eventId`, `endpointId`, or `status`. Results are newest first; pass `page.nextCursor` as `before` for the next page. `get()` includes the attempt list with status codes, captured response bodies (up to `maxResponseBytes`), and errors.
-
-Response bodies and payloads can contain customer data. Treat history as sensitive.
+Filter by `eventId`, `endpointId`, or `status`. Results are newest first; pass `page.nextCursor` as `before` for the next page. `get()` includes every attempt with its status code, captured response body (up to `maxResponseBytes`), and error. Payloads and response bodies can contain customer data, so treat history as sensitive.
 
 ## Replay
-
-<Flow>
-  <FlowStep title="Fix the cause" actor="you">
-    The receiver is back, or its bug is fixed.
-  </FlowStep>
-  <FlowStep title="replay()" actor="your app">
-    Creates a new delivery of the same event.
-  </FlowStep>
-  <FlowStep title="Send" actor="worker">
-    Same event ID and body, fresh retry budget.
-  </FlowStep>
-  <FlowStep title="Dedupe" actor="receiver">
-    Already processed? The receiver skips it.
-  </FlowStep>
-</Flow>
 
 After fixing the cause, replay the original delivery:
 
@@ -67,12 +37,27 @@ if (detail.replayOf === null && ['succeeded', 'failed'].includes(detail.status))
 }
 ```
 
-Rules:
-
 - Only original `succeeded` or `failed` deliveries are eligible. A replay cannot be replayed.
 - One pending or in-flight replay per original at a time, otherwise `REPLAY_IN_PROGRESS`.
-- The endpoint must be active and the event still [retained](/docs/operations/retention).
-- The replay gets a new delivery ID and a fresh retry budget, the same event ID and body, and the endpoint's current URL and secrets.
-- The worker still has to run.
+- The endpoint must be active and the event not yet pruned.
+- The replay gets a new delivery ID and retry budget, the same event ID and body, and the endpoint's current URL and secrets. A worker still has to send it.
 
-Because the event ID is unchanged, a [deduplicating receiver](/docs/guides/receive#process-each-event-once) ignores a replay of an event it already processed. That is the intended way to replay safely.
+Because the event ID is unchanged, a [deduplicating receiver](/docs/guides/receive#process-each-event-once) ignores a replay of an event it already processed.
+
+## Clean up history
+
+Events are kept for seven days by default (`retentionMs`), then become eligible for deletion. Nothing deletes them automatically: schedule a cleanup job that calls `prune()`.
+
+```ts
+const removed = await webhooks.worker.prune() // at most 100 events per call
+```
+
+`prune()` deletes up to 100 expired events with their deliveries and attempts. Call it in a loop until it returns zero or your time budget runs out. The package ships a bounded cleanup entrypoint that runs up to 20 batches or 30 seconds, then exits:
+
+<include cwd lang="ts" meta='title="examples/operations/cleanup.ts"'>
+  ../../packages/good-webhooks/examples/operations/cleanup.ts
+</include>
+
+It uses the [worker's configuration](/docs/operations/workers#a-supervised-worker-process) plus `WEBHOOK_CLEANUP_MAX_BATCHES` and `WEBHOOK_CLEANUP_MAX_DURATION_MS`, and logs `webhooks.cleanup.finished` with the counts and stop reason. Twenty batches per minute remove at most 2,000 events per minute; pick a cadence faster than history expires, avoid overlapping runs, and alert on repeated `webhooks.cleanup.budget_exhausted`.
+
+A pruned event can no longer be replayed, and its idempotency key can be accepted again. Cleanup covers every scope in its delivery database and schema, and never touches Better Auth records or receiver receipts.

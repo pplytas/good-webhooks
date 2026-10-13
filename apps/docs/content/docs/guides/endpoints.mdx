@@ -3,7 +3,7 @@ title: Manage endpoints
 description: Register, update, pause, resume, rotate, and remove endpoints with the combined client or the standalone PostgreSQL provider.
 ---
 
-An endpoint is a URL in one [scope](/docs/concepts/scopes) that subscribes to some of your event types. Endpoint management stores it with its status and its encrypted signing secret. To let signed-in users manage their own endpoints over HTTP, use the [Better Auth plugin](/docs/better-auth) instead.
+An endpoint is a URL in one [scope](/docs/concepts/scopes) that subscribes to some of your event types. Endpoint management stores it with its status and encrypted signing secret. To let signed-in users manage their own endpoints, use the [Better Auth plugin](/docs/better-auth) instead.
 
 ## Register an endpoint
 
@@ -56,19 +56,11 @@ psql "$DATABASE_URL" --single-transaction -v ON_ERROR_STOP=1 -f 001-webhook-mana
 </Tab>
 </Tabs>
 
-Both need the storage encryption key from [installation](/docs/installation#create-a-storage-key). Every process that reads these endpoints needs the **same** key.
-
-### Hand over the signing secret
+Both need the storage encryption key from [installation](/docs/installation#create-a-storage-key), and every process that reads these endpoints needs the **same** key.
 
 `create()` returns the plaintext signing secret once; no read returns it again. Show it to the customer once, or send it over a secure channel. Their receiver passes it to [`parseWebhook()`](/docs/guides/receive).
 
 ## Change an endpoint
-
-<Flow title="Endpoint status">
-  <FlowStep title="active">Receives new events and sends queued deliveries.</FlowStep>
-  <FlowStep title="paused">Still subscribed. Queued deliveries wait for `resume()`.</FlowStep>
-  <FlowStep title="deleted">Permanent. Secrets cleared, queued deliveries cancelled.</FlowStep>
-</Flow>
 
 ```ts
 await customer.endpoints.update(id, { eventTypes: ['invoice.created', 'invoice.paid'] })
@@ -86,7 +78,7 @@ await customer.endpoints.remove(id)
 | `rotateSecret` | Returns a new signing secret. Both sign requests during the overlap (default and max 24 h) |
 | `remove`       | Permanent. Clears stored secrets, cancels queued deliveries, and keeps a deleted record    |
 
-These calls return as soon as the record changes. A request the worker was already sending can still arrive after a pause or remove. See [delivery guarantees](/docs/concepts/delivery-guarantees#endpoint-changes-while-work-is-queued).
+These calls return as soon as the record changes. A request already being sent can still arrive after a pause or remove. See [endpoint changes while work is queued](/docs/concepts/delivery-guarantees#endpoint-changes-while-work-is-queued).
 
 ## Limits
 
@@ -110,18 +102,4 @@ const management = createPostgresManagement({ database: pool, eventTypes, encryp
 await management.removeScope({ type: 'organization', id: organizationId })
 ```
 
-The combined client doesn't expose `removeScope`. Either build the provider separately as above, with the same database, schema, and key, or create it first, pass it to `createWebhooks({ management })`, and keep a reference.
-
-## Next steps
-
-<Cards>
-  <Card title="Receive webhooks" href="/docs/guides/receive">
-    What the customer does with the signing secret.
-  </Card>
-  <Card title="Key rotation" href="/docs/operations/key-rotation">
-    Rotate signing secrets and the storage encryption key.
-  </Card>
-  <Card title="Management reference" href="/docs/reference/management">
-    The full contract, limits, and errors.
-  </Card>
-</Cards>
+The combined client doesn't expose `removeScope`. Build the provider with the same database, schema, and key as above, or create it first and pass it to `createWebhooks({ management })`.

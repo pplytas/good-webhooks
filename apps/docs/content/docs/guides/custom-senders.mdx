@@ -3,7 +3,7 @@ title: Custom senders
 description: Keep your own delivery pipeline and use Good Webhooks endpoint management as its source of recipients and signing secrets.
 ---
 
-Already have a queue that sends HTTP requests? Keep it, and use Good Webhooks only for endpoint management. Both providers expose `management.source`, an `EndpointSource` with the two reads a sender needs:
+Already have a queue that sends HTTP requests? Keep it, and use Good Webhooks only for endpoint management. Both providers expose `management.source`, an [`EndpointSource`](/docs/reference/management#endpointsource) with the two reads a sender needs:
 
 ```ts
 import type { EndpointSource } from 'good-webhooks/management'
@@ -19,25 +19,11 @@ import type { EndpointSource } from 'good-webhooks/management'
 
 `scope` is `null` for application scope or `{ type, id }`. The source returns plaintext signing secrets, so keep it in trusted server code.
 
-## What your sender must do
-
-<Flow>
-  <FlowStep title="Capture recipients" actor="on publish">
-    Call `matchRecipients()` once and store the full list with the event.
-  </FlowStep>
-  <FlowStep title="Resolve" actor="before each attempt">
-    Call `resolveEndpoint()` for the current URL, status, and secrets.
-  </FlowStep>
-  <FlowStep title="Sign and send" actor="each attempt">
-    Standard Webhooks signature, safe connection, no redirects.
-  </FlowStep>
-</Flow>
-
 <Steps>
 <Step>
 ### Capture recipients once
 
-When you accept an event, call `matchRecipients()` and store the **complete** list with it, paused endpoints included. On a repeat of the same event, reuse the stored list instead of asking again.
+When you accept an event, call `matchRecipients()` and store the **complete** list with it, paused endpoints included. On a repeat of the same event, reuse the stored list.
 
 A rejected lookup is a failure, not "no recipients". Never store a partial list.
 
@@ -62,21 +48,13 @@ Do this for retries too. The URL and secrets from publish time may be stale.
 <Step>
 ### Sign and send safely
 
-- Sign with the [Standard Webhooks](https://github.com/standard-webhooks/standard-webhooks/blob/main/spec/standard-webhooks.md) format, once per secret in `secrets`, so receivers keep working during a rotation.
+- Sign with the [Standard Webhooks](https://github.com/standard-webhooks/standard-webhooks/blob/main/spec/standard-webhooks.md) format, once per secret in `secrets`, so receivers keep working during a rotation. The new secret comes first.
 - Keep the event ID and body identical across retries and replays.
-- Before each connection, resolve the hostname, reject private and otherwise unsafe addresses, connect to the checked address with TLS hostname checks, and refuse redirects. Checks at registration don't cover later DNS changes.
+- Before each connection, resolve the hostname, reject private and otherwise unsafe addresses, connect to the checked address with TLS hostname checks, and refuse redirects.
 
 </Step>
 </Steps>
 
 Durable queuing, bounded retries, attempt history, retention, and concurrency limits are also yours. If that list is longer than you want, connect the [built-in delivery](/docs/better-auth/delivery) to the same source instead.
 
-## What the source guarantees
-
-- `matchRecipients()` returns every matching endpoint, or rejects. Concurrent edits may or may not be seen; there's no scope-wide snapshot.
-- The Better Auth provider also checks that the owning user or organization still exists. A missing owner means no recipients, and `resolveEndpoint()` returns `deleted`. A failed owner lookup rejects.
-- During a signing-secret rotation, `secrets` lists the new secret first and the old one until the overlap ends.
-
-## Custom storage instead
-
-To keep the endpoint lifecycle API but store endpoints somewhere else, implement the [`ManagementRepository` contract](/docs/reference/management#managementrepository) and pass it to `createManagement()`. A sender only ever needs `EndpointSource`.
+To keep the endpoint lifecycle API but store endpoints somewhere else, implement the [`ManagementRepository` contract](/docs/reference/management#managementrepository) and pass it to `createManagement()`.

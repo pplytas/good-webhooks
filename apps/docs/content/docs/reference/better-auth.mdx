@@ -1,9 +1,9 @@
 ---
-title: Better Auth server
-description: Authenticated endpoint routes and the trusted management provider.
+title: Better Auth
+description: The server plugin, its authenticated routes, the trusted management provider, and the client plugin.
 ---
 
-`good-webhooks/better-auth` adds authenticated endpoint management routes to Better Auth and exposes the same storage as a trusted provider.
+`good-webhooks/better-auth` adds authenticated endpoint management routes to Better Auth and exposes the same storage as a trusted provider. `good-webhooks/better-auth/client` is the matching [client plugin](#client-plugin).
 
 ```ts
 import { goodWebhooks, createBetterAuthManagement } from 'good-webhooks/better-auth'
@@ -16,7 +16,7 @@ import type {
 } from 'good-webhooks/better-auth'
 ```
 
-The documented and tested baseline is Better Auth `1.7.7` on Node.js 24. The optional peer range is `>=1.7.7 <1.8.0`. Database support depends on the host adapter and its migration workflow. The [adapter compatibility page](/docs/better-auth/database-adapters) lists tested combinations and limits. For setup steps, see the [Better Auth plugin guide](/docs/better-auth).
+The optional peer range is `>=1.7.7 <1.8.0`, tested on 1.7.7 with these [databases](/docs/better-auth#supported-databases). For setup steps, see the [plugin guide](/docs/better-auth).
 
 ## goodWebhooks
 
@@ -69,7 +69,7 @@ export async function createEndpoint(request: Request) {
 }
 ```
 
-Each route lives under Better Auth's configured base path. Every route uses sensitive session middleware and disables response storage. Server calls use `auth.api.<method>({ body, headers })` with the caller's session headers. Browsers use the [client plugin](/docs/reference/better-auth-client).
+Each route lives under Better Auth's configured base path. Every route uses sensitive session middleware and disables response storage. Server calls use `auth.api.<method>({ body, headers })` with the caller's session headers. Browsers use the [client plugin](#client-plugin).
 
 | Server method                 | POST path                      | Body besides `scope?`                       | Result                 | Action   |
 | ----------------------------- | ------------------------------ | ------------------------------------------- | ---------------------- | -------- |
@@ -162,3 +162,72 @@ Returns the same trusted management provider installed by `goodWebhooks`. A miss
 This helper needs neither a session nor an HTTP listener. Direct calls bypass route authorization. It uses Better Auth's adapter and encryption helpers with the auth instance's secret configuration. App and worker must share compatible configuration, storage, and decryption keys. See [add delivery to Better Auth](/docs/better-auth/delivery).
 
 The provider exposes every [EndpointManagement operation](/docs/reference/management#endpointmanagement), including `removeScope` and `reencrypt`, plus `source` for a sender. There are no HTTP routes for `removeScope` or `reencrypt`.
+
+## Client plugin
+
+The client plugin gives a Better Auth client typed methods for the plugin's routes.
+
+```ts
+goodWebhooksClient<const EventTypes extends readonly string[] = readonly string[]>(
+	options?: { eventTypes: EventTypes },
+)
+```
+
+```ts title="auth-client.ts"
+import { createAuthClient } from 'better-auth/client'
+import { goodWebhooksClient } from 'good-webhooks/better-auth/client'
+
+const eventTypes = ['invoice.created', 'invoice.paid'] as const
+
+export const authClient = createAuthClient({
+  plugins: [goodWebhooksClient({ eventTypes })],
+})
+```
+
+Returns a Better Auth client plugin for `createAuthClient`.
+
+| Option       | Contract                                                                                                                                                                                                  |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `eventTypes` | Optional tuple that carries the server's event-name literals into client types. Omitting it leaves event names typed as `string`. It does not change the server's configured names or authorize requests. |
+
+The dedicated client entry point has no runtime import of the server plugin, database driver, or delivery worker. It configures all Good Webhooks route methods as POST and preserves JSON values with `JSON.parse`, including descriptions that look like dates.
+
+### Client methods
+
+```ts
+import { authClient } from './auth-client.js'
+
+const { data, error } = await authClient.goodWebhooks.create({
+  url: 'https://receiver.example/webhooks',
+  eventTypes: ['invoice.paid'],
+})
+if (error) throw new Error(error.message)
+console.log(data.secret) // Show once. No later response contains it.
+```
+
+All methods return Better Auth's client result containing `data` and `error`. Request bodies and data shapes match the [server routes](#authenticated-routes).
+
+| Client method                                 | Server method                 | `data`                 |
+| --------------------------------------------- | ----------------------------- | ---------------------- |
+| `authClient.goodWebhooks.create(input)`       | `createWebhookEndpoint`       | `{ endpoint, secret }` |
+| `authClient.goodWebhooks.list(input)`         | `listWebhookEndpoints`        | `WebhookEndpointDTO[]` |
+| `authClient.goodWebhooks.get(input)`          | `getWebhookEndpoint`          | `WebhookEndpointDTO`   |
+| `authClient.goodWebhooks.update(input)`       | `updateWebhookEndpoint`       | `WebhookEndpointDTO`   |
+| `authClient.goodWebhooks.pause(input)`        | `pauseWebhookEndpoint`        | `WebhookEndpointDTO`   |
+| `authClient.goodWebhooks.resume(input)`       | `resumeWebhookEndpoint`       | `WebhookEndpointDTO`   |
+| `authClient.goodWebhooks.remove(input)`       | `removeWebhookEndpoint`       | `WebhookEndpointDTO`   |
+| `authClient.goodWebhooks.rotateSecret(input)` | `rotateWebhookEndpointSecret` | `{ endpoint, secret }` |
+
+Each input accepts optional `scope`. Omission selects the signed-in user's personal scope. `scope: null` requests application scope and requires server policy. The client does not weaken server authorization. See [scope authorization](#scope-authorization).
+
+Endpoint timestamps remain ISO strings.
+
+### Inference example
+
+This compile-only example checks the public server and client types. It omits the database and session setup required by a running application. The [Better Auth quick start](/docs/better-auth/quick-start) provides that setup.
+
+<include cwd lang="ts" meta='title="Typed Better Auth client"'>
+  ./examples/typed-api.ts#better-auth
+</include>
+
+The same event-name tuple restricts both APIs to `invoice.created` and `invoice.paid`. Unknown names fail typechecking.

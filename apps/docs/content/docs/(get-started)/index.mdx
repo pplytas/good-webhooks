@@ -3,7 +3,7 @@ title: Introduction
 description: Good Webhooks is a TypeScript library that adds outbound webhooks to your application, using your PostgreSQL database.
 ---
 
-Good Webhooks lets your application send webhooks to your customers. You publish an event; it handles the rest: who should receive it, signing, retries, history, and replay. It runs inside your app and stores everything in your PostgreSQL database. There is no extra service to host.
+Good Webhooks lets your application send webhooks to your customers. You publish an event, and it handles the rest: recipients, signing, retries, history, and replay. It runs inside your app and stores everything in your PostgreSQL database, so there is no extra service to host.
 
 <Flow title="The life of one event">
   <FlowStep title="Publish" actor="your app">
@@ -78,7 +78,7 @@ event.data.amount // number
 
 ## What it handles for you
 
-Most teams start with a `fetch()` in a request handler. Then a customer's server goes down and events are lost, a deploy sends duplicates, or a URL points at an internal service. Good Webhooks covers those cases:
+A `fetch()` in a request handler loses events when a customer's server is down, sends duplicates on deploys, and can be pointed at internal services. Good Webhooks covers those cases:
 
 | Good Webhooks handles                                  | You decide                                    |
 | ------------------------------------------------------ | --------------------------------------------- |
@@ -92,18 +92,15 @@ Nothing starts on its own: creating the client opens no connections, runs no mig
 
 <Callout type="info" title="Beta">
   The public API is frozen except for correctness and security fixes. Pin the exact version and read
-  the [stability policy](/docs/operations/compatibility#stability-policy) and the [release
-  notes](https://github.com/pplytas/good-webhooks/releases) before upgrading.
+  the [stability policy](/docs/operations/compatibility#stability-policy) before upgrading.
 </Callout>
-
-## Where to go next
 
 <Cards>
   <Card title="Try it in five minutes" href="/docs/quick-start">
     One file sends a signed webhook to a local receiver.
   </Card>
   <Card title="Add it to your app" href="/docs/installation">
-    Pick your setup and install what it needs.
+    Install, create the tables, and connect.
   </Card>
   <Card title="Use Better Auth?" href="/docs/better-auth">
     Let signed-in users manage their own endpoints.

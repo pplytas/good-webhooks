@@ -3,7 +3,7 @@ title: Production checklist
 description: Everything to settle before real customers receive webhooks, with a link to the details for each item.
 ---
 
-Work through this list once before launch. Each item links to the page that explains it.
+Work through this list once before launch.
 
 ## Keys and secrets
 
@@ -28,13 +28,12 @@ Work through this list once before launch. Each item links to the page that expl
 
 - [ ] At least one worker runs as its own supervised process, restarted with backoff on failure. [Run workers](/docs/operations/workers)
 - [ ] `SIGTERM` aborts the worker's signal, and the supervisor's kill deadline is longer than `shutdownGraceMs`.
-- [ ] Worker failures are logged and alerted on: either `run()` rejects and the process exits, or your `onError` logs and you watch that deliveries keep moving. [Handle failures](/docs/operations/workers#handle-failures)
-- [ ] You have read what a crash, a dropped connection, and a hard kill do to in-flight work. [Failure behavior](/docs/operations/failure-behavior)
+- [ ] Worker failures are logged and alerted on: either `run()` rejects and the process exits, or your `onError` logs and you watch that deliveries keep moving. You know what a crash, a dropped connection, and a hard kill do to in-flight work. [What failures do](/docs/operations/workers#what-failures-do)
 - [ ] You have compared your receiver latency and volume against the measured profile and sized `concurrency` and `maxInFlight` accordingly. [Performance](/docs/operations/performance)
 
 ## History
 
-- [ ] A cleanup job calls `prune()` on a schedule. Workers never delete history. [Retention](/docs/operations/retention)
+- [ ] A cleanup job calls `prune()` on a schedule. Workers never delete history. [Clean up history](/docs/operations/retries-and-replay#clean-up-history)
 - [ ] Delivery history is treated as customer data: it holds payloads and response bodies.
 - [ ] Support staff know how to inspect deliveries and replay one. [Retries and replay](/docs/operations/retries-and-replay)
 

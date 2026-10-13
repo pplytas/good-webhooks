@@ -36,23 +36,7 @@ const { data } = await authClient.goodWebhooks.rotateSecret({ id: endpointId, gr
 </Tab>
 </Tabs>
 
-<Flow title="Signing secret rotation with a one-hour overlap">
-  <FlowStep title="Rotate" actor="your app">
-    `rotateSecret()` returns the new secret once.
-  </FlowStep>
-  <FlowStep title="Overlap" actor="worker">
-    Every request carries signatures from both secrets.
-  </FlowStep>
-  <FlowStep title="Install" actor="receiver">
-    The customer switches to the new secret.
-  </FlowStep>
-  <FlowStep title="Overlap ends">Only the new secret signs.</FlowStep>
-</Flow>
-
-During the grace period both secrets are usable: delivery signs with both, and `parseWebhook()` accepts either. Hand the new secret to the receiver before the period ends.
-
-- Default and maximum `graceMs` is 24 hours.
-- A second rotation during an active overlap fails, unless you pass `graceMs: 0`, which replaces the current secret immediately and drops the old one.
+`rotateSecret()` returns the new secret once. During the grace period (default and maximum 24 hours) delivery signs with both secrets and `parseWebhook()` accepts either, so hand the new secret to the receiver before it ends. A second rotation during an active overlap fails unless you pass `graceMs: 0`, which drops the old secret immediately.
 
 ## Rotate the standalone storage key
 
@@ -87,7 +71,7 @@ const management = createPostgresManagement({
 })
 ```
 
-Pass this provider to `createWebhooks({ management })` or its `source` to `createDelivery()`. The plain `encryptionKey` option on `createWebhooks()` has no `decryptionKeys`.
+Pass this provider to `createWebhooks({ management })`, or its `source` to `createDelivery()`. The `encryptionKey` option on `createWebhooks()` has no `decryptionKeys`.
 
 </Step>
 <Step>
@@ -97,7 +81,7 @@ Pass this provider to `createWebhooks({ management })` or its `source` to `creat
 const rewritten = await management.reencrypt(scope) // including null for application scope
 ```
 
-You need an inventory of scopes with live endpoints; the library does not enumerate owners. Re-encryption covers paused endpoints and is safe under concurrent edits. A failed run can leave a mix of old and new ciphertext. Keep both keys and run again.
+You need your own list of scopes with live endpoints; the library does not enumerate owners. Re-encryption covers paused endpoints and is safe under concurrent edits. If a run fails, keep both keys and run it again.
 
 </Step>
 <Step>
@@ -152,4 +136,4 @@ const management = await createBetterAuthManagement(auth)
 await management.reencrypt(scope)
 ```
 
-This rewrites webhook endpoint records only. Other Better Auth encrypted state (TOTP secrets, OAuth tokens) follows Better Auth's own procedure. Keep `secret` and old versions until all of it is rewritten. Never reuse a version number for a different key. Receiver-facing signing secrets are unchanged throughout.
+This rewrites webhook endpoint records only. Other Better Auth encrypted state, such as TOTP secrets and OAuth tokens, follows Better Auth's own procedure, so keep `secret` and old versions until all of it is rewritten. Never reuse a version number for a different key. Receivers notice nothing.

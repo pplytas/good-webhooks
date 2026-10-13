@@ -5,14 +5,14 @@ description: Supported runtimes and databases, what each release promises, and h
 
 ## Supported configurations
 
-| Component   | Supported        | Verified in CI                                                         |
-| ----------- | ---------------- | ---------------------------------------------------------------------- |
-| Node.js     | 24 or later      | Node.js 24, ESM and CommonJS consumers                                 |
-| TypeScript  | 5.9.3 or later   | 5.9.3 and 7.0, with NodeNext and Bundler resolution                    |
-| PostgreSQL  | 16 and 17        | Full integration suite on both                                         |
-| Better Auth | `>=1.7.7 <1.8.0` | 1.7.7 across the [adapter matrix](/docs/better-auth/database-adapters) |
+| Component   | Supported        | Verified in CI                                                           |
+| ----------- | ---------------- | ------------------------------------------------------------------------ |
+| Node.js     | 24 or later      | Node.js 24, ESM and CommonJS consumers                                   |
+| TypeScript  | 5.9.3 or later   | 5.9.3 and 7.0, with NodeNext and Bundler resolution                      |
+| PostgreSQL  | 16 and 17        | Full integration suite on both                                           |
+| Better Auth | `>=1.7.7 <1.8.0` | 1.7.7 across the [adapter matrix](/docs/better-auth#supported-databases) |
 
-Standalone consumers are checked with `strict: true` and `skipLibCheck: false`. Better Auth consumers use `skipLibCheck` for upstream declarations while keeping application-level inference checks. Other JavaScript runtimes are not verified.
+The package ships ESM and also loads through CommonJS `require()`. Standalone consumers are checked with `strict: true` and `skipLibCheck: false`. Better Auth consumers need `skipLibCheck` for upstream declarations; their own types stay fully checked. Other JavaScript runtimes are not verified.
 
 ## Stability policy
 
@@ -20,15 +20,14 @@ Good Webhooks is in beta. The beta series leads to the stable `0.1.0` release; p
 
 ### Public surface
 
-The [entry points](/docs/installation#entry-points) and every name they export are the public API, together with the shipped SQL files. Imports from `dist/` or `src/` paths, and anything not reachable from an entry point, are internal and can change without notice. `Internal` in a type name means the same.
+The [entry points](/docs/reference), every name they export, and the shipped SQL files are the public API. Imports from `dist/` or `src/`, anything not reachable from an entry point, and types with `Internal` in their name can change without notice.
 
 ### During beta
 
 - Pin the exact version and commit your lockfile. Only the latest beta receives fixes.
 - The public API is frozen. A breaking change is allowed only to fix a correctness or security defect. The changelog labels it **Breaking**, states the migration, and the release is a new beta.
-- Behavior that consumers can observe is part of the API: option defaults, error codes, the request format, and the signature scheme.
-- The schema is at version `4`. Any schema change ships upgrade SQL and a rollout order for producers and workers, never fresh-install SQL alone.
-- Test producers, workers, and receivers together before rolling out.
+- Observable behavior is part of the API: option defaults, error codes, the request format, and the signature scheme.
+- Any schema change ships upgrade SQL and a [rollout order](/docs/operations/migrations#rollout-order). Package and schema versions are independent, and downgrading is never assumed safe.
 
 ### From 0.1.0
 
@@ -36,12 +35,4 @@ The [entry points](/docs/installation#entry-points) and every name they export a
 - Breaking means a passing consumer type-check fails, observable runtime behavior changes, a supported runtime or database version is dropped, or SQL must run before upgrading.
 - Every breaking change is deprecated in at least one earlier minor with a runtime or type-level warning, and the release notes state the migration.
 - The latest minor receives all fixes. Security fixes also reach the previous minor for three months after the next minor ships.
-- `0.1.0` claims a stable API and upgrade path. It does not claim verified behavior at high throughput beyond the [measured profile](/docs/operations/performance); the [production checklist](/docs/operations/production) and release notes state what has been measured.
-
-## Package versions and schema versions
-
-They are independent. Installing a package never runs SQL. The current schema version is `4` for both components, and `check()` refuses to start against any other. Each schema change ships upgrade SQL through `getPostgresUpgrade()` and a rollout order in the [migrations guide](/docs/operations/migrations#upgrades). Do not assume old and new workers can share a changed schema unless the release notes say so, and never assume downgrading is safe.
-
-## What stays constant
-
-Delivery is at least once with no ordering guarantee. Signing follows Standard Webhooks. Receivers keep verifying and deduplicating across upgrades. Store signing and encryption keys outside the deployment and retain whatever existing endpoints need.
+- `0.1.0` claims a stable API and upgrade path, not verified behavior at throughput beyond the [measured profile](/docs/operations/performance).

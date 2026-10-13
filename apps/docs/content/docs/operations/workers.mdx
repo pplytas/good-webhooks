@@ -1,9 +1,9 @@
 ---
 title: Run workers
-description: Start delivery explicitly, supervise it, and shut it down without losing in-flight work.
+description: Start delivery explicitly, supervise it, shut it down without losing in-flight work, and know what each failure does.
 ---
 
-Nothing is sent until a worker runs. A worker is a process you start: it claims due deliveries, sends them, records each attempt, and schedules retries. You own the process, its database pool, and its supervision.
+Nothing is sent until a worker runs. A worker is a process you start: it claims due deliveries, resolves each endpoint, signs and sends the request, and records the attempt. You own the process, its database pool, and its supervision.
 
 ## The smallest worker
 
@@ -19,24 +19,9 @@ await webhooks.worker.run({ signal: stop.signal }) // returns after a clean shut
 await pool.end()
 ```
 
-Run it as its own process next to your app, and apply [migrations](/docs/operations/migrations) first. `run()` also takes `pollIntervalMs`, `shutdownGraceMs`, and `onError`; see the [worker reference](/docs/reference/delivery#worker).
+Run it as its own process next to your app. The [worker reference](/docs/reference/delivery#worker) lists every option. After a batch that made an attempt, `run()` starts the next batch at once; after an empty batch it waits `pollIntervalMs` (default 1 second). Run as many workers as you like: they coordinate through PostgreSQL leases, share the per-endpoint limits, and cover every scope in their database and schema.
 
-<Flow title="What run() does in a loop">
-  <FlowStep title="Claim">
-    Lease due deliveries, respecting each endpoint's in-flight limit.
-  </FlowStep>
-  <FlowStep title="Resolve">Read each endpoint's current URL, status, and secrets.</FlowStep>
-  <FlowStep title="Send">Sign and POST. No database transaction is held open meanwhile.</FlowStep>
-  <FlowStep title="Record">Store the attempt; mark succeeded, failed, or due for retry.</FlowStep>
-</Flow>
-
-After a batch that made at least one attempt, `run()` starts the next batch at once. After an empty batch, it waits `pollIntervalMs` (default 1 second). Retries keep their own schedule regardless.
-
-Workers handle every scope in their delivery database and schema. Run as many as you like: they coordinate through PostgreSQL leases and share the per-endpoint limits.
-
-## One batch instead of a loop
-
-`runOnce()` processes one bounded batch and returns counts. Use it from a scheduler or in tests:
+`runOnce()` processes one bounded batch and returns counts, for schedulers and tests:
 
 ```ts
 const result = await webhooks.worker.runOnce()
@@ -63,48 +48,47 @@ Configure it through the environment:
 | `WEBHOOK_DB_STATEMENT_TIMEOUT_MS` |          | Default 10000. The client query timeout is one second longer |
 | `WEBHOOK_ALLOW_LOCALHOST`         |          | `true` permits loopback HTTP receivers. Development only     |
 
-Run it from a checkout with `node packages/good-webhooks/examples/operations/worker.ts`, or copy it and replace the event map with yours.
+Run it from a checkout with `node packages/good-webhooks/examples/operations/worker.ts`, or copy it and replace the event map with yours. It logs JSON lines (`webhooks.worker.started`, `webhooks.worker.failed`, `webhooks.worker.stopped`) without payloads or secrets; the library itself writes no logs. For Better Auth management, see [add delivery to Better Auth](/docs/better-auth/delivery#run-a-separate-worker).
 
 <Callout type="warn">
   Never generate a fresh encryption key on startup. A wrong but well-formed key fails when the
   worker first decrypts an endpoint secret, not necessarily at startup.
 </Callout>
 
-For Better Auth management, the worker also constructs the auth instance and provider. See [add delivery to Better Auth](/docs/better-auth/delivery#run-a-separate-worker).
-
-## Handle failures
-
-Without `onError`, an internal failure rejects `run()` and the process exits. Let your supervisor restart it with backoff. If you pass `onError` to log and continue, watch that deliveries keep making progress. Receiver failures are not internal failures; they follow the retry policy.
-
-The example entrypoint logs JSON lines (`webhooks.worker.started`, `webhooks.worker.failed`, `webhooks.worker.stopped`) without configuration, payloads, or secrets. The library itself writes no logs. [Failure behavior](/docs/operations/failure-behavior) lists what each kind of failure does to in-flight work.
-
 ## Shut down cleanly
 
-Abort the signal to stop:
+Abort the signal to stop. The worker stops claiming, gives requests already being sent up to `shutdownGraceMs` (30 seconds by default), cancels the rest, records every outcome, and then `run()` resolves. Await it before closing the pool, and give your supervisor a kill deadline that covers the grace period, the final writes, and pool closure.
 
-<Flow>
-  <FlowStep title="Stop claiming">
-    No new deliveries; pending endpoint lookups are abandoned.
-  </FlowStep>
-  <FlowStep title="Grace period">
-    Requests already being sent get up to `shutdownGraceMs` (30 s default).
-  </FlowStep>
-  <FlowStep title="Cancel">Remaining requests are cancelled and their outcome recorded.</FlowStep>
-  <FlowStep title="Return">`run()` resolves after its database writes finish.</FlowStep>
-</Flow>
-
-Await the worker before closing the pool. Then give your supervisor a final deadline that covers the grace period, database writes, pool closure, and your own cleanup. The grace period is not a process exit deadline.
-
-A cancelled HTTP request may still have been processed by the receiver. Such attempts are retried, which is one more reason [receivers deduplicate](/docs/guides/receive#process-each-event-once).
+A cancelled request may still have reached the receiver. It is retried, which is one reason [receivers deduplicate](/docs/guides/receive#process-each-event-once).
 
 ## Bound database waits
 
-The example configuration sets connection and statement timeouts, an idle-in-transaction timeout, and ten pool connections per process:
+The example configuration sets connection, statement, and idle-in-transaction timeouts, and ten pool connections per process:
 
 <include cwd lang="ts" meta='title="examples/operations/config.ts"'>
   ../../packages/good-webhooks/examples/operations/config.ts
 </include>
 
-Budget pool connections across producers, workers, and cleanup jobs. A client-side timeout does not guarantee server-side cancellation, and pool closure waits for checked-out clients.
+Budget pool connections across producers, workers, and cleanup jobs. A client-side timeout does not guarantee server-side cancellation.
 
-Workers never prune history. Schedule [cleanup](/docs/operations/retention) separately.
+## What failures do
+
+Without `onError`, an internal failure rejects `run()` and the process exits; let your supervisor restart it with backoff. If you pass `onError` to log and continue, watch that deliveries keep moving. Receiver failures are not internal failures; they follow the [retry policy](/docs/concepts/delivery-guarantees#retries).
+
+Every failure below ends with the delivery retried under the same event ID, or the process exiting for a supervisor to restart. Each row is [checked by a test](https://github.com/pplytas/good-webhooks/blob/main/docs/operations.md#where-each-failure-claim-is-checked).
+
+| Situation                                 | What happens                                                                                 |
+| ----------------------------------------- | -------------------------------------------------------------------------------------------- |
+| Worker killed mid-request                 | The attempt is `abandoned` when its lease expires, and another worker retries the delivery.  |
+| Worker killed after the receiver accepted | Same. The receiver sees the same `event.id` twice, and its deduplication absorbs it.         |
+| Receiver hangs                            | The request is cancelled at `timeoutMs` and retried on schedule.                             |
+| Database connection drops                 | `run()` rejects. The half-finished attempt is recovered when its lease expires.              |
+| Database unreachable or locked at startup | `check()` fails within your connection or statement timeout, before anything is claimed.     |
+| Wrong encryption key                      | The worker exits without consuming an attempt.                                               |
+| `SIGTERM` during a request                | The request gets `shutdownGraceMs` to finish, its outcome is recorded, and `run()` resolves. |
+| `SIGKILL`                                 | Leases are left behind and recovered by the next worker after `leaseMs`.                     |
+| Schema older or newer than the package    | `check()` throws `SCHEMA_MISMATCH` naming the SQL to apply.                                  |
+
+A worker claims a delivery by writing an attempt with a lease before sending. If it dies, the lease expires after `leaseMs` (60 seconds by default) and the next batch recovers it. Lease tokens are fenced: a late worker whose lease expired cannot record a result, so two workers never both record success for one attempt.
+
+These behaviors are verified on a single PostgreSQL instance with local receivers. They do not cover database failover or throughput limits. Workers never prune history; schedule [cleanup](/docs/operations/retries-and-replay#clean-up-history) separately.

@@ -36,12 +36,7 @@ Returns fresh-install SQL. It never connects to a database or applies DDL. The h
 
 <auto-type-table path="../../reference-types.ts" name="PostgresMigrationOptions" />
 
-| Option      | Default    | Meaning                                        |
-| ----------- | ---------- | ---------------------------------------------- |
-| `schema`    | `'public'` | Namespace for all tables emitted by this call. |
-| `component` | `'all'`    | `'management'`, `'delivery'`, or `'all'`.      |
-
-Every generated script includes `CREATE SCHEMA IF NOT EXISTS` for its target namespace before its tables. Table creation is not idempotent. Reapplying initial SQL is not an upgrade procedure. Invalid names or components produce `INVALID_CONFIG`.
+Every generated script starts with `CREATE SCHEMA IF NOT EXISTS` for its namespace. Table creation is not idempotent, and reapplying initial SQL is not an upgrade. Invalid names or components produce `INVALID_CONFIG`.
 
 ## Components and SQL assets
 
@@ -84,13 +79,7 @@ Returns SQL that moves storage recorded at version `from` to the current version
 
 <auto-type-table path="../../reference-types.ts" name="PostgresUpgradeOptions" />
 
-| Option      | Default    | Meaning                                                               |
-| ----------- | ---------- | --------------------------------------------------------------------- |
-| `schema`    | `'public'` | Namespace of the installation being upgraded.                         |
-| `component` | `'all'`    | `'management'`, `'delivery'`, or `'all'` for a shared namespace.      |
-| `from`      | required   | The version recorded in the database. `3` is the only upgradable one. |
-
-`from: 4` throws `INVALID_CONFIG` because no upgrade is needed. Versions before `3` were never published and need fresh storage.
+`from` is the version recorded in the database, and `3` is the only upgradable one. `from: 4` throws `INVALID_CONFIG` because no upgrade is needed. Versions before `3` were never published and need fresh storage.
 
 | Upgrade | Shipped asset for `public`                             | What it changes                                                                           |
 | ------- | ------------------------------------------------------ | ----------------------------------------------------------------------------------------- |

@@ -14,11 +14,11 @@ const { eventId, deliveryCount } = await webhooks.publish({
 })
 ```
 
-`deliveryCount` is how many endpoints will receive it. Zero is not an error: nobody subscribed.
+`deliveryCount` is how many endpoints will receive it. Zero means nobody subscribed, not an error.
 
 ## Define your events
 
-The event map is your public webhook catalog: names and payload schemas. Any [Standard Schema](https://standardschema.dev) validator works. Keep it in its own module so receivers can import it too.
+The event map is your public webhook catalog: names and payload schemas. Keep it in its own module so receivers can import it too.
 
 ```ts title="events.ts"
 import { z } from 'zod'
@@ -32,21 +32,19 @@ export const events = {
 }
 ```
 
-Pass it to `createWebhooks({ events })`. TypeScript then checks every `publish()`, every endpoint subscription, and every `parseWebhook()` against it:
+Pass it to `createWebhooks({ events })`. TypeScript then checks every `publish()`, endpoint subscription, and `parseWebhook()` against it, and payloads are validated at runtime before anything is stored:
 
 ```ts
 await webhooks.publish({ type: 'invoice.paid', data: { invoiceId: 'inv_1', amount: '42' } })
 //                                                                             ^ type error
 ```
 
-Payloads are also validated at runtime before anything is stored.
-
 <Accordions>
 <Accordion title="Payload and name rules">
 
 - Validated output must be plain JSON: at most 256 KiB, 64 levels deep, finite numbers, no cycles.
 - Event names match `^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,119}$`.
-- Prefer schemas that keep values as they are instead of transforming them, so receivers can reuse the same map. Convert dollars to cents before publishing, not inside the schema.
+- Prefer schemas that don't transform values, so receivers can reuse the same map. Convert dollars to cents before publishing, not inside the schema.
 
 </Accordion>
 </Accordions>
@@ -71,33 +69,22 @@ result.duplicate // true when this key was already accepted
 | Same key, different type or payload | Throws `IDEMPOTENCY_CONFLICT`                           |
 | A new key                           | A new event                                             |
 
-Keys are unique per [scope](/docs/concepts/scopes) and are released when the event is [pruned](/docs/operations/retention) (seven days by default).
+Keys are unique per [scope](/docs/concepts/scopes) and are released when the event is [pruned](/docs/operations/retries-and-replay#clean-up-history) (seven days by default).
 
 ## Publish to a customer
 
-The root client publishes in **application scope**: endpoints your platform registered for itself. To reach a customer's endpoints, publish in their scope:
+The root client publishes in application scope. To reach a customer's endpoints, publish in their [scope](/docs/concepts/scopes):
 
 ```ts
 const customer = webhooks.forScope({ type: 'organization', id: organizationId })
 await customer.publish({ type: 'invoice.paid', data, idempotencyKey })
 ```
 
-A scope only reaches endpoints registered in that exact scope. It does not check permissions: decide in your app that this action belongs to this customer first. See [scopes](/docs/concepts/scopes).
+A scope does not check permissions: decide in your app that this action belongs to this customer first.
 
 ## Publish inside your transaction
 
 When your tables and the webhook tables share a database, pass your transaction client. The event then commits or rolls back with your data:
-
-<Flow>
-  <FlowStep title="BEGIN" actor="your app">
-    Open a transaction on one client.
-  </FlowStep>
-  <FlowStep title="Your write">`UPDATE invoices SET paid = true …`</FlowStep>
-  <FlowStep title="publish()">Same client, passed as `{transaction}`.</FlowStep>
-  <FlowStep title="COMMIT or ROLLBACK">
-    Commit: event and data exist. Rollback: neither does.
-  </FlowStep>
-</Flow>
 
 ```ts
 import { pool, webhooks } from './webhooks.js'
@@ -119,32 +106,19 @@ try {
 }
 ```
 
-What to know:
-
 - Workers can't see the event until you commit.
-- A failed `publish()` doesn't break your transaction. It runs in a savepoint.
+- A failed `publish()` runs in a savepoint, so it doesn't break your transaction.
 - Pass a checked-out client, not the pool, and don't run other queries on it at the same time.
-- Finding recipients is a separate read from endpoint management. Passing a transaction does not pull a Better Auth database or a second PostgreSQL database into the commit.
+- Finding recipients is a separate read. A Better Auth or second PostgreSQL database does not join the commit.
 
-Do recipients depend on the payload or on rows you haven't committed yet? Use [transactional recipient selection](/docs/guides/recipient-selection).
+If recipients depend on the payload or on uncommitted rows, use [transactional recipient selection](/docs/guides/recipient-selection).
 
 ## Limit load per endpoint
 
-By default each endpoint gets at most 2 requests at a time, across all workers. Raise or lower it per endpoint:
+By default each endpoint gets at most 2 requests at a time, across all workers. Change it per endpoint with [`deliverySettings`](/docs/reference/delivery#deliverysettings):
 
 ```ts
 await customer.deliverySettings.set(endpointId, { maxInFlight: 4 })
 ```
 
-See [`deliverySettings`](/docs/reference/delivery#deliverysettings).
-
-## Next steps
-
-<Cards>
-  <Card title="Run workers" href="/docs/operations/workers">
-    Send what you published.
-  </Card>
-  <Card title="Delivery guarantees" href="/docs/concepts/delivery-guarantees">
-    What a successful `publish()` promises.
-  </Card>
-</Cards>
+Nothing is sent until a [worker](/docs/operations/workers) runs.

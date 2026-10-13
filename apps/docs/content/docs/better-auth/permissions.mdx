@@ -60,7 +60,7 @@ export const auth = betterAuth({
 })
 ```
 
-The organization's creator role (`owner` by default) gets full access automatically. Every other role needs an explicit grant. A role called `admin` has no webhook permissions just because of its name.
+The organization's creator role (`owner` by default) gets full access automatically. Every other role, including `admin`, needs an explicit grant.
 
 Then pass the scope explicitly:
 
@@ -72,7 +72,7 @@ await authClient.goodWebhooks.create({
 })
 ```
 
-Each request re-checks membership and permission. Removing a member removes their access; it does not pause the organization's endpoints.
+Each request re-checks membership and permission, so removing a member removes their access without pausing the organization's endpoints.
 
 ## Application and custom scopes
 
@@ -89,9 +89,7 @@ goodWebhooks({
 })
 ```
 
-Return `false` for anything you do not recognize. The policy cannot loosen personal-scope or organization checks; those run regardless.
-
-Organization API keys do not authenticate these routes. User API-key session impersonation is not a supported path in this version.
+Return `false` for anything you do not recognize. The policy cannot loosen personal-scope or organization checks. API keys do not authenticate these routes.
 
 ## Trusted server access
 
@@ -108,4 +106,4 @@ Keep it in server code. If you expose any of it through your own API, authorize 
 
 ## Owner deletion
 
-Deleting a user retires their personal endpoints. Deleting an organization through the organization plugin retires its endpoints. The sender also checks that an owner still exists before delivering; a failed owner lookup is an error, not an empty result.
+Deleting a user or an organization retires its endpoints, and the sender checks that an owner still exists before delivering.

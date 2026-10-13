@@ -3,16 +3,7 @@ title: Better Auth quick start
 description: Create a user, register a personal endpoint through authenticated routes, and list it. One file, SQLite, no PostgreSQL.
 ---
 
-One script runs the plugin end to end against a SQLite file. No server, no PostgreSQL, and no webhook is sent:
-
-<Flow title="What the script checks">
-  <FlowStep title="No session">Listing endpoints without signing in returns `401`.</FlowStep>
-  <FlowStep title="Create">A signed-in user creates an endpoint and gets its secret once.</FlowStep>
-  <FlowStep title="List">The endpoint is listed, without its secret.</FlowStep>
-  <FlowStep title="Other scope">Asking for application scope returns `403`.</FlowStep>
-</Flow>
-
-You need Node.js 24 and npm.
+One script runs the plugin end to end against a SQLite file: a signed-in user creates and lists a personal endpoint, and requests without a session or for another scope are rejected. There is no server, no PostgreSQL, and no webhook is sent. You need Node.js 24 and npm.
 
 <Steps>
 <Step>
@@ -37,7 +28,7 @@ export BETTER_AUTH_SECRET="$(node -e 'console.log(require("node:crypto").randomB
 <Step>
 ### Write the script
 
-Save as `quick-start.mjs`. It applies Better Auth's schema programmatically because this is a disposable SQLite database. A real application uses its [normal schema workflow](/docs/better-auth#generate-and-apply-the-schema).
+Save as `quick-start.mjs`. It applies Better Auth's schema in code because the database is disposable; a real application uses its [normal schema workflow](/docs/better-auth#generate-and-apply-the-schema).
 
 ```js title="quick-start.mjs"
 import assert from 'node:assert/strict'
@@ -124,7 +115,7 @@ Listed 1 endpoint without its secret
 Application scope rejected with 403
 ```
 
-`auth.handler()` receives real `Request` objects, so there is no HTTP server to start. On repeated runs Better Auth's SQLite inspector may warn that array fields use `TEXT` storage. That is expected.
+On repeated runs Better Auth may warn that array fields use `TEXT` storage in SQLite. That is expected.
 
 </Step>
 <Step>
@@ -135,14 +126,9 @@ Delete `quick-start.sqlite` when you are done.
 </Step>
 </Steps>
 
-## Next steps
-
 <Cards>
   <Card title="Add the plugin to your app" href="/docs/better-auth">
     Server plugin, schema, and client plugin in an existing auth instance.
-  </Card>
-  <Card title="Permissions" href="/docs/better-auth/permissions">
-    Organization roles and custom scope policies.
   </Card>
   <Card title="Add delivery" href="/docs/better-auth/delivery">
     Send the events these endpoints subscribe to.

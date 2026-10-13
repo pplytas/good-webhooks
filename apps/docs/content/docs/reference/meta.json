@@ -7,7 +7,6 @@
     "management",
     "postgres",
     "better-auth",
-    "better-auth-client",
     "verify",
     "migrations",
     "errors"

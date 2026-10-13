@@ -2,6 +2,14 @@ import { createMDX } from 'fumadocs-mdx/next'
 
 const withMDX = createMDX()
 
+// Pages merged into others. Old links, including their `.md` exports, keep working.
+const movedPages = {
+  '/docs/better-auth/database-adapters': '/docs/better-auth#supported-databases',
+  '/docs/operations/failure-behavior': '/docs/operations/workers#what-failures-do',
+  '/docs/operations/retention': '/docs/operations/retries-and-replay#clean-up-history',
+  '/docs/reference/better-auth-client': '/docs/reference/better-auth#client-plugin',
+}
+
 /** @type {import('next').NextConfig} */
 const config = {
   reactStrictMode: true,
@@ -15,6 +23,10 @@ const config = {
         destination: 'https://good-webhooks.dev/:path',
         permanent: true,
       },
+      ...Object.entries(movedPages).flatMap(([source, destination]) => [
+        { source, destination, permanent: true },
+        { source: `${source}.md`, destination: `${destination.split('#')[0]}.md`, permanent: true },
+      ]),
     ]
   },
   async rewrites() {

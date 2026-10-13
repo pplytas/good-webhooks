@@ -3,22 +3,11 @@ title: Receive webhooks
 description: Verify the raw request, decode a typed event, and process each event exactly once. Examples for Next.js, Hono, Express, and Node.js.
 ---
 
-A receiver checks that a request really came from the sender, then acts on it once. `parseWebhook()` from `good-webhooks/verify` does the checking. That import loads no database or worker code, so it fits in any Node.js service.
-
-<Flow title="What a receiver does">
-  <FlowStep title="Read the raw body">Bounded in size, as bytes. Not parsed JSON.</FlowStep>
-  <FlowStep title="Verify and parse">
-    `parseWebhook()` checks the signature and returns a typed event.
-  </FlowStep>
-  <FlowStep title="Process once">Record `event.id` with your change in one transaction.</FlowStep>
-  <FlowStep title="Respond">
-    `2xx` when done. `400` for bad requests, `500` to get a retry.
-  </FlowStep>
-</Flow>
+A receiver reads the raw body, verifies it with `parseWebhook()`, processes the event once, and responds. `good-webhooks/verify` loads no database or worker code, so it fits in any Node.js service.
 
 ## Add a webhook route
 
-Each handler is complete. Put your event map in `events.ts` ([shown below](#share-the-event-map)) and the endpoint's signing secret in `WEBHOOK_SECRET`.
+Each handler is complete. Put your [event map](#share-the-event-map) in `events.ts` and the endpoint's signing secret in `WEBHOOK_SECRET`.
 
 <Tabs groupId="framework" persist items={['Next.js', 'Hono', 'Express', 'Node.js http']}>
 <Tab>
@@ -166,7 +155,7 @@ During a [secret rotation](/docs/operations/key-rotation), pass both secrets: `s
 
 ## Share the event map
 
-Use the same map as the sender, from a module that imports no server configuration or secrets:
+Use the sender's map, from a module that imports no server configuration or secrets:
 
 ```ts title="events.ts"
 import { z } from 'zod'
@@ -211,11 +200,11 @@ The sender retries `5xx` and network errors, and gives up on most `4xx`. Return 
 | `INVALID_CONFIG`    | Your event map or secret configuration is wrong                    | `500`   |
 | Anything else       | Your database, your business logic, a thrown validator             | `500`   |
 
-Expected errors carry no payload values in their messages. Unexpected errors keep a `cause` for your logs; don't send it back.
+Error messages carry no payload values. Unexpected errors keep a `cause` for your logs; don't send it back.
 
 ## Process each event once
 
-The sender delivers **at least once**. A retry or a [replay](/docs/operations/retries-and-replay) repeats the same `event.id` and body. Make the change and record the ID in one transaction, and only then respond. A table with a unique ID column is enough:
+Delivery is **at least once**: a retry or a [replay](/docs/operations/retries-and-replay) repeats the same `event.id` and body. Make the change and record the ID in one transaction, then respond. A table with a unique ID column is enough:
 
 ```sql title="receipts.sql"
 CREATE TABLE webhook_receipts (
@@ -243,13 +232,11 @@ await client.query('COMMIT')
 
 The [basic example](https://github.com/pplytas/good-webhooks/blob/main/packages/good-webhooks/examples/basic/demo.ts) runs exactly this and checks that a retry and a replay produce one invoice.
 
-## Keep old events decodable
-
-Retries and replays can deliver an event published before your latest deploy. Keep existing event names backward compatible, and add `invoice.paid.v2` for a breaking payload change. Deploy receiver support before the sender starts publishing a new event.
+Retries and replays can also deliver an event published before your latest deploy. Keep event names backward compatible: add `invoice.paid.v2` for a breaking payload change, and deploy receiver support before the sender publishes it.
 
 ## Verify another sender's format
 
-`verifyWebhook()` authenticates any [Standard Webhooks](https://www.standardwebhooks.com) request, then leaves parsing to you:
+`verifyWebhook()` authenticates any [Standard Webhooks](https://www.standardwebhooks.com) request and leaves parsing to you. See the [verify reference](/docs/reference/verify).
 
 ```ts
 import { verifyWebhook } from 'good-webhooks/verify'
@@ -257,5 +244,3 @@ import { verifyWebhook } from 'good-webhooks/verify'
 verifyWebhook({ body: rawBody, headers: request.headers, secret })
 // Parse the body only after this returns.
 ```
-
-See the [verify reference](/docs/reference/verify) for header rules, secret formats, and every option.

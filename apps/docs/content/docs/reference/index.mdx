@@ -3,77 +3,24 @@ title: API reference
 description: Every public entry point, what it exports, and where its contract is documented.
 ---
 
-The package has eight code entry points and three SQL assets; this section holds the exact contract for each.
+Each process imports only the entry point it needs. A receiver never loads database code, and only the two `better-auth` entry points import Better Auth, an optional peer.
 
-```ts
-import { createWebhooks, generateEncryptionKey, WebhookError } from 'good-webhooks'
-import { createDelivery } from 'good-webhooks/delivery'
-import { createManagement } from 'good-webhooks/management'
-import {
-  createPostgresManagement,
-  createPostgresManagementRepository,
-} from 'good-webhooks/management/postgres'
-import { goodWebhooks, createBetterAuthManagement } from 'good-webhooks/better-auth'
-import { goodWebhooksClient } from 'good-webhooks/better-auth/client'
-import { parseWebhook, verifyWebhook } from 'good-webhooks/verify'
-import { getPostgresMigration } from 'good-webhooks/migrations'
-```
+| Import                                                                          | Use it for                                                           |
+| ------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| [`good-webhooks`](/docs/reference/core)                                         | `createWebhooks()`: management and delivery together on PostgreSQL   |
+| [`good-webhooks/delivery`](/docs/reference/delivery)                            | `createDelivery()`: the sender alone, fed by any `EndpointSource`    |
+| [`good-webhooks/management`](/docs/reference/management)                        | The management contracts and `createManagement()` for custom storage |
+| [`good-webhooks/management/postgres`](/docs/reference/postgres)                 | Standalone endpoint management without delivery tables               |
+| [`good-webhooks/better-auth`](/docs/reference/better-auth)                      | The Better Auth server plugin and trusted management provider        |
+| [`good-webhooks/better-auth/client`](/docs/reference/better-auth#client-plugin) | The Better Auth client plugin for browsers                           |
+| [`good-webhooks/verify`](/docs/reference/verify)                                | `parseWebhook()` and `verifyWebhook()` for receivers                 |
+| [`good-webhooks/migrations`](/docs/reference/migrations)                        | `getPostgresMigration()`, `getPostgresUpgrade()`, and the SQL files  |
 
-Better Auth is an optional peer; only the two `better-auth` entry points import it.
-
-<Cards>
-  <Card title="good-webhooks" href="/docs/reference/core">
-    `createWebhooks`, `generateEncryptionKey`, `WebhookError`, and the shared types.
-  </Card>
-  <Card title="good-webhooks/delivery" href="/docs/reference/delivery">
-    `createDelivery`, publication, history, replay, settings, and the worker.
-  </Card>
-  <Card title="good-webhooks/management" href="/docs/reference/management">
-    The `EndpointManagement`, `EndpointSource`, repository, and cipher contracts.
-  </Card>
-  <Card title="good-webhooks/management/postgres" href="/docs/reference/postgres">
-    `createPostgresManagement` and its storage encryption options.
-  </Card>
-  <Card title="good-webhooks/better-auth" href="/docs/reference/better-auth">
-    The server plugin, its routes, scope authorization, and the trusted provider.
-  </Card>
-  <Card title="good-webhooks/better-auth/client" href="/docs/reference/better-auth-client">
-    The client plugin and its typed methods.
-  </Card>
-  <Card title="good-webhooks/verify" href="/docs/reference/verify">
-    `parseWebhook` and `verifyWebhook` for receivers.
-  </Card>
-  <Card title="good-webhooks/migrations" href="/docs/reference/migrations">
-    `getPostgresMigration` and the shipped SQL files.
-  </Card>
-  <Card title="Errors" href="/docs/reference/errors">
-    Every `WebhookError` code and what it means.
-  </Card>
-</Cards>
-
-## Which process imports what
-
-| Process                      | Imports                                                                          |
-| ---------------------------- | -------------------------------------------------------------------------------- |
-| Producer and worker          | `good-webhooks`, or `good-webhooks/delivery` with a separate management provider |
-| Endpoint management only     | `good-webhooks/management/postgres` or `good-webhooks/better-auth`               |
-| Browser (Better Auth client) | `good-webhooks/better-auth/client`                                               |
-| Receiver                     | `good-webhooks/verify`. It loads no database or worker code                      |
-| Migration tooling            | `good-webhooks/migrations` or the `.sql` assets                                  |
+Every expected failure is a [`WebhookError`](/docs/reference/errors) with a stable `code`.
 
 ## Conventions
 
 - Constructors validate options and return. They never open connections, apply migrations, or start workers.
-- Expected failures throw [`WebhookError`](/docs/reference/errors) with a stable `code`. Database and provider failures can propagate as other error types.
+- Database and provider failures can propagate as other error types.
 - Trusted provider results use `Date` values. Better Auth route responses use ISO strings.
 - Scope arguments are `null` for application scope or `{ type, id }` for a named scope. Selecting a scope never authorizes the caller. See [scopes](/docs/concepts/scopes).
-
-## SQL assets
-
-| Export                                     | Creates                                    |
-| ------------------------------------------ | ------------------------------------------ |
-| `good-webhooks/migrations/001-initial.sql` | Management and delivery tables in `public` |
-| `good-webhooks/migrations/management.sql`  | `webhook_endpoints` only                   |
-| `good-webhooks/migrations/delivery.sql`    | Delivery tables only                       |
-
-Generate the same SQL for another schema with [`getPostgresMigration()`](/docs/reference/migrations).

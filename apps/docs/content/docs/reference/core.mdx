@@ -54,20 +54,10 @@ export const webhooks = createWebhooks({
 | `encryptionKey` | `string \| Uint8Array` | Required for the default PostgreSQL management provider. Base64-encoded 32 bytes or a 32-byte array. |
 | `management`    | `EndpointManagement`   | Optional existing provider. Its source supplies recipients and current endpoint state.               |
 
-Construction does not open connections, apply migrations, or start a worker.
-
 - **Without `management`**, the constructor creates standalone PostgreSQL management from `database`, `schema`, the configured event names, `encryptionKey`, and `allowLocalhost`. `schema` then applies to both the management and delivery tables.
 - **With `management`**, that provider keeps its own database, schema, encryption, and URL-validation configuration. Core options do not reconfigure it, and `encryptionKey` is unused.
 
-Invalid options throw `INVALID_CONFIG`: a missing event map, a malformed key, a database without `query()` and `connect()`, or any [delivery option](/docs/reference/delivery#createdelivery) out of range.
-
-<Accordions>
-<Accordion title="Rotating the storage encryption key with createWebhooks">
-
-The default provider has no `decryptionKeys` option through this constructor. Create a provider with [`createPostgresManagement`](/docs/reference/postgres), which accepts old keys, and pass it as `management`. See [key rotation](/docs/operations/key-rotation).
-
-</Accordion>
-</Accordions>
+Invalid options throw `INVALID_CONFIG`: a missing event map, a malformed key, a database without `query()` and `connect()`, or any [delivery option](/docs/reference/delivery#createdelivery) out of range. To pass old keys during [key rotation](/docs/operations/key-rotation), build the provider with [`createPostgresManagement`](/docs/reference/postgres) and pass it as `management`.
 
 ## Returned client
 

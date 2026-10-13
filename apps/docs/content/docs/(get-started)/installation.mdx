@@ -3,9 +3,7 @@ title: Installation
 description: Add Good Webhooks to an existing application. Install, create a key and the tables, and connect.
 ---
 
-Install the dependencies for your setup below. Better Auth endpoint management uses your existing database adapter. Built-in delivery and standalone PostgreSQL management require PostgreSQL 16 or 17.
-
-**Requirements:** Node.js 24 or later. TypeScript consumers need version 5.9.3 or later with `moduleResolution` set to `NodeNext` or `Bundler`. Edge runtimes are not supported.
+**Requirements:** Node.js 24 or later, and PostgreSQL 16 or 17 for delivery and standalone endpoint management. TypeScript needs 5.9.3 or later with `moduleResolution` set to `NodeNext` or `Bundler`. Edge runtimes are not supported.
 
 <Steps>
 <Step>
@@ -29,29 +27,27 @@ npm install --save-dev @types/pg
 good-webhooks@beta better-auth@1.7.7
 ```
 
-Add `pg zod` too if the same app will [send events](/docs/better-auth/delivery). Supported range: `better-auth >=1.7.7 <1.8.0`. Then follow the [Better Auth plugin](/docs/better-auth) guide; the steps below are for the PostgreSQL setup.
+Add `pg zod` if the same app will [send events](/docs/better-auth/delivery). Then follow the [Better Auth plugin](/docs/better-auth) guide instead of the steps below.
 
 </Tab>
 <Tab>
-
-You only receive webhooks from a Good Webhooks sender:
 
 ```package-install
 good-webhooks@beta zod
 ```
 
-Skip the steps below and go to [receive webhooks](/docs/guides/receive). `good-webhooks/verify` has no database dependency.
+Skip the steps below and go to [receive webhooks](/docs/guides/receive).
 
 </Tab>
 </Tabs>
 
-The `beta` tag installs the latest beta. Commit your lockfile. Payload schemas can use any [Standard Schema](https://standardschema.dev) library; these docs use Zod.
+Payload schemas can use any [Standard Schema](https://standardschema.dev) library; these docs use Zod.
 
 </Step>
 <Step>
 ### Create a storage key
 
-Endpoint signing secrets are encrypted in your database with this key. Generate it once:
+This key encrypts endpoint signing secrets in your database. Generate it once:
 
 ```sh
 node -e 'import("good-webhooks").then(m => console.log(m.generateEncryptionKey()))'
@@ -63,15 +59,10 @@ Store the output in your secret manager or `.env` as `WEBHOOK_ENCRYPTION_KEY`. E
 <Step>
 ### Create the tables
 
-Write the SQL to a migration file:
+Write the SQL to a migration file, then apply it with your migration tool or `psql`:
 
 ```sh
 node -e 'import("good-webhooks/migrations").then(m => process.stdout.write(m.getPostgresMigration()))' > 001-webhooks.sql
-```
-
-Apply it with the migration tool you already use, or with `psql`:
-
-```sh
 psql "$DATABASE_URL" --single-transaction -v ON_ERROR_STOP=1 -f 001-webhooks.sql
 ```
 
@@ -97,7 +88,7 @@ export const webhooks = createWebhooks({
 })
 ```
 
-Check the setup once at startup. It throws `SCHEMA_MISMATCH` if the tables are missing or outdated:
+Check the schema at startup. It throws `SCHEMA_MISMATCH` if the tables are missing or outdated:
 
 ```ts
 await webhooks.check()
@@ -106,7 +97,7 @@ await webhooks.check()
 </Step>
 </Steps>
 
-You're set up. Nothing is sent yet: that takes a published event and a running worker.
+Nothing is sent yet: that takes a published event and a running worker.
 
 <Cards>
   <Card title="1. Publish events" href="/docs/guides/publish">
@@ -123,19 +114,4 @@ You're set up. Nothing is sent yet: that takes a published event and a running w
   </Card>
 </Cards>
 
-## Entry points
-
-Import only what a process needs. A receiver never loads database code.
-
-| Import                              | Use it for                                                           |
-| ----------------------------------- | -------------------------------------------------------------------- |
-| `good-webhooks`                     | `createWebhooks()`: management and delivery together on PostgreSQL   |
-| `good-webhooks/delivery`            | `createDelivery()`: the sender alone, fed by any `EndpointSource`    |
-| `good-webhooks/management`          | The management contracts and `createManagement()` for custom storage |
-| `good-webhooks/management/postgres` | Standalone endpoint management without delivery tables               |
-| `good-webhooks/better-auth`         | The Better Auth server plugin and trusted management provider        |
-| `good-webhooks/better-auth/client`  | The Better Auth client plugin for browsers                           |
-| `good-webhooks/verify`              | `parseWebhook()` and `verifyWebhook()` for receivers                 |
-| `good-webhooks/migrations`          | `getPostgresMigration()` and the shipped SQL files                   |
-
-The package ships ESM and also loads through CommonJS `require()` on Node.js 24. If you use the Better Auth plugin, enable `skipLibCheck` for its upstream declarations; your own types stay fully checked.
+Each process imports only the [entry point](/docs/reference) it needs, so a receiver never loads database code.

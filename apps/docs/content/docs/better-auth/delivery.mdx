@@ -3,21 +3,7 @@ title: Add delivery to Better Auth
 description: Keep Better Auth as the source of endpoints and send events with the PostgreSQL delivery engine from a separate worker.
 ---
 
-Keep Better Auth for endpoint management and add Good Webhooks delivery on PostgreSQL. The two connect through `management.source`:
-
-<Flow>
-  <FlowStep title="Endpoints" actor="Better Auth">
-    Users manage endpoints through the plugin, in your auth database.
-  </FlowStep>
-  <FlowStep title="Publish" actor="your app">
-    `delivery.publish()` asks the source who subscribes and stores deliveries in PostgreSQL.
-  </FlowStep>
-  <FlowStep title="Deliver" actor="worker process">
-    Rebuilds the same auth instance, resolves each endpoint, and sends.
-  </FlowStep>
-</Flow>
-
-The app and the worker build the provider from the same auth configuration, so both must reach the same auth database. Complete the [plugin setup](/docs/better-auth) first.
+Keep Better Auth for endpoint management and send events with Good Webhooks delivery on PostgreSQL. The two connect through `management.source`. The app and a separate worker both build it from the same auth configuration, so both must reach the same auth database. Complete the [plugin setup](/docs/better-auth) first.
 
 <Steps>
 <Step>
@@ -31,14 +17,12 @@ pg zod
 <Step>
 ### Create delivery storage
 
-Generate delivery-only SQL and apply it once with your migration runner. This creates the delivery tables in `public`; pass `schema` to [target another schema](/docs/operations/migrations).
+Generate delivery-only SQL and apply it once with your migration runner. Better Auth keeps owning the endpoint model; this SQL does not touch it. Pass `schema` to [target another schema](/docs/operations/migrations).
 
 ```sh
 node -e 'import("good-webhooks/migrations").then(m => process.stdout.write(m.getPostgresMigration({ component: "delivery" })))' > 001-webhook-delivery.sql
 psql "$DELIVERY_DATABASE_URL" --single-transaction -v ON_ERROR_STOP=1 -f 001-webhook-delivery.sql
 ```
-
-Better Auth keeps owning the management model's migrations. The delivery SQL does not touch it.
 
 </Step>
 <Step>
@@ -71,7 +55,7 @@ The provider uses Better Auth's adapter and encryption keys. It needs no session
 <Step>
 ### Publish in the owner's scope
 
-A personal endpoint belongs to `{ type: 'user', id }`. Publishing on the root instance uses application scope and will not reach it.
+A personal endpoint belongs to `{ type: 'user', id }`. Publishing on the root instance uses application scope and will not reach it:
 
 ```ts
 const publisher = delivery.forScope({ type: 'user', id: user.id })
@@ -82,13 +66,13 @@ await publisher.publish({
 })
 ```
 
-Authorize the business action in your application before selecting the scope. The publication commits in PostgreSQL; it is not atomic with a Better Auth write. See [publish events](/docs/guides/publish#publish-inside-your-transaction).
+Authorize the business action before selecting the scope. The publication is not atomic with a Better Auth write.
 
 </Step>
 <Step>
 ### Run a separate worker
 
-The worker rebuilds the auth instance and provider with the same options, then runs until signalled. The checked example splits auth, delivery, and worker setup into three modules:
+The worker rebuilds the auth instance and provider with the same options, then runs until signalled:
 
 <include cwd lang="ts" meta='title="examples/better-auth/worker.ts"'>
   ../../packages/good-webhooks/examples/better-auth/worker.ts
@@ -123,21 +107,9 @@ await runExampleWorker({
 </Steps>
 
 <Callout type="warn" title="App and worker must share management storage">
-  With SQLite, both processes open the same persistent file. Two `:memory:` databases or two
-  container-local files do not share endpoints. With other adapters, both need the same database and
-  the same model configuration. Both also need the same current and retained Better Auth secrets.
+  Both processes need the same database, model configuration, and current and retained Better Auth
+  secrets. With SQLite, that means one persistent file: two `:memory:` databases or two
+  container-local files do not share endpoints.
 </Callout>
 
-## Next steps
-
-<Cards>
-  <Card title="Run workers" href="/docs/operations/workers">
-    Supervision, polling, and bounded shutdown.
-  </Card>
-  <Card title="Key rotation" href="/docs/operations/key-rotation">
-    Rotate Better Auth secrets without losing endpoint secrets.
-  </Card>
-  <Card title="Billing example" href="/docs/examples#better-auth-billing">
-    A complete app with sessions, a worker, and a receiver.
-  </Card>
-</Cards>
+The [billing example](/docs/examples) runs this setup with sessions, a worker, and a receiver.

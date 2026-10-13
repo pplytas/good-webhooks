@@ -3,7 +3,7 @@ title: Migrations
 description: Pick the SQL for the components you run, apply it with your own migration runner, and keep runtime schema names in sync.
 ---
 
-Good Webhooks never applies DDL. `getPostgresMigration()` returns SQL text; the shipped `.sql` files are the same output for the default `public` schema. Your migration runner applies it once.
+Good Webhooks never applies DDL. `getPostgresMigration()` returns SQL text, the shipped `.sql` files hold the same SQL for the `public` schema, and your migration runner applies it once.
 
 ## Which SQL do I need?
 
@@ -33,13 +33,11 @@ node -e 'import("good-webhooks/migrations").then(m => process.stdout.write(m.get
 psql "$DATABASE_URL" --single-transaction -v ON_ERROR_STOP=1 -f 001-webhooks.sql
 ```
 
-The SQL has no `BEGIN` or `COMMIT`. Wrap it in one transaction with your migration ledger entry. Every script starts with `CREATE SCHEMA IF NOT EXISTS`; table creation itself is not idempotent.
-
-The shipped files are also package exports, resolvable with `import.meta.resolve('good-webhooks/migrations/delivery.sql')` for migration tools that read files.
+The SQL has no `BEGIN` or `COMMIT`, so wrap it in one transaction with your migration ledger entry. Table creation is not idempotent. Migration tools that read files can resolve the shipped files, for example `import.meta.resolve('good-webhooks/migrations/delivery.sql')`.
 
 ## Match the runtime schema
 
-Whatever schema you generate for must be the schema you configure at runtime:
+The schema you generate for must be the schema you configure at runtime:
 
 ```ts
 import { createWebhooks } from 'good-webhooks'
@@ -68,19 +66,13 @@ const delivery = createDelivery({
 })
 ```
 
-An injected management provider keeps its own schema. Delivery's `schema` option never moves it. For Better Auth, the model's placement comes from your Better Auth database or ORM configuration; generate only the delivery SQL.
+An injected management provider keeps its own schema; delivery's `schema` option never moves it. For Better Auth, generate only the delivery SQL.
 
-## Check before you start
-
-```ts
-await webhooks.check()
-```
-
-`check()` verifies that the expected tables and columns exist and that each component records schema version `4`. It throws `SCHEMA_MISMATCH` otherwise, with a message naming the SQL to apply next, and never changes anything. Call it at startup in the app and in every worker.
+Call `await webhooks.check()` at startup in the app and in every worker. It verifies the tables and that each component records schema version `4`, and throws `SCHEMA_MISMATCH` naming the SQL to apply. It never changes anything.
 
 ## Upgrades
 
-Package versions and schema versions are independent: installing a new package never runs SQL. When a release needs a newer schema, its notes say so, and `check()` on the new package refuses to start until the upgrade is applied.
+Installing a new package never runs SQL. When a release needs a newer schema, its notes say so, and `check()` on the new package refuses to start until the upgrade is applied.
 
 Generate the upgrade from the version your database records:
 
@@ -90,7 +82,7 @@ import { getPostgresUpgrade } from 'good-webhooks/migrations'
 const sql = getPostgresUpgrade({ from: 3 }) // both components in 'public'
 ```
 
-Or read the shipped file, for example `good-webhooks/migrations/upgrades/004-all.sql`. Separate namespaces take `component: 'management'` and `component: 'delivery'` with their own `schema`. The SQL checks the recorded version first and raises inside your transaction if it differs, so applying it twice or against the wrong version rolls back.
+The shipped equivalent is `good-webhooks/migrations/upgrades/004-all.sql`. Separate namespaces take `component` with their own `schema`. The SQL checks the recorded version first, so applying it twice or against the wrong version rolls back.
 
 ### Rollout order
 
@@ -98,8 +90,4 @@ Or read the shipped file, for example `good-webhooks/migrations/upgrades/004-all
 2. Restart producers on the new package. Their `check()` now passes.
 3. Restart workers and cleanup jobs on the new package. A restarted process on the old package fails fast with `SCHEMA_MISMATCH`, so finish the rollout rather than mixing versions for long.
 
-Never run a new package against an old schema or an old package against a schema it does not know: both refuse at `check()`. If a process starts without calling `check()`, it may run unsupported queries. The repository rehearses this order against the previously published package in CI.
-
-### Prototype storage
-
-Storage from before version `3` was never published and has no upgrade path. Use fresh storage. See [compatibility](/docs/operations/compatibility) and the [migration reference](/docs/reference/migrations).
+A process that skips `check()` may run unsupported queries against a schema it doesn't know. CI rehearses this order against the previously published package. Every option is in the [migration reference](/docs/reference/migrations).

@@ -117,7 +117,7 @@ Payload normalization sorts object keys. It rejects nonfinite numbers, cycles, n
 </Accordion>
 <Accordion title="Publishing inside a caller-owned transaction">
 
-`publish` runs in a savepoint on the supplied client, so a failed publication rolls back only its own writes. Workers cannot see the event until you commit. Recipient matching is a separate read through `source`, so it is not part of your transaction. See [publish inside your transaction](/docs/guides/publish#publish-inside-your-transaction).
+`publish` runs in a savepoint on the supplied client, so a failed publication rolls back only its own writes. Recipient matching is a separate read through `source`, outside your transaction.
 
 </Accordion>
 </Accordions>
@@ -278,7 +278,7 @@ Each retry waits its configured delay plus up to 20% random jitter. A retry that
 
 ### prune
 
-`prune` deletes at most 100 expired events and their dependent deliveries and attempts per call. It returns the number of removed events. Live leases or contended locks can defer deletion. It does not run automatically. See [retention](/docs/operations/retention).
+`prune` deletes at most 100 expired events and their dependent deliveries and attempts per call. It returns the number of removed events. Live leases or contended locks can defer deletion. It does not run automatically. See [clean up history](/docs/operations/retries-and-replay#clean-up-history).
 
 ### Worker errors
 

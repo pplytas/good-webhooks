@@ -26,11 +26,11 @@ Vercel Web Analytics collects automatic page views only when `VERCEL_ENV=product
 
 Write public pages in `content/docs/`. Each page needs `title` and `description` frontmatter. The root `content/docs/meta.json` lists every page in sidebar order; `---Group---` entries are section labels and `[Title](url)` entries are external links.
 
-Pages follow the same shape: a one-paragraph lead, code before caveats, `Steps` for tutorials, `Tabs` for alternative APIs, `Callout` for things that bite, and a `Cards` block of next steps at the end. Install commands use the `package-install` code language, which renders npm, pnpm, yarn, and bun tabs.
+Pages follow the same shape: a one-paragraph lead, code before caveats, `Steps` for tutorials, `Tabs` for alternative APIs, and `Callout` for things that bite. Only the get-started pages end with a `Cards` block of next steps; elsewhere the sidebar and inline links do that job. Say each fact on one page and link to it from the others. Install commands use the `package-install` code language, which renders npm, pnpm, yarn, and bun tabs.
 
 The shared MDX components include `Accordion`, `Accordions`, `Callout`, `Card`, `Cards`, `Flow`, `FlowStep`, `Step`, `Steps`, `Tab`, `Tabs`, and `TypeTable`.
 
-Use `Flow` for a sequence of stages instead of an image or ASCII diagram. It renders as an ordered list, so screen readers and agents read the same steps:
+Use `Flow` for a sequence of stages instead of an image or ASCII diagram, and only when the surrounding prose or code doesn't already show the sequence. It renders as an ordered list, so screen readers and agents read the same steps:
 
 ```mdx
 <Flow title="The life of one event">
