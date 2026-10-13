@@ -247,12 +247,14 @@ function comet(
   stops: { at: number; position: number; easing?: string }[],
   tone: keyof typeof tones = 'primary',
 ) {
+  // Only one stage is displayed per breakpoint. A hidden one still reports path lengths, so
+  // check visibility directly rather than drawing comets nobody can see.
+  if (!layer.checkVisibility()) return
   const probe = document.createElementNS(svgNS, 'path')
   probe.setAttribute('d', route)
   layer.append(probe)
   const length = probe.getTotalLength()
   probe.remove()
-  // A hidden stage (the other layout) measures zero: nothing to draw there.
   if (!length) return
   const unit = 100 / length
   const duration = stops[stops.length - 1]!.at
