@@ -1,13 +1,5 @@
 {
   "title": "Good Webhooks",
   "root": true,
-  "pages": [
-    "(get-started)",
-    "concepts",
-    "guides",
-    "better-auth",
-    "operations",
-    "reference",
-    "(resources)"
-  ]
+  "pages": ["(get-started)", "concepts", "guides", "better-auth", "operations", "reference"]
 }
