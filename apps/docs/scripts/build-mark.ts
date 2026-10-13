@@ -4,6 +4,7 @@
  * Run with `pnpm build:mark` after changing the mark geometry.
  */
 import { writeFile } from 'node:fs/promises'
+import { fileURLToPath } from 'node:url'
 import sharp from 'sharp'
 import { brand, markSvg } from '../lib/mark.ts'
 
@@ -54,6 +55,6 @@ const margin = (gridPx - tilePx) / 2
 await render(svg, gridPx)
   .extract({ left: margin, top: margin, width: tilePx, height: tilePx })
   .png()
-  .toFile(new URL('public/readme/mark.png', root).pathname)
+  .toFile(fileURLToPath(new URL('public/readme/mark.png', root)))
 
 console.log('Wrote app/icon.svg, app/favicon.ico, public/readme/mark.png')

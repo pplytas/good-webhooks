@@ -50,12 +50,20 @@ export function llmsIndex(): string {
   const lines = [...summary]
   const optional: string[] = []
   for (const node of source.getPageTree().children) {
-    if (node.type !== 'folder') continue
-    const pages = node.children.filter((child) => child.type === 'page').map(entry)
+    // Every root entry is a sidebar folder; anything else would silently miss the index.
+    if (node.type !== 'folder') throw new Error(`Root sidebar entry is not a folder: ${node.type}`)
+    const pages = pagesIn(node).map(entry)
     if (node.name === 'Resources') optional.push(...pages)
     else lines.push('', `## ${String(node.name)}`, '', ...pages)
   }
   return [...lines, '', '## Optional', '', ...optional, ''].join('\n')
+}
+
+/** Pages in a folder and its sub-folders, in sidebar order. */
+function pagesIn(folder: PageTree.Folder): PageTree.Item[] {
+  return folder.children.flatMap((child) =>
+    child.type === 'page' ? [child] : child.type === 'folder' ? pagesIn(child) : [],
+  )
 }
 
 function entry(node: PageTree.Item): string {

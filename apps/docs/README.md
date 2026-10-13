@@ -20,7 +20,7 @@ Vercel Web Analytics collects automatic page views only when `VERCEL_ENV=product
 - `app/docs/[[...slug]]/page.tsx` renders `content/docs/` under `/docs`. `content/docs/(get-started)/index.mdx` is the introduction.
 - `app/llms.txt`, `app/llms-full.txt`, and `app/llms.mdx/docs/[[...slug]]` export Markdown for AI tools. Every page is also Markdown at its own URL plus `.md` (`/docs/quick-start.md`, `/docs.md` for the introduction) through the rewrites in `next.config.mjs`. `proxy.ts` serves the same Markdown at the page URL itself when a request prefers `text/markdown`. `lib/llms.ts` builds the sectioned `llms.txt` index from the sidebar and rewrites docs links in exports to absolute Markdown URLs. Each docs page links to its `.md` export through the copy and open actions and a `rel="alternate"` link. `app/sitemap.ts` and `app/robots.ts` export `sitemap.xml` and `robots.txt`.
 - `app/api/search` serves search and `app/api/mcp` is a stateless MCP server (`list_pages`, `get_page`, `search`). Both use the index in `lib/search.ts`.
-- `lib/site.ts` reads the package version for the sidebar badge and npm link. `lib/layout.shared.tsx` holds the shared navigation.
+- `lib/site.ts` reads the package version for the header version pill and npm link. `lib/layout.shared.tsx` holds the shared navigation.
 
 ## Authoring
 

@@ -588,7 +588,8 @@ export function Delivery({ children }: { children?: ReactNode }) {
       ([entry]) => {
         if (!entry?.isIntersecting) return
         observer.disconnect()
-        schedule(600, run)
+        // A press before the drawing scrolled into view already started a run.
+        if (runs.current === 0) schedule(600, run)
       },
       { threshold: 0.4 },
     )
