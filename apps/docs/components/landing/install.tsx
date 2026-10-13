@@ -22,7 +22,7 @@ export function Install() {
   const option = options[selected]!
   return (
     <div className="max-w-md overflow-hidden rounded-xl border bg-fd-card">
-      <div role="tablist" aria-label="Install" className="flex gap-1 border-b px-2 pt-1.5">
+      <div role="tablist" aria-label="Install" className="flex gap-4 border-b px-4 pt-2">
         {options.map((item, index) => (
           <button
             key={item.label}
@@ -30,13 +30,13 @@ export function Install() {
             role="tab"
             aria-selected={index === selected}
             onClick={() => setSelected(index)}
-            className="-mb-px rounded-t-sm border-b border-transparent px-2 pb-1.5 font-mono text-xs text-fd-muted-foreground transition-colors hover:text-fd-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-fd-ring aria-selected:border-fd-primary aria-selected:text-fd-foreground"
+            className="-mb-px border-b border-transparent pb-2 font-mono text-xs text-fd-muted-foreground transition-colors hover:text-fd-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fd-ring aria-selected:border-fd-primary aria-selected:text-fd-foreground"
           >
             {item.label}
           </button>
         ))}
       </div>
-      <div role="tabpanel" className="flex min-h-14 items-start gap-2 py-2.5 pl-4 pr-2.5">
+      <div role="tabpanel" className="flex items-start gap-2 py-2.5 pl-4 pr-2.5">
         <p className="flex-1 pt-1 font-mono text-[13px] leading-relaxed">
           {option.command ? <span className="select-none text-fd-muted-foreground">$ </span> : null}
           {option.text}

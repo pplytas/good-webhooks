@@ -345,12 +345,12 @@ export default function HomePage() {
             <h1 className="text-balance text-[clamp(2.25rem,4.2vw,3.5rem)] font-semibold leading-[1.05] tracking-[-0.03em]">
               Signed, retried, replayable webhooks.
             </h1>
-            <p className="mt-5 max-w-lg text-pretty text-lg leading-relaxed text-fd-muted-foreground">
+            <p className="mt-7 max-w-lg text-pretty text-lg leading-relaxed text-fd-muted-foreground">
               Publish typed events from your TypeScript app. Good Webhooks stores them in your
-              PostgreSQL database, and a worker you run delivers signed Standard Webhooks requests,
-              retries failures, and records every attempt. Receivers verify with one function.
+              PostgreSQL database and delivers them as signed Standard Webhooks requests, with
+              retries and a record of every attempt.
             </p>
-            <div className="mt-7 flex flex-wrap items-center gap-3">
+            <div className="mt-10 flex flex-wrap items-center gap-3">
               <Link
                 href="/docs/quick-start"
                 className="pressable inline-flex h-11 items-center rounded-full bg-fd-primary px-6 text-sm font-medium text-fd-primary-foreground transition-[transform,background-color] duration-150 ease-out hover:bg-fd-primary/85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fd-ring focus-visible:ring-offset-2 focus-visible:ring-offset-fd-background"
@@ -364,12 +364,12 @@ export default function HomePage() {
                 Read the docs
               </Link>
             </div>
-            <div className="mt-5">
+            <div className="mt-8">
               <Install />
             </div>
           </div>
           <div className="min-w-0">
-            <Code code={sample} lang="ts" title="webhooks.ts" />
+            <Code code={sample} lang="ts" />
           </div>
         </div>
 

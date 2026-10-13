@@ -45,22 +45,15 @@ const summary = [
     `${site.url}/llms-full.txt`,
 ]
 
-/** An llms.txt index (https://llmstxt.org): one H2 section per sidebar group. */
+/** An llms.txt index (https://llmstxt.org): one H2 section per sidebar folder. */
 export function llmsIndex(): string {
   const lines = [...summary]
   const optional: string[] = []
-  let section: string[] = lines
   for (const node of source.getPageTree().children) {
-    if (node.type === 'separator') {
-      if (node.name === 'Resources') {
-        section = optional
-        continue
-      }
-      section = lines
-      lines.push('', `## ${String(node.name)}`, '')
-    } else if (node.type === 'page') {
-      section.push(entry(node))
-    }
+    if (node.type !== 'folder') continue
+    const pages = node.children.filter((child) => child.type === 'page').map(entry)
+    if (node.name === 'Resources') optional.push(...pages)
+    else lines.push('', `## ${String(node.name)}`, '', ...pages)
   }
   return [...lines, '', '## Optional', '', ...optional, ''].join('\n')
 }

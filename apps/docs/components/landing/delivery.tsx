@@ -5,17 +5,18 @@ import { useCallback, useEffect, useImperativeHandle, useRef } from 'react'
 
 /**
  * The delivery path as a drawing you can run. One event leaves your app as a comet, slides
- * through PostgreSQL to the worker, and fans out to three receivers. One receiver answers 503,
- * the worker tries again, and it answers 200: the product's thesis in six seconds.
+ * through PostgreSQL to the worker, and fans out to three receivers. Each receiver that answers
+ * 200 sends a green ack back to the worker. One answers 503 and sends nothing back, so the worker
+ * tries again, and this time it answers 200: the product's thesis in six seconds.
  *
  * The comet never fades in or out. It travels one continuous path drawn underneath the nodes,
  * which are opaque, so it is hidden while "inside" a node and emerges on the far side. Each node
- * tints while the comet is inside it and keeps a faint tint afterwards, so the finished frame
- * reads as the path the event took.
+ * tints while the comet is inside it and fades back to its resting border once it has left.
  *
  * Everything moves through the Web Animations API on stroke offsets and opacity, so the browser
  * composites it. Tints and status codes start from their current on-screen opacity, so a press
- * during a run never jumps. Runs overlap rather than restart: every press is its own event.
+ * during a run never jumps. A press restarts the run: comets in flight vanish, and statuses and
+ * tints fade back to rest before the new event leaves.
  *
  * Under prefers-reduced-motion nothing travels: the drawing parks on the resolved frame and a
  * run only crossfades tints and status codes. The step cells below carry the words.
@@ -42,10 +43,12 @@ const timeline = {
   stagger: 70,
   /** How long the failed receiver sits on 503 before the retry leaves. */
   wait: 1200,
+  /** How long a receiver holds its 200 before the ack leaves for the worker. */
+  ackDelay: 150,
 }
 
-/** Tint left on a node after the comet has passed. */
-const visited = 0.4
+/** Tint left on a node after the comet has passed: none, the border returns to neutral. */
+const visited = 0
 
 type NodeKey = 'app' | 'db' | 'worker'
 type Pt = { x: number; y: number }
@@ -62,7 +65,7 @@ type Layout = {
   /** The visible links, drawn from node edge to node edge. */
   links: { appDb: string; dbWorker: string; fan: [string, string, string] }
   /** The comet paths, extended straight into the node centers so the comet hides inside. */
-  routes: { trunk: string; fan: [string, string, string] }
+  routes: { trunk: string; fan: [string, string, string]; ack: [string, string, string] }
   captions: Record<'publish' | 'claim' | 'event' | 'worker', Pt & { anchor: 'start' | 'middle' }>
 }
 
@@ -112,6 +115,10 @@ const wide: Layout = (() => {
         (row) =>
           `M${worker} ${y} H${fanStart.x} ${curve(fanStart, fanEnd(row), false)} H${receiver}`,
       ) as [string, string, string],
+      ack: rows.map(
+        (row) =>
+          `M${receiver} ${row} H${fanEnd(row).x} ${curve(fanEnd(row), fanStart, false)} H${worker}`,
+      ) as [string, string, string],
     },
     captions: {
       publish: { x: (app + db) / 2, y: y - 12, anchor: 'middle' },
@@ -159,6 +166,10 @@ const tall: Layout = (() => {
         (column) =>
           `M${x} ${worker} V${fanStart.y} ${curve(fanStart, fanEnd(column), true)} V${receiverY}`,
       ) as [string, string, string],
+      ack: columns.map(
+        (column) =>
+          `M${column} ${receiverY} V${fanEnd(column).y} ${curve(fanEnd(column), fanStart, true)} V${worker}`,
+      ) as [string, string, string],
     },
     captions: {
       publish: { x: x + 12, y: (app + db) / 2 + 4, anchor: 'start' },
@@ -170,14 +181,18 @@ const tall: Layout = (() => {
 })()
 
 type StageHandle = {
-  /** Tint a node while the comet is inside it, then settle to the visited tint. */
+  /** Tint a node while the comet is inside it, then fade the tint out. */
   light: (node: NodeKey | number) => void
   /** Send the comet from your app to the worker. */
   trunk: () => void
   /** Send a comet from the worker to one receiver. */
   deliver: (receiver: number) => void
+  /** Send a green ack from one receiver back to the worker. */
+  ack: (receiver: number) => void
   status: (receiver: number, code: 200 | 503 | null) => void
   retrying: (on: boolean) => void
+  /** Clear comets in flight and fade every tint and status back to rest. */
+  reset: () => void
   /** Jump to the frame after a finished run, with nothing in flight. */
   settle: () => void
 }
@@ -194,7 +209,7 @@ function fadeTo(el: Element | null, opacity: number, duration = 240) {
   el.animate([{ opacity: from }, { opacity }], { duration, easing: easeOut, fill: 'forwards' })
 }
 
-/** Tint fully while the comet is inside, then ease down to the visited tint. */
+/** Tint fully while the comet is inside, then ease back out. */
 function lightUp(el: Element | null) {
   if (!el) return
   const from = opacityOf(el)
@@ -217,10 +232,20 @@ const svgNS = 'http://www.w3.org/2000/svg'
  * by its dash offset. The route is normalised to 100 units, so `stops` are percentages of the
  * way along it. Tails are sized in pixels so they look the same on short and long routes.
  */
+const tones = {
+  primary: ['stroke-fd-primary/25', 'stroke-fd-primary/60', 'stroke-fd-primary'],
+  success: [
+    'stroke-emerald-600/25 [.dark_&]:stroke-emerald-400/25',
+    'stroke-emerald-600/60 [.dark_&]:stroke-emerald-400/60',
+    'stroke-emerald-600 [.dark_&]:stroke-emerald-400',
+  ],
+} as const
+
 function comet(
   layer: SVGGElement,
   route: string,
   stops: { at: number; position: number; easing?: string }[],
+  tone: keyof typeof tones = 'primary',
 ) {
   const probe = document.createElementNS(svgNS, 'path')
   probe.setAttribute('d', route)
@@ -231,10 +256,11 @@ function comet(
   if (!length) return
   const unit = 100 / length
   const duration = stops[stops.length - 1]!.at
+  const [faint, soft, head] = tones[tone]
   const layers: { tail: number; width: number; className: string }[] = [
-    { tail: 64 * unit, width: 2, className: 'stroke-fd-primary/25' },
-    { tail: 28 * unit, width: 3, className: 'stroke-fd-primary/60' },
-    { tail: 0.01, width: 6, className: 'stroke-fd-primary' },
+    { tail: 64 * unit, width: 2, className: faint },
+    { tail: 28 * unit, width: 3, className: soft },
+    { tail: 0.01, width: 6, className: head },
   ]
   for (const { tail, width, className } of layers) {
     const path = document.createElementNS(svgNS, 'path')
@@ -272,6 +298,7 @@ function Stage({
 }) {
   const tints = useRef<Record<string, SVGRectElement | null>>({})
   const statuses = useRef<Record<string, SVGTextElement | null>>({})
+  const failures = useRef<Record<string, SVGRectElement | null>>({})
   const captions = useRef<Record<string, SVGTextElement | null>>({})
   const comets = useRef<SVGGElement>(null)
   const { nodes, receivers, links, routes, captions: at } = layout
@@ -295,24 +322,48 @@ function Stage({
         { at: timeline.crossing, position: 100 },
       ])
     },
+    ack: (receiver) => {
+      if (!comets.current) return
+      comet(
+        comets.current,
+        routes.ack[receiver]!,
+        [
+          { at: 0, position: 0, easing: glide },
+          { at: timeline.crossing, position: 100 },
+        ],
+        'success',
+      )
+    },
     status: (receiver, code) => {
       fadeTo(statuses.current[`${receiver}-200`] ?? null, code === 200 ? 1 : 0)
       fadeTo(statuses.current[`${receiver}-503`] ?? null, code === 503 ? 1 : 0)
+      fadeTo(failures.current[String(receiver)] ?? null, code === 503 ? 1 : 0)
     },
     retrying: (on) => {
       fadeTo(captions.current.sending ?? null, on ? 0 : 1)
       fadeTo(captions.current.retrying ?? null, on ? 1 : 0)
+    },
+    reset: () => {
+      comets.current?.replaceChildren()
+      for (const tint of Object.values(tints.current)) fadeTo(tint, 0, 150)
+      receivers.forEach((_, index) => {
+        fadeTo(statuses.current[`${index}-200`] ?? null, 0, 150)
+        fadeTo(statuses.current[`${index}-503`] ?? null, 0, 150)
+        fadeTo(failures.current[String(index)] ?? null, 0, 150)
+      })
+      fadeTo(captions.current.sending ?? null, 1, 150)
+      fadeTo(captions.current.retrying ?? null, 0, 150)
     },
     settle: () => {
       for (const tint of Object.values(tints.current)) fadeTo(tint, visited, 0)
       receivers.forEach((_, index) => {
         fadeTo(statuses.current[`${index}-200`] ?? null, 1, 0)
         fadeTo(statuses.current[`${index}-503`] ?? null, 0, 0)
+        fadeTo(failures.current[String(index)] ?? null, 0, 0)
       })
     },
   }))
 
-  const markerId = `delivery-arrow-${layout.width}`
   const box = (center: Pt, width: number, height: number, rx: number) => ({
     x: center.x - width / 2,
     y: center.y - height / 2,
@@ -329,25 +380,11 @@ function Stage({
       viewBox={`0 0 ${layout.width} ${layout.height}`}
       className={`h-auto w-full ${className ?? ''}`}
     >
-      <defs>
-        <marker
-          id={markerId}
-          viewBox="0 0 8 8"
-          refX="7"
-          refY="4"
-          markerWidth="7"
-          markerHeight="7"
-          orient="auto"
-        >
-          <path d="M0 0.5 L7 4 L0 7.5" className="fill-none stroke-fd-muted-foreground/60" />
-        </marker>
-      </defs>
-
       {/* Links, then comets, then the opaque nodes the comets hide behind. */}
-      <path d={links.appDb} className={line} markerEnd={`url(#${markerId})`} />
-      <path d={links.dbWorker} className={line} markerEnd={`url(#${markerId})`} />
+      <path d={links.appDb} className={line} />
+      <path d={links.dbWorker} className={line} />
       {links.fan.map((d) => (
-        <path key={d} d={d} className={line} markerEnd={`url(#${markerId})`} />
+        <path key={d} d={d} className={line} />
       ))}
       <g ref={comets} className="motion-only" />
 
@@ -399,7 +436,15 @@ function Stage({
                 tints.current[String(index)] = el
               }}
               {...rect}
-              className="fill-fd-primary/10 stroke-fd-primary"
+              className="fill-emerald-600/10 stroke-emerald-600/70 [.dark_&]:fill-emerald-400/10 [.dark_&]:stroke-emerald-400/70"
+              opacity={0}
+            />
+            <rect
+              ref={(el) => {
+                failures.current[String(index)] = el
+              }}
+              {...rect}
+              className="fill-red-400/10 stroke-red-400/70"
               opacity={0}
             />
             <text x={rect.x + 12} y={center.y} dy="0.35em" className={caption}>
@@ -413,7 +458,7 @@ function Stage({
               y={center.y}
               dy="0.35em"
               textAnchor="end"
-              className={caption}
+              className="fill-red-400 font-mono text-[11px]"
               opacity={0}
             >
               503
@@ -426,7 +471,7 @@ function Stage({
               y={center.y}
               dy="0.35em"
               textAnchor="end"
-              className="fill-fd-primary font-mono text-[11px]"
+              className="fill-emerald-600 font-mono text-[11px] [.dark_&]:fill-emerald-400"
               opacity={0}
             >
               200
@@ -490,7 +535,12 @@ export function Delivery({ children }: { children?: ReactNode }) {
     const failed = runs.current++ % 3
     const each = (fn: (stage: StageHandle) => void) =>
       [wideStage.current, tallStage.current].forEach((stage) => stage && fn(stage))
-    const { stored, atWorker, sent, crossing, stagger, wait } = timeline
+    const { stored, atWorker, sent, crossing, stagger, wait, ackDelay } = timeline
+
+    // A press mid-run starts over: drop the old run's pending steps and clear the drawing.
+    timers.current.forEach((timer) => clearTimeout(timer))
+    timers.current.clear()
+    each((s) => s.reset())
 
     each((s) => s.light('app'))
     each((s) => s.trunk())
@@ -505,9 +555,12 @@ export function Delivery({ children }: { children?: ReactNode }) {
       const leaves = sent + receiver * stagger
       schedule(leaves, () => each((s) => s.deliver(receiver)))
       schedule(leaves + crossing, () => {
-        each((s) => s.light(receiver))
+        if (receiver !== failed) each((s) => s.light(receiver))
         each((s) => s.status(receiver, receiver === failed ? 503 : 200))
       })
+      if (receiver !== failed) {
+        schedule(leaves + crossing + ackDelay, () => each((s) => s.ack(receiver)))
+      }
     }
     const retry = sent + failed * stagger + crossing + wait
     schedule(retry - 200, () => {
@@ -519,6 +572,7 @@ export function Delivery({ children }: { children?: ReactNode }) {
       each((s) => s.light(failed))
       each((s) => s.status(failed, 200))
     })
+    schedule(retry + crossing + ackDelay, () => each((s) => s.ack(failed)))
     schedule(retry + crossing + 1000, () => each((s) => s.retrying(false)))
   }, [schedule])
 

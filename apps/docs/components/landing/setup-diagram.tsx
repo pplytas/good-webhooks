@@ -1,9 +1,6 @@
-import { useId } from 'react'
-
 /**
  * A small fan-in, fan-out drawing for a card header, in the same language as the delivery
- * drawing in the hero: boxed nodes, curved links with arrowheads, and the node in the middle
- * carrying the faint tint a node keeps after an event has passed through it.
+ * drawing in the hero: boxed nodes, curved links, and a solid accent node in the middle.
  */
 const width = 400
 const height = 140
@@ -32,10 +29,12 @@ function Node({ x, y, label, hub }: { x: number; y: number; label: string; hub?:
   const box = { x, y: y - h / 2, width: w, height: h, rx: hub ? 8 : 6 }
   return (
     <g>
-      <rect {...box} className="fill-fd-background stroke-fd-border" />
-      {hub ? (
-        <rect {...box} className="fill-fd-primary/10 stroke-fd-primary" opacity={0.4} />
-      ) : null}
+      <rect
+        {...box}
+        className={
+          hub ? 'fill-fd-primary stroke-fd-primary' : 'fill-fd-background stroke-fd-border'
+        }
+      />
       <text
         x={x + w / 2}
         y={y}
@@ -43,7 +42,7 @@ function Node({ x, y, label, hub }: { x: number; y: number; label: string; hub?:
         textAnchor="middle"
         className={
           hub
-            ? 'fill-fd-foreground font-sans text-[12px] font-medium'
+            ? 'fill-fd-primary-foreground font-sans text-[13px] font-semibold'
             : 'fill-fd-muted-foreground font-mono text-[11px]'
         }
       >
@@ -62,7 +61,6 @@ export function SetupDiagram({
   through: string
   to: string[]
 }) {
-  const marker = useId()
   const middle = height / 2
   const hubWidth = textWidth(through) + 28
   const hubLeft = (width - hubWidth) / 2
@@ -78,25 +76,11 @@ export function SetupDiagram({
       // Capped so the labels stay near body-text size on wide cards.
       className="mx-auto h-auto w-full max-w-[26rem]"
     >
-      <defs>
-        <marker
-          id={marker}
-          viewBox="0 0 8 8"
-          refX="7"
-          refY="4"
-          markerWidth="7"
-          markerHeight="7"
-          orient="auto"
-        >
-          <path d="M0 0.5 L7 4 L0 7.5" className="fill-none stroke-fd-muted-foreground/60" />
-        </marker>
-      </defs>
       {sources.map(({ y, label }) => (
         <path
           key={label}
           d={curve(edge + textWidth(label) + 22, y, hubLeft, middle)}
           className={line}
-          markerEnd={`url(#${marker})`}
         />
       ))}
       {targets.map(({ y, label }) => (
@@ -104,7 +88,6 @@ export function SetupDiagram({
           key={label}
           d={curve(hubRight, middle, width - edge - textWidth(label) - 22, y)}
           className={line}
-          markerEnd={`url(#${marker})`}
         />
       ))}
       {sources.map(({ y, label }) => (

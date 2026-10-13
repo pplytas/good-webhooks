@@ -1,5 +1,6 @@
 import { ImageResponse } from 'next/og'
-import { Mark } from '@/lib/og'
+import { Mark } from '@/components/mark'
+import { brand } from '@/lib/mark'
 
 export const size = { width: 180, height: 180 }
 export const contentType = 'image/png'
@@ -14,10 +15,10 @@ export default function AppleIcon() {
         justifyContent: 'center',
         width: '100%',
         height: '100%',
-        backgroundColor: '#ea580c',
+        backgroundColor: brand.tile,
       }}
     >
-      <Mark size={140} color="#ea580c" background="#fff7ed" />
+      <Mark tile={brand.tile} ink={brand.ink} width={168} height={168} />
     </div>,
     size,
   )

@@ -1,0 +1,14 @@
+{
+  "title": "Operations",
+  "pages": [
+    "production",
+    "migrations",
+    "workers",
+    "retries-and-replay",
+    "failure-behavior",
+    "performance",
+    "retention",
+    "key-rotation",
+    "compatibility"
+  ]
+}

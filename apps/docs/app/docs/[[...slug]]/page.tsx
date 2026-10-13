@@ -8,7 +8,7 @@ import {
   EditOnGitHub,
   MarkdownCopyButton,
   ViewOptionsPopover,
-} from 'fumadocs-ui/layouts/docs/page'
+} from 'fumadocs-ui/layouts/notebook/page'
 import { getPageImage, source } from '@/lib/source'
 import { markdownUrl } from '@/lib/llms'
 import { site } from '@/lib/site'

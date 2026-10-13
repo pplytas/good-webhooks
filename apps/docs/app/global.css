@@ -10,51 +10,51 @@
   --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
 }
 
-/* Ink and signal: warm stone neutrals (paper in light mode, charcoal in dark mode) with one
+/* Ink and signal: untinted neutrals (white in light mode, near-black in dark mode) with one
    orange accent for primary actions, active navigation, links, and the logo mark. Every
    text color on every surface was checked for 4.5:1. */
 :root {
-  --color-fd-background: #fdfcfa;
-  --color-fd-foreground: #1c1917;
-  --color-fd-card: #f8f6f2;
-  --color-fd-card-foreground: #1c1917;
-  --color-fd-popover: #fdfcfa;
-  --color-fd-popover-foreground: #1c1917;
-  --color-fd-muted: #f3f0ea;
-  --color-fd-muted-foreground: #6b6560;
-  --color-fd-secondary: #f3f0ea;
-  --color-fd-secondary-foreground: #1c1917;
-  --color-fd-accent: #ece8e0;
-  --color-fd-accent-foreground: #1c1917;
-  --color-fd-border: #e5e0d7;
-  --color-fd-primary: #b23a0b;
+  --color-fd-background: #ffffff;
+  --color-fd-foreground: #171717;
+  --color-fd-card: #f7f7f7;
+  --color-fd-card-foreground: #171717;
+  --color-fd-popover: #ffffff;
+  --color-fd-popover-foreground: #171717;
+  --color-fd-muted: #f4f4f4;
+  --color-fd-muted-foreground: #666666;
+  --color-fd-secondary: #f4f4f4;
+  --color-fd-secondary-foreground: #171717;
+  --color-fd-accent: #ebebeb;
+  --color-fd-accent-foreground: #171717;
+  --color-fd-border: #e3e3e3;
+  --color-fd-primary: #b24a24;
   --color-fd-primary-foreground: #fff7ed;
-  --color-fd-ring: #d9764a;
+  --color-fd-ring: #dd8a66;
 }
 
 .dark {
-  --color-fd-background: #0f0e0c;
-  --color-fd-foreground: #f5f2ec;
-  --color-fd-card: #171511;
-  --color-fd-card-foreground: #f5f2ec;
-  --color-fd-popover: #131210;
-  --color-fd-popover-foreground: #f5f2ec;
-  --color-fd-muted: #1f1c17;
-  --color-fd-muted-foreground: #a8a29e;
-  --color-fd-secondary: #1f1c17;
-  --color-fd-secondary-foreground: #f5f2ec;
-  --color-fd-accent: #29251f;
-  --color-fd-accent-foreground: #f5f2ec;
-  --color-fd-border: #2b2722;
-  --color-fd-primary: #fb923c;
+  --color-fd-background: #0e0e0e;
+  --color-fd-foreground: #f2f2f2;
+  --color-fd-card: #161616;
+  --color-fd-card-foreground: #f2f2f2;
+  --color-fd-popover: #121212;
+  --color-fd-popover-foreground: #f2f2f2;
+  --color-fd-muted: #1c1c1c;
+  --color-fd-muted-foreground: #a3a3a3;
+  --color-fd-secondary: #1c1c1c;
+  --color-fd-secondary-foreground: #f2f2f2;
+  --color-fd-accent: #262626;
+  --color-fd-accent-foreground: #f2f2f2;
+  --color-fd-border: #2a2a2a;
+  --color-fd-primary: #f4a261;
   --color-fd-primary-foreground: #1c1206;
-  --color-fd-ring: #c2410c;
+  --color-fd-ring: #c8602c;
 }
 
 .dark #nd-sidebar {
-  --color-fd-muted: #1f1c17;
-  --color-fd-secondary: #29251f;
-  --color-fd-muted-foreground: #a8a29e;
+  --color-fd-muted: #1c1c1c;
+  --color-fd-secondary: #262626;
+  --color-fd-muted-foreground: #a3a3a3;
 }
 
 ::selection {

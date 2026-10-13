@@ -1,6 +1,6 @@
 # Engineering records
 
-Public documentation lives in [`apps/docs/content/docs`](../apps/docs/content/docs/index.mdx). Run `pnpm dev` from the repository root to read the rendered site.
+Public documentation lives in [`apps/docs/content/docs`](<../apps/docs/content/docs/(get-started)/index.mdx>). Run `pnpm dev` from the repository root to read the rendered site.
 
 This directory keeps architecture decisions and historical implementation proposals:
 

@@ -1,17 +1,7 @@
 import type { ComponentProps } from 'react'
+import { Mark } from '@/components/mark'
 
-/** A monochrome envelope mark. Inherits the current text color. */
-export function Logo(props: ComponentProps<'svg'>) {
-  return (
-    <svg viewBox="0 0 32 32" fill="none" aria-hidden="true" {...props}>
-      <rect x="2" y="2" width="28" height="28" rx="6" fill="currentColor" />
-      <path
-        d="M9 12.5 16 17l7-4.5M9 11h14v10H9z"
-        className="stroke-fd-background"
-        strokeWidth="1.8"
-        strokeLinejoin="round"
-        strokeLinecap="round"
-      />
-    </svg>
-  )
+/** The mark in the theme's accent, like the primary button. */
+export function Logo(props: Omit<ComponentProps<'svg'>, 'viewBox' | 'fill'>) {
+  return <Mark tile="var(--color-fd-primary)" ink="var(--color-fd-primary-foreground)" {...props} />
 }

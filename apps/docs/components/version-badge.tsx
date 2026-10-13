@@ -6,10 +6,10 @@ export function VersionBadge() {
       href={site.npmUrl}
       target="_blank"
       rel="noreferrer"
-      className="mb-2 flex flex-col gap-0.5 rounded-lg border px-3 py-2 transition-colors hover:bg-fd-accent"
+      aria-label={`Latest version on npm: ${site.version}`}
+      className="ms-3 rounded-full border px-2 py-0.5 font-mono text-xs text-fd-muted-foreground transition-colors hover:bg-fd-accent hover:text-fd-accent-foreground whitespace-nowrap max-lg:hidden"
     >
-      <span className="text-xs text-fd-muted-foreground">Latest version</span>
-      <span className="font-mono text-sm">{site.version}</span>
+      {site.version}
     </a>
   )
 }
