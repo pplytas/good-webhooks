@@ -55,6 +55,16 @@ try {
     .locator('#nd-sidebar-mobile')
     .getByRole('button', { name: 'Close Sidebar', exact: true })
     .waitFor()
+  // The drawer overflows while it slides in. Measure the settled layout, not a frame mid-animation.
+  await page.evaluate(() =>
+    Promise.all(
+      document
+        .getAnimations()
+        .filter((animation) => animation.effect?.getComputedTiming().endTime !== Infinity)
+        // A cancelled animation rejects `finished`; it no longer affects layout either way.
+        .map((animation) => animation.finished.catch(() => {})),
+    ),
+  )
   assert.equal(
     await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
     true,

@@ -192,13 +192,14 @@ Zod 4's Standard Schema implementation tries synchronously first, then retries a
 
 The sender retries `5xx` and network errors, and gives up on most `4xx`. Return `400` only when the request itself is bad:
 
-| Error code          | Meaning                                                            | Respond |
-| ------------------- | ------------------------------------------------------------------ | ------- |
-| `SIGNATURE_INVALID` | Missing, malformed, or wrong signature headers                     | `400`   |
-| `SIGNATURE_EXPIRED` | Timestamp outside the tolerance (five minutes by default)          | `400`   |
-| `PAYLOAD_INVALID`   | Bad encoding, JSON, or envelope, an unknown event, or schema error | `400`   |
-| `INVALID_CONFIG`    | Your event map or secret configuration is wrong                    | `500`   |
-| Anything else       | Your database, your business logic, a thrown validator             | `500`   |
+| Error code          | Meaning                                                             | Respond |
+| ------------------- | ------------------------------------------------------------------- | ------- |
+| `SIGNATURE_INVALID` | Missing, malformed, or wrong signature headers                      | `400`   |
+| `SIGNATURE_EXPIRED` | Timestamp outside the tolerance (five minutes by default)           | `400`   |
+| `PAYLOAD_INVALID`   | Bad encoding, JSON, or envelope, an unknown event, or schema error  | `400`   |
+| `INVALID_CONFIG`    | Your event map is wrong                                             | `500`   |
+| `INVALID_INPUT`     | The body is not a string or bytes, or the secret or options are bad | `500`   |
+| Anything else       | Your database, your business logic, a thrown validator              | `500`   |
 
 Error messages carry no payload values. Unexpected errors keep a `cause` for your logs; don't send it back.
 

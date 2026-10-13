@@ -82,14 +82,7 @@ These calls return as soon as the record changes. A request already being sent c
 
 ## Limits
 
-| Limit                    | Value                                                                |
-| ------------------------ | -------------------------------------------------------------------- |
-| Live endpoints per scope | 1,000                                                                |
-| Subscribed event types   | 1 to 100 per endpoint, each one of your configured names             |
-| URL                      | Up to 2,048 characters, HTTPS, no credentials, no unsafe IP literals |
-| Description              | Up to 2,000 characters                                               |
-
-The standalone provider also resolves the URL's DNS at registration.
+A scope holds at most 1,000 live endpoints, and each endpoint subscribes to 1 to 100 of your configured event names. URLs must use HTTPS, carry no credentials, and be at most 2,048 characters. The [management reference](/docs/reference/management#inputs-and-limits) lists every limit.
 
 ## When a scope owner leaves
 

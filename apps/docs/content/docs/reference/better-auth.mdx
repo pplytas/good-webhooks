@@ -88,13 +88,7 @@ Each route lives under Better Auth's configured base path. Every route uses sens
 
 ## Scope authorization
 
-| Requested scope | Authorization                                                                                     |
-| --------------- | ------------------------------------------------------------------------------------------------- |
-| Omitted         | Resolves to `{ type: 'user', id: session.user.id }`.                                              |
-| `user`          | The ID must exactly match the current user.                                                       |
-| `organization`  | Requires the organization plugin, current membership, and the requested `webhookEndpoint` action. |
-| `null`          | Application scope. Requires `authorizeScope` to allow the exact action.                           |
-| Another type    | Requires `authorizeScope` to allow that scope and action.                                         |
+Every route resolves an omitted scope to `{ type: 'user', id: session.user.id }`, then authorizes the requested scope and action as the [permissions guide](/docs/better-auth/permissions) describes. Application scope (`null`) and custom scope types need `authorizeScope`.
 
 ```ts
 type ManagementAction = 'create' | 'read' | 'update' | 'delete'
@@ -118,17 +112,7 @@ const authorizeScope: ScopePolicy = ({ scope, action, user }) =>
 export const plugin = goodWebhooks({ eventTypes: ['invoice.paid'] as const, authorizeScope })
 ```
 
-The policy defaults to denial for application and custom scopes. It does not run as an override for user or organization authorization. The [permissions guide](/docs/better-auth/permissions) shows organization access control.
-
-<Accordions>
-<Accordion title="Organization roles, API keys, and owner deletion">
-
-The organization plugin's configured creator role has full endpoint access. Other roles need explicit grants. A role named `admin` does not receive grants by name alone. Organization-owned API keys are not an authentication path for these routes. User API-key session impersonation is not a promised compatibility path in this version.
-
-Deleting a user retires their personal endpoints. Deleting an organization through the organization endpoint retires its endpoints. Trusted sender lookups also check owner existence. Removing a member revokes that member's management access without retiring the organization's endpoints.
-
-</Accordion>
-</Accordions>
+The policy defaults to denial and never overrides user or organization authorization. API keys do not authenticate these routes.
 
 ## Route errors
 

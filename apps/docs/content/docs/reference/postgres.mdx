@@ -16,7 +16,7 @@ import type {
 } from 'good-webhooks/management/postgres'
 ```
 
-[`createWebhooks()`](/docs/reference/core) builds this provider for you. Use it directly to run management without delivery, or to pass old keys during [key rotation](/docs/operations/key-rotation).
+[`createWebhooks()`](/docs/reference/core) builds this provider for you. Use it directly for management without delivery, or to pass old keys during [key rotation](/docs/operations/key-rotation).
 
 ## createPostgresManagement
 
@@ -111,12 +111,6 @@ const management = createManagement({
 })
 ```
 
-Creates the storage implementation without the lifecycle API or cipher. This is an extension point for [`createManagement`](/docs/reference/management#createmanagement); most standalone applications use `createPostgresManagement`.
-
-| Option   | Default    | Contract                                                                            |
-| -------- | ---------- | ----------------------------------------------------------------------------------- |
-| `schema` | `'public'` | Follows the [PostgreSQL identifier rules](/docs/reference/migrations#schema-names). |
-
-Invalid database or schema configuration produces `INVALID_CONFIG`.
+Creates the storage implementation without the lifecycle API or cipher, as an extension point for [`createManagement`](/docs/reference/management#createmanagement). Most applications use `createPostgresManagement`. `schema` defaults to `'public'` and follows the [identifier rules](/docs/reference/migrations#schema-names); invalid database or schema configuration produces `INVALID_CONFIG`.
 
 The repository scopes every query and uses revision-guarded updates. Creation uses a transaction and an advisory lock to enforce the 1,000 nondeleted endpoint limit; a full scope produces `INVALID_STATE`. Enumeration rejects with `INVALID_STATE` if storage exceeds that limit rather than returning a partial recipient set.

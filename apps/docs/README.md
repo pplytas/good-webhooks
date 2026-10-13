@@ -24,7 +24,7 @@ Vercel Web Analytics collects automatic page views only when `VERCEL_ENV=product
 
 ## Authoring
 
-Write public pages in `content/docs/`. Each page needs `title` and `description` frontmatter. The root `content/docs/meta.json` lists every page in sidebar order; `---Group---` entries are section labels and `[Title](url)` entries are external links.
+Write public pages in `content/docs/`. Each page needs `title` and `description` frontmatter. The root `content/docs/meta.json` lists the sidebar groups in order. Each group is a folder with its own `meta.json` that lists its pages; folders in parentheses, such as `(get-started)`, group pages without adding a URL segment.
 
 Pages follow the same shape: a one-paragraph lead, code before caveats, `Steps` for tutorials, `Tabs` for alternative APIs, and `Callout` for things that bite. Only the get-started pages end with a `Cards` block of next steps; elsewhere the sidebar and inline links do that job. Say each fact on one page and link to it from the others. Install commands use the `package-install` code language, which renders npm, pnpm, yarn, and bun tabs.
 

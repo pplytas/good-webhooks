@@ -260,9 +260,7 @@ All worker methods cover every scope in the configured delivery database and sch
 
 ### run
 
-`run` processes batches until its signal aborts. After a batch completes at least one prepared attempt as a success, retry, or terminal failure, the next batch starts immediately. Empty batches and stale-only results wait for `pollIntervalMs`. Receiver retries keep their configured schedule. Recovery and reservation cleanup alone do not trigger an immediate batch.
-
-Without `onError`, an internal batch failure stops `run`. With `onError`, the loop awaits the callback, then waits for `pollIntervalMs` before continuing. A callback that throws or rejects stops the loop.
+`run` processes batches until its signal aborts. After a batch that completed at least one attempt, the next batch starts immediately; empty and stale-only batches wait `pollIntervalMs`. Without `onError`, an internal batch failure stops `run`. With it, the loop awaits the callback, waits `pollIntervalMs`, and continues; a callback that throws stops the loop.
 
 ### Attempt outcomes
 
@@ -291,9 +289,7 @@ Each retry waits its configured delay plus up to 20% random jitter. A retry that
 <Accordions>
 <Accordion title="Shutdown and the grace period">
 
-When the signal aborts, the worker stops taking new work and stops waiting for endpoint-provider results. Already prepared attempts can finish during the grace period. When the period expires, the worker requests cancellation of remaining sends. A value of `0` requests immediate cancellation.
-
-The grace period starts when the signal aborts. It does not extend delivery leases or bound database cleanup. Both methods await owned work and completion writes before returning. Underlying provider calls can continue after the worker stops waiting for them. The host controls database timeouts, pool closure, and the final process deadline. Forced cancellation can leave the receiver's outcome unknown and require another attempt.
+When the signal aborts, the worker stops taking new work and stops waiting for endpoint-provider results. Prepared attempts can finish during the grace period, which starts at the abort; then the worker cancels the remaining sends (`0` cancels at once). The grace period does not extend leases or bound database cleanup. Both methods await their completion writes before returning, and the host owns database timeouts, pool closure, and the process deadline. A cancelled send may have reached the receiver, so it can be attempted again.
 
 </Accordion>
 <Accordion title="Running several workers">

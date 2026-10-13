@@ -73,6 +73,13 @@ h3 {
   text-wrap: balance;
 }
 
+/* Headings named after long API identifiers, such as createPostgresManagementRepository, must
+   wrap on phones. The heading is a flex row, so its link needs min-width: 0 to shrink. */
+.prose :is(h2, h3, h4) > a {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .prose :where(code):not(pre code) {
   font-size: 0.875em;
 }
