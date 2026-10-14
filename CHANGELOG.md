@@ -1,8 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.1.0-beta.4 (2026-10-14)
 
 - The npm README title is now text instead of an image, so it stays readable when npm's theme toggle differs from the system color scheme.
+
+The header matches the GitHub README: the current hook logo sits above the title, without a white panel. Runtime behavior, public APIs, dependencies, and database schema are unchanged from `0.1.0-beta.3`. No migration is required.
 
 ## 0.1.0-beta.3 (2026-10-12)
 
