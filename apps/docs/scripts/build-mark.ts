@@ -57,12 +57,14 @@ await render(svg, gridPx)
   .png()
   .toFile(fileURLToPath(new URL('public/readme/mark.png', root)))
 
-// Published npm READMEs retain these URLs. Keep them aligned with the current mark.
-for (const [theme, ink] of [
-  ['light', '#09090b'],
-  ['dark', '#fafafa'],
+// Published npm READMEs retain these URLs, but npm strips the picture theme selector.
+// A background keeps the fallback wordmark readable in light, dark, and system modes.
+for (const [theme, ink, background] of [
+  ['light', '#09090b', '#fafafa'],
+  ['dark', '#fafafa', '#18181b'],
 ] as const) {
   const wordmark = `<svg xmlns="http://www.w3.org/2000/svg" width="960" height="168" viewBox="0 0 960 168">
+    <rect width="960" height="168" rx="24" fill="${background}"/>
     ${svg.replace('<svg ', '<svg x="3" y="12" width="144" height="144" ')}
     <text x="168" y="118" font-family="Arial, Helvetica, sans-serif" font-size="94" font-weight="700" fill="${ink}">Good Webhooks</text>
   </svg>`
