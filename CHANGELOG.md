@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.0-beta.5 (2026-10-15)
+
+Documentation update for the redesigned site. The npm README shows the new square logo and a pipeline diagram in the same style as [good-webhooks.dev](https://good-webhooks.dev), its badges use the site font, and the endpoint example uses `receiver.example`. Images from earlier README versions stay online, so their READMEs keep working. Runtime behavior, public APIs, dependencies, and database schema are unchanged from `0.1.0-beta.4`. No migration is required.
+
 ## 0.1.0-beta.4 (2026-10-14)
 
 - The npm README title is now text instead of an image, so it stays readable when npm's theme toggle differs from the system color scheme.
