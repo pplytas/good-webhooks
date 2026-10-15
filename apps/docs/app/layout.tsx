@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import { Geist, Geist_Mono } from 'next/font/google'
 import { RootProvider } from 'fumadocs-ui/provider/next'
 import { Analytics } from '@vercel/analytics/next'
+import { SpeedInsights } from '@vercel/speed-insights/next'
 import SearchDialog from '@/components/search'
 import { site } from '@/lib/site'
 import './global.css'
@@ -34,7 +35,12 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     <html lang="en" className={`${sans.variable} ${mono.variable}`} suppressHydrationWarning>
       <body className="flex min-h-screen flex-col">
         <RootProvider search={{ SearchDialog }}>{children}</RootProvider>
-        {process.env.VERCEL_ENV === 'production' && <Analytics />}
+        {process.env.VERCEL_ENV === 'production' && (
+          <>
+            <Analytics />
+            <SpeedInsights />
+          </>
+        )}
       </body>
     </html>
   )

@@ -40,3 +40,13 @@ vercel project web-analytics enable good-webhooks --scope consola-technologies
 Enable it before the production deployment so Vercel includes its analytics routes.
 
 This is a reversible website integration. It does not warrant an architecture decision record or changes to the outbound-webhooks glossary.
+
+## Speed Insights
+
+Added on 15 October 2026 using `@vercel/speed-insights/next`. The shared layout mounts `SpeedInsights` under the same `VERCEL_ENV=production` condition as Web Analytics. Local and preview builds omit both components. Keep Speed Insights on the free tier; do not enable Speed Insights Plus.
+
+The free tier reports the Real Experience Score and basic route breakdowns. It includes 10,000 events over a rolling 30-day window, shared across the team. Collection pauses at the limit without overage charges, and the website keeps running. These limits are separate from Web Analytics. See [Speed Insights pricing](https://vercel.com/docs/speed-insights/limits-and-pricing).
+
+The SDK integration does not upgrade the Vercel project to Plus. After a production deployment, verify that the collection script loads and Vercel receives performance events. Local checks can verify the production condition and script initialization, but cannot prove Vercel ingestion.
+
+Local verification on 15 October 2026 passed for builds with `VERCEL_ENV=preview` and `VERCEL_ENV=production`. Browser checks found no telemetry initialization in preview, including after navigation. The production build initialized one Speed Insights script and updated its route from `/` to `/docs` without adding another script. Docs type checks, formatting, link checks, and the browser smoke suite passed. React Doctor scored 100/100, and independent source review found no actionable issues. Vercel ingestion remains unverified until production deployment.
