@@ -1,16 +1,16 @@
 ---
 title: Scopes
-description: A scope keeps one customer's endpoints and events apart from everyone else's. It never grants access by itself.
+description: A scope keeps one user's or organization's endpoints and events apart from everyone else's. It never grants access by itself.
 ---
 
-Every endpoint and every event belongs to exactly one scope, and an event only reaches endpoints in its own scope. That is how one installation serves many customers without crossing their events.
+Every endpoint and every event belongs to exactly one scope, and an event only reaches endpoints in its own scope. That is how one installation serves many users and organizations without crossing their events.
 
 | Scope             | Value                                                                 |
 | ----------------- | --------------------------------------------------------------------- |
 | Application scope | `null`: endpoints your platform registers for itself                  |
 | Named scope       | `{ type, id }`, for example `{ type: 'organization', id: 'org_123' }` |
 
-There is no inheritance and no fallback. Application scope is not a parent of the named scopes: to reach a customer's endpoints, publish in that customer's exact scope.
+There is no inheritance and no fallback. Application scope is not a parent of the named scopes: to reach the endpoints in a named scope, publish in that exact scope.
 
 ## Choosing a scope in code
 
@@ -24,9 +24,9 @@ import { webhooks } from './webhooks.js'
 
 await webhooks.publish({ type: 'invoice.paid', data }) // application scope
 
-const customer = webhooks.forScope({ type: 'organization', id: organizationId })
-await customer.endpoints.create({ url, eventTypes: ['invoice.paid'] })
-await customer.publish({ type: 'invoice.paid', data }) // reaches that organization's endpoints
+const organization = webhooks.forScope({ type: 'organization', id: organizationId })
+await organization.endpoints.create({ url, eventTypes: ['invoice.paid'] })
+await organization.publish({ type: 'invoice.paid', data }) // reaches that organization's endpoints
 ```
 
 </Tab>
@@ -60,7 +60,8 @@ await authClient.goodWebhooks.create({
 
 <Callout type="warn">
   `forScope()` and the provider methods trust the scope you pass. Check that the caller may act for
-  that customer **before** choosing the scope. Never pass an unchecked ID from a request body.
+  that user or organization **before** choosing the scope. Never pass an unchecked ID from a request
+  body.
 </Callout>
 
 The Better Auth routes are the exception: they check the session, organization membership, and permissions on every request. The trusted provider from `createBetterAuthManagement()` skips those checks, which is what a worker needs.

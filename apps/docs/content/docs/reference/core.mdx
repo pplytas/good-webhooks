@@ -95,9 +95,9 @@ Endpoint methods follow the [management contract and limits](/docs/reference/man
 ```ts
 import { webhooks } from './webhooks.js'
 
-const customer = webhooks.forScope({ type: 'organization', id: 'org_123' })
-await customer.publish({ type: 'invoice.paid', data: { invoiceId: 'inv_1', amount: 4200 } })
-await customer.endpoints.list()
+const organization = webhooks.forScope({ type: 'organization', id: 'org_123' })
+await organization.publish({ type: 'invoice.paid', data: { invoiceId: 'inv_1', amount: 4200 } })
+await organization.endpoints.list()
 ```
 
 `forScope` validates and snapshots its scope, so later changes to the argument have no effect. An invalid scope throws `INVALID_INPUT`. It does not authorize a caller. See [scopes](/docs/concepts/scopes).

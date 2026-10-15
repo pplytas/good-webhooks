@@ -10,14 +10,14 @@ An endpoint is a URL in one [scope](/docs/concepts/scopes) that subscribes to so
 <Tabs groupId="management" persist items={['Combined client', 'Standalone provider']}>
 <Tab>
 
-The `webhooks` client from [installation](/docs/installation#create-the-client) has an `endpoints` API. The root client works in application scope; `forScope()` selects a customer's scope.
+The `webhooks` client from [installation](/docs/installation#create-the-client) has an `endpoints` API. The root client works in application scope; `forScope()` selects a named scope.
 
 ```ts
 import { webhooks } from './webhooks.js'
 
-const customer = webhooks.forScope({ type: 'organization', id: organizationId })
+const organization = webhooks.forScope({ type: 'organization', id: organizationId })
 
-const { endpoint, secret } = await customer.endpoints.create({
+const { endpoint, secret } = await organization.endpoints.create({
   url: 'https://receiver.example/webhooks',
   description: 'Invoice notifications',
   eventTypes: ['invoice.paid'],
@@ -58,16 +58,16 @@ psql "$DATABASE_URL" --single-transaction -v ON_ERROR_STOP=1 -f 001-webhook-mana
 
 Both need the storage encryption key from [installation](/docs/installation#create-a-storage-key), and every process that reads these endpoints needs the **same** key.
 
-`create()` returns the plaintext signing secret once; no read returns it again. Show it to the customer once, or send it over a secure channel. Their receiver passes it to [`parseWebhook()`](/docs/guides/receive).
+`create()` returns the plaintext signing secret once; no read returns it again. Show it to the endpoint owner once, or send it over a secure channel. Their receiver passes it to [`parseWebhook()`](/docs/guides/receive).
 
 ## Change an endpoint
 
 ```ts
-await customer.endpoints.update(id, { eventTypes: ['invoice.created', 'invoice.paid'] })
-await customer.endpoints.pause(id)
-await customer.endpoints.resume(id)
-const { secret } = await customer.endpoints.rotateSecret(id, { graceMs: 3_600_000 })
-await customer.endpoints.remove(id)
+await organization.endpoints.update(id, { eventTypes: ['invoice.created', 'invoice.paid'] })
+await organization.endpoints.pause(id)
+await organization.endpoints.resume(id)
+const { secret } = await organization.endpoints.rotateSecret(id, { graceMs: 3_600_000 })
+await organization.endpoints.remove(id)
 ```
 
 | Method         | Effect                                                                                     |

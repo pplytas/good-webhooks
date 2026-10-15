@@ -310,8 +310,8 @@ forScope(scope: Scope): Pick<DeliveryEngine<E>, 'publish' | 'deliveries' | 'deli
 import { delivery } from './delivery.js'
 
 await delivery.check()
-const customer = delivery.forScope({ type: 'organization', id: 'org_123' })
-await customer.deliveries.list()
+const organization = delivery.forScope({ type: 'organization', id: 'org_123' })
+await organization.deliveries.list()
 ```
 
 `check()` verifies delivery schema version `4` and throws `SCHEMA_MISMATCH` otherwise, naming the SQL to apply. It never applies migrations and does not check management storage.

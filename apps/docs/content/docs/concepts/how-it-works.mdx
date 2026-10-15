@@ -37,7 +37,7 @@ The [delivery engine](/docs/reference/delivery) works with four records:
 | Record       | One per                     | Example                                            |
 | ------------ | --------------------------- | -------------------------------------------------- |
 | **Event**    | `publish()` call            | `invoice.paid` for `inv_123`, with a UUID          |
-| **Delivery** | event × subscribed endpoint | That event, bound for one customer's URL           |
+| **Delivery** | event × subscribed endpoint | That event, bound for one endpoint's URL           |
 | **Attempt**  | HTTP request                | The first try got a `503`; the second got `200`    |
 | **Replay**   | manual re-send              | A new delivery of the same event, same ID and body |
 
@@ -65,4 +65,4 @@ Nothing starts by itself. Your application:
 - applies the [migrations](/docs/operations/migrations),
 - owns the PostgreSQL pool and closes it on shutdown,
 - runs the [worker](/docs/operations/workers) and schedules [cleanup](/docs/operations/retries-and-replay#clean-up-history),
-- checks who may act for which customer before choosing a [scope](/docs/concepts/scopes).
+- checks who may act for which user or organization before choosing a [scope](/docs/concepts/scopes).

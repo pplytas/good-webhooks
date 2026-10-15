@@ -1,3 +1,4 @@
+import { Fragment } from 'react'
 import type { BaseLayoutProps } from 'fumadocs-ui/layouts/shared'
 import { site } from '@/lib/site'
 import { Logo } from '@/components/logo'
@@ -6,8 +7,8 @@ export function baseOptions(): BaseLayoutProps {
   return {
     nav: {
       title: (
-        <span className="inline-flex items-center gap-2 whitespace-nowrap font-semibold">
-          <Logo className="size-5" />
+        <span className="inline-flex items-center gap-2.5 whitespace-nowrap text-[13px] font-semibold uppercase tracking-[0.08em]">
+          <Logo className="size-[18px]" />
           {site.name}
         </span>
       ),
@@ -18,8 +19,9 @@ export function baseOptions(): BaseLayoutProps {
       // Header links are for separate workspaces. Sections of the docs live in the sidebar.
       { text: 'Documentation', url: '/docs', active: 'nested-url' },
       {
+        // Fumadocs renders icon and text side by side in an array, so both need keys.
         text: (
-          <span className="inline-flex items-center gap-1 lg:me-4">
+          <span key="text" className="inline-flex items-center gap-1 lg:me-4">
             Changelog
             <ExternalIcon />
             <span className="sr-only">(opens in a new tab)</span>
@@ -29,7 +31,7 @@ export function baseOptions(): BaseLayoutProps {
         external: true,
         // The trailing icon above marks it everywhere; this stops the sidebar adding a leading one.
         // lg:me-4 above matches the 24px gap between header links before the GitHub icon.
-        icon: <></>,
+        icon: <Fragment key="icon" />,
       },
     ],
   }

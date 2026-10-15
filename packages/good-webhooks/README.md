@@ -1,5 +1,5 @@
 <p align="center">
-  <img alt="" src="https://good-webhooks.dev/readme/mark.png" width="56" height="56" />
+  <img alt="" src="https://good-webhooks.dev/readme/mark-square.png" width="56" height="56" />
 </p>
 
 <h1 align="center">Good Webhooks</h1>
@@ -26,8 +26,8 @@ You publish typed events. Good Webhooks stores them in your PostgreSQL database,
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://good-webhooks.dev/readme/flow-dark.png" />
-    <img alt="Your app calls publish(), which records the event and one delivery per endpoint in PostgreSQL. A worker signs, sends, retries, and records each delivery. The receiver calls parseWebhook() to verify it and get a typed event." src="https://good-webhooks.dev/readme/flow-light.png" />
+    <source media="(prefers-color-scheme: dark)" srcset="https://good-webhooks.dev/readme/pipeline-dark.png" />
+    <img alt="Your app calls publish(), which records the event and one delivery per endpoint in PostgreSQL. A worker signs, sends, retries, and records each delivery. The receiver calls parseWebhook() to verify it and get a typed event." src="https://good-webhooks.dev/readme/pipeline-light.png" />
   </picture>
 </p>
 
@@ -102,7 +102,7 @@ const webhooks = createWebhooks({
 ```ts
 // The signing secret is returned only once.
 const { secret } = await webhooks.endpoints.create({
-  url: 'https://customer.example/webhooks',
+  url: 'https://receiver.example/webhooks',
   eventTypes: ['invoice.paid'],
 })
 

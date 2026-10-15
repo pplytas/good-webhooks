@@ -9,7 +9,7 @@ import { quickStartPrompt } from '@/lib/prompts'
  */
 export function AgentPrompt() {
   return (
-    <aside className="not-prose my-6 rounded-xl first:mt-0 border bg-fd-card p-4">
+    <aside className="not-prose my-6 first:mt-0 border bg-fd-card p-5">
       <p className="text-sm font-medium">Building with a coding agent?</p>
       <p className="mt-1 text-sm text-fd-muted-foreground">
         Paste this prompt. The{' '}
@@ -18,7 +18,7 @@ export function AgentPrompt() {
         </Link>{' '}
         has an Agent Skill, an MCP server, and more prompts.
       </p>
-      <div className="mt-3 flex items-start gap-2 rounded-lg border bg-fd-background py-2 pl-3 pr-2">
+      <div className="mt-4 flex items-start gap-2 border bg-fd-background py-3 pl-4 pr-2.5">
         <p className="flex-1 pt-1 font-mono text-[13px] leading-relaxed">{quickStartPrompt}</p>
         <CopyButton text={quickStartPrompt} label="Copy prompt" />
       </div>

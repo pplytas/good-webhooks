@@ -48,10 +48,15 @@ export default async function Page({ params }: Props) {
   const sourceUrl = `${site.contentUrl}/${page.path}`
 
   return (
-    <DocsPage toc={page.data.toc} full={page.data.full}>
+    <DocsPage
+      toc={page.data.toc}
+      full={page.data.full}
+      breadcrumb={{ enabled: false }}
+      footer={{ className: 'page-footer grid-cells gap-px' }}
+    >
       <DocsTitle>{page.data.title}</DocsTitle>
       <DocsDescription className="mb-4">{page.data.description}</DocsDescription>
-      <div className="mb-6 flex flex-row flex-wrap items-center gap-2 border-b pb-6">
+      <div className="mb-6 flex flex-row flex-wrap items-center gap-2 border-b pb-6 [&_button]:font-mono [&_button]:text-[11px] [&_button]:uppercase [&_button]:tracking-wider">
         <MarkdownCopyButton markdownUrl={markdown} />
         <ViewOptionsPopover
           markdownUrl={markdown}

@@ -16,6 +16,7 @@ import {
   Transactional,
   TypedEvents,
 } from '@/components/landing/illustrations'
+import { button } from '@/lib/button'
 import { site } from '@/lib/site'
 
 const sample = `import { createWebhooks } from 'good-webhooks'
@@ -32,9 +33,9 @@ const webhooks = createWebhooks({
   },
 })
 
-// A customer registers an endpoint.
+// Register the endpoint that receives them.
 const { secret } = await webhooks.endpoints.create({
-  url: 'https://customer.example/webhooks',
+  url: 'https://receiver.example/webhooks',
   eventTypes: ['invoice.paid'],
 })
 
@@ -281,7 +282,7 @@ const setups: {
     diagram: {
       from: ['endpoints', 'publish()'],
       through: 'PostgreSQL',
-      to: ['customer A', 'customer B', 'customer C'],
+      to: ['endpoint A', 'endpoint B', 'endpoint C'],
     },
   },
   {
@@ -297,7 +298,7 @@ const setups: {
     diagram: {
       from: ['Better Auth', 'publish()'],
       through: 'worker',
-      to: ['customer A', 'customer B', 'customer C'],
+      to: ['endpoint A', 'endpoint B', 'endpoint C'],
     },
   },
   {
@@ -338,11 +339,16 @@ const paths: { title: string; body: string; href: string }[] = [
 
 export default function HomePage() {
   return (
-    <main className="mx-auto w-full max-w-7xl px-6 pb-32">
-      <section className="pt-16 sm:pt-24">
+    <main className="mx-auto mb-24 w-full max-w-7xl border-b sm:border-x">
+      <section className="relative isolate overflow-hidden px-6 pb-16 pt-16 sm:px-10 sm:pb-20 sm:pt-24">
+        {/* Faint blueprint grid behind the hero, fading out toward the content. */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 -z-10 bg-[linear-gradient(to_right,var(--color-fd-border)_1px,transparent_1px),linear-gradient(to_bottom,var(--color-fd-border)_1px,transparent_1px)] bg-[size:48px_48px] opacity-50 [mask-image:radial-gradient(ellipse_at_top_left,black,transparent_60%)]"
+        />
         <div className="grid items-start gap-x-12 gap-y-10 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] lg:gap-x-16">
           <div className="lg:pt-2">
-            <h1 className="text-balance text-[clamp(2.25rem,4.2vw,3.5rem)] font-semibold leading-[1.05] tracking-[-0.03em]">
+            <h1 className="text-balance text-[clamp(2.25rem,4.2vw,3.5rem)] font-medium leading-[1.02] tracking-[-0.04em]">
               Signed, retried, replayable webhooks.
             </h1>
             <p className="mt-7 max-w-lg text-pretty text-lg leading-relaxed text-fd-muted-foreground">
@@ -351,16 +357,10 @@ export default function HomePage() {
               retries and a record of every attempt.
             </p>
             <div className="mt-10 flex flex-wrap items-center gap-3">
-              <Link
-                href="/docs/quick-start"
-                className="pressable inline-flex h-11 items-center rounded-full bg-fd-primary px-6 text-sm font-medium text-fd-primary-foreground transition-[transform,background-color] duration-150 ease-out hover:bg-fd-primary/85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fd-ring focus-visible:ring-offset-2 focus-visible:ring-offset-fd-background"
-              >
+              <Link href="/docs/quick-start" className={button('primary')}>
                 Quick start
               </Link>
-              <Link
-                href="/docs"
-                className="pressable inline-flex h-11 items-center rounded-full bg-fd-secondary px-6 text-sm font-medium transition-[transform,background-color] duration-150 ease-out hover:bg-fd-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fd-ring focus-visible:ring-offset-2 focus-visible:ring-offset-fd-background"
-              >
+              <Link href="/docs" className={button('secondary')}>
                 Read the docs
               </Link>
             </div>
@@ -375,10 +375,13 @@ export default function HomePage() {
 
         <div className="mt-16 sm:mt-24">
           <Delivery>
-            <ol className="grid gap-x-6 gap-y-5 border-t px-5 py-5 sm:px-6 md:grid-cols-4">
+            <ol className="grid-cells border-x-0 border-b-0 md:grid-cols-4">
               {steps.map((step) => (
-                <li key={step.title} className="text-sm leading-relaxed">
-                  <span className="font-medium">{step.title}</span>{' '}
+                <li
+                  key={step.title}
+                  className="flex flex-col gap-1.5 p-5 text-sm leading-relaxed sm:px-6"
+                >
+                  <span className="font-medium">{step.title}</span>
                   <span className="text-fd-muted-foreground [&_code]:font-mono [&_code]:text-[0.85em] [&_code]:text-fd-foreground">
                     {step.body}
                   </span>
@@ -389,13 +392,15 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="mt-24 border-t pt-20 sm:mt-32 sm:pt-28">
+      <section className="relative border-t px-6 py-20 sm:px-10 sm:py-24">
+        <Marks />
         <SectionHeading lede="The client validates the payload against your schema and records the event inside your transaction. The receiver imports only the verify module and checks the signature in one call.">
           Publish on your side. Verify on theirs.
         </SectionHeading>
-        <div className="mt-12 grid items-start gap-8 lg:grid-cols-2">
-          <div className="min-w-0">
+        <div className="relative mt-12 grid gap-8 lg:grid-cols-2">
+          <div className="flex min-w-0 flex-col">
             <CodeTabs
+              label={<Side role="Sender" where="your app" />}
               tabs={[
                 {
                   label: 'PostgreSQL',
@@ -408,8 +413,24 @@ export default function HomePage() {
               ]}
             />
           </div>
-          <div className="min-w-0">
+          {/* Sits in the gap, level with the middle of the two code blocks below the heading rows. */}
+          <span
+            aria-hidden
+            className="absolute left-1/2 top-[calc(50%+1.25rem)] -translate-x-1/2 -translate-y-1/2 text-fd-muted-foreground max-lg:hidden"
+          >
+            <svg
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              className="size-5"
+            >
+              <path d="M3 8h10M9 4l4 4-4 4" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </span>
+          <div className="flex min-w-0 flex-col">
             <CodeTabs
+              label={<Side role="Receiver" where="their endpoint" />}
               tabs={[
                 {
                   label: 'Next.js',
@@ -426,28 +447,28 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="mt-24 border-t pt-20 sm:mt-32 sm:pt-28">
-        <SectionHeading lede="A plain HTTPS POST, signed over the exact body bytes and a timestamp. Any Standard Webhooks library can verify it. Point at a header to see what it covers.">
-          On the wire
+      <section className="relative border-t px-6 py-20 sm:px-10 sm:py-24">
+        <Marks />
+        <SectionHeading lede="A plain HTTPS POST, signed over the exact body bytes and a timestamp. Any Standard Webhooks library can verify it. Pick a header to see what it covers.">
+          What a webhook request looks like
         </SectionHeading>
         <div className="mt-12">
           <Wire />
         </div>
-        <Link href="/docs/guides/receive" className="link mt-8 inline-block text-sm">
-          Receive and verify a webhook
-        </Link>
       </section>
 
-      <section className="mt-24 border-t pt-20 sm:mt-32 sm:pt-28">
+      <section className="relative border-t px-6 py-20 sm:px-10 sm:py-24">
+        <Marks />
         <SectionHeading lede="The parts of delivery that are tedious to get right, done once and tested.">
           What you get
         </SectionHeading>
-        <ul className="grid-cells mt-12 sm:grid-cols-2 xl:grid-cols-4">
+        <ul className="grid-cells cells-4 mt-12 sm:grid-cols-2 xl:grid-cols-4">
           {features.map((feature) => (
-            <li key={feature.title} className="flex flex-col">
+            <li key={feature.title} className="relative flex flex-col">
+              <Plus className="cell-mark -bottom-[5px] -right-[5px]" />
               {feature.art}
-              <h3 className="px-5 pt-4 font-medium">{feature.title}</h3>
-              <p className="px-5 pb-5 pt-1.5 text-sm leading-relaxed text-fd-muted-foreground">
+              <h3 className="px-5 pt-5 font-medium">{feature.title}</h3>
+              <p className="px-5 pb-6 pt-1.5 text-sm leading-relaxed text-fd-muted-foreground">
                 {feature.body}
               </p>
             </li>
@@ -455,17 +476,19 @@ export default function HomePage() {
         </ul>
       </section>
 
-      <section className="mt-24 border-t pt-20 sm:mt-32 sm:pt-28">
+      <section className="relative border-t px-6 py-20 sm:px-10 sm:py-24">
+        <Marks />
         <SectionHeading lede="Endpoint management and delivery are separate pieces. Take both, or just the one you are missing.">
           Pick a setup
         </SectionHeading>
-        <div className="grid-cells mt-12 sm:grid-cols-2">
+        <div className="grid-cells cells-2 mt-12 sm:grid-cols-2">
           {setups.map((setup) => (
             <Link
               key={setup.href}
               href={setup.href}
-              className="group flex flex-col transition-colors duration-150 ease-out hover:bg-fd-accent"
+              className="group relative flex flex-col transition-colors duration-150 ease-out hover:bg-fd-accent"
             >
+              <Plus className="cell-mark -bottom-[5px] -right-[5px]" />
               <span className="border-b bg-fd-card px-4 py-4 transition-colors duration-150 ease-out group-hover:bg-fd-accent sm:px-6">
                 <SetupDiagram {...setup.diagram} />
               </span>
@@ -480,17 +503,19 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="mt-24 border-t pt-20 sm:mt-32 sm:pt-28">
+      <section className="relative border-t px-6 py-20 sm:px-10 sm:py-24">
+        <Marks />
         <SectionHeading lede="Two applications in the repository install the published package and show the full path from a business action to a verified webhook. Copy either one into your own project.">
           Run a complete application
         </SectionHeading>
-        <div className="grid-cells mt-12 sm:grid-cols-2">
+        <div className="grid-cells cells-2 mt-12 sm:grid-cols-2">
           {examples.map((example) => (
             <a
               key={example.href}
               href={example.href}
-              className="group flex flex-col transition-colors duration-150 ease-out hover:bg-fd-accent"
+              className="group relative flex flex-col transition-colors duration-150 ease-out hover:bg-fd-accent"
             >
+              <Plus className="cell-mark -bottom-[5px] -right-[5px]" />
               <span className="border-b bg-fd-card px-4 py-4 transition-colors duration-150 ease-out group-hover:bg-fd-accent sm:px-6">
                 <SetupDiagram {...example.diagram} />
               </span>
@@ -505,7 +530,8 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="mt-24 border-t pt-20 sm:mt-32 sm:pt-28">
+      <section className="relative border-t px-6 py-20 sm:px-10 sm:py-24">
+        <Marks />
         <SectionHeading>Start here</SectionHeading>
         <ol className="mt-10 border-t">
           {paths.map((path) => (
@@ -522,32 +548,28 @@ export default function HomePage() {
         </ol>
       </section>
 
-      <section className="mt-36 rounded-xl border bg-fd-card p-8 sm:mt-44 sm:p-12">
+      <section className="relative border-t bg-fd-card px-6 py-16 sm:px-10 sm:py-20">
+        <Marks />
         <div className="max-w-xl">
-          <h2 className="text-2xl font-semibold leading-tight tracking-tight sm:text-[1.75rem]">
+          <h2 className="text-2xl font-medium leading-tight tracking-[-0.03em] sm:text-[1.75rem]">
             Send your first signed webhook in five minutes.
           </h2>
           <p className="mt-3 max-w-md text-pretty leading-relaxed text-fd-muted-foreground">
             One file publishes an event and a local receiver verifies it. Nothing to sign up for.
           </p>
           <div className="mt-6 flex flex-wrap items-center gap-3">
-            <Link
-              href="/docs/quick-start"
-              className="pressable inline-flex h-11 items-center rounded-full bg-fd-primary px-6 text-sm font-medium text-fd-primary-foreground transition-[transform,background-color] duration-150 ease-out hover:bg-fd-primary/85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fd-ring focus-visible:ring-offset-2 focus-visible:ring-offset-fd-card"
-            >
+            <Link href="/docs/quick-start" className={button('primary', 'card')}>
               Quick start
             </Link>
-            <a
-              href={site.githubUrl}
-              className="pressable inline-flex h-11 items-center rounded-full bg-fd-secondary px-6 text-sm font-medium transition-[transform,background-color] duration-150 ease-out hover:bg-fd-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fd-ring focus-visible:ring-offset-2 focus-visible:ring-offset-fd-card"
-            >
+            <a href={site.githubUrl} className={button('secondary', 'card')}>
               Star on GitHub
             </a>
           </div>
         </div>
       </section>
 
-      <footer className="mt-28 flex flex-wrap items-center justify-between gap-4 pt-6 font-mono text-xs text-fd-muted-foreground">
+      <footer className="relative flex flex-wrap items-center justify-between gap-4 border-t px-6 py-6 font-mono text-xs text-fd-muted-foreground sm:px-10">
+        <Marks />
         <span>MIT License, pplytas and contributors</span>
         <nav className="flex gap-5">
           <a href={site.githubUrl} className="hover:text-fd-foreground">
@@ -571,12 +593,50 @@ export default function HomePage() {
 function SectionHeading({ children, lede }: { children: string; lede?: string }) {
   return (
     <div className="max-w-2xl">
-      <h2 className="text-2xl font-semibold leading-tight tracking-tight sm:text-[1.75rem]">
+      <h2 className="text-2xl font-medium leading-tight tracking-[-0.03em] sm:text-[1.75rem]">
         {children}
       </h2>
       {lede ? (
         <p className="mt-4 text-pretty leading-relaxed text-fd-muted-foreground">{lede}</p>
       ) : null}
     </div>
+  )
+}
+
+/** A crosshair where two hairlines meet, after the registration marks on Better Auth and Firecrawl. */
+function Plus({ className }: { className: string }) {
+  return (
+    <svg
+      aria-hidden
+      viewBox="0 0 9 9"
+      className={`pointer-events-none absolute z-10 size-[9px] text-fd-muted-foreground/70 ${className}`}
+    >
+      <path d="M4.5 0v9M0 4.5h9" stroke="currentColor" />
+    </svg>
+  )
+}
+
+/**
+ * Marks where a section's top rule meets the side rails. They reach 5px past the frame, so they
+ * only show once the window is wider than the frame (80rem) plus that overhang; below that the
+ * frame touches the window edges and the marks would scroll the page sideways. The top offset is
+ * 4px, not 5px, because the section's top rule sits inside its box while the rails sit outside.
+ */
+function Marks() {
+  return (
+    <>
+      <Plus className="-left-[5px] -top-[4px] hidden min-[1290px]:block" />
+      <Plus className="-right-[5px] -top-[4px] hidden min-[1290px]:block" />
+    </>
+  )
+}
+
+/** Names which side of the webhook a code column runs on. */
+function Side({ role, where }: { role: string; where: string }) {
+  return (
+    <p className="font-mono text-xs uppercase tracking-wider">
+      <span className="text-fd-foreground">{role}</span>
+      <span className="text-fd-muted-foreground"> · {where}</span>
+    </p>
   )
 }

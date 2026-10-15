@@ -3,7 +3,7 @@ title: Introduction
 description: Good Webhooks is a TypeScript library that adds outbound webhooks to your application, using your PostgreSQL database.
 ---
 
-Good Webhooks lets your application send webhooks to your customers. You publish an event, and it handles the rest: recipients, signing, retries, history, and replay. It runs inside your app and stores everything in your PostgreSQL database, so there is no extra service to host.
+Good Webhooks lets your application send webhooks to the endpoints your users register. You publish an event, and it handles the rest: recipients, signing, retries, history, and replay. It runs inside your app and stores everything in your PostgreSQL database, so there is no extra service to host.
 
 <Flow title="The life of one event">
   <FlowStep title="Publish" actor="your app">
@@ -78,7 +78,7 @@ event.data.amount // number
 
 ## What it handles for you
 
-A `fetch()` in a request handler loses events when a customer's server is down, sends duplicates on deploys, and can be pointed at internal services. Good Webhooks covers those cases:
+A `fetch()` in a request handler loses events when a receiving server is down, sends duplicates on deploys, and can be pointed at internal services. Good Webhooks covers those cases:
 
 | Good Webhooks handles                                  | You decide                                    |
 | ------------------------------------------------------ | --------------------------------------------- |

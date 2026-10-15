@@ -67,7 +67,7 @@ export function Signing() {
         {headers.map(([key, value, highlight]) => (
           <p
             key={key}
-            className={`flex justify-between gap-3 rounded px-1.5 ${highlight ? 'bg-fd-primary/10 text-fd-foreground' : ''}`}
+            className={`flex justify-between gap-3 px-1.5 ${highlight ? 'bg-fd-primary/10 text-fd-foreground' : ''}`}
           >
             <span className="shrink-0">{key}</span>
             <span className="truncate">{value}</span>
@@ -192,7 +192,7 @@ export function OwnSender() {
           >
             <path d="M0 4h22M18 1l4 3-4 3" />
           </svg>
-          <span className="shrink-0 rounded-full bg-fd-primary px-2.5 text-fd-primary-foreground">
+          <span className="shrink-0 bg-fd-primary px-2.5 text-fd-primary-foreground">
             your sender
           </span>
         </p>
@@ -207,7 +207,7 @@ export function SafeDestinations() {
   return (
     <Frame>
       <div className="w-full max-w-[16rem]">
-        <p className="truncate text-fd-foreground">https://customer.example/webhooks</p>
+        <p className="truncate text-fd-foreground">https://receiver.example/webhooks</p>
         <div className="mt-1.5 grid grid-cols-2 gap-x-4">
           <Yes>https</Yes>
           <Yes>public address</Yes>

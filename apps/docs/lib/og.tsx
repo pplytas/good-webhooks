@@ -4,39 +4,162 @@ import { site } from '@/lib/site'
 
 export const ogSize = { width: 1200, height: 630 }
 
+const line = '#252525'
+const mute = '#8f8f8f'
+
+/** A crosshair centered on (x, y), where two frame lines meet. */
+function Plus({ x, y }: { x: number; y: number }) {
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        left: x - 8,
+        top: y - 8,
+        width: 17,
+        height: 17,
+        display: 'flex',
+      }}
+    >
+      <div
+        style={{
+          position: 'absolute',
+          left: 8,
+          top: 0,
+          width: 1,
+          height: 17,
+          backgroundColor: mute,
+        }}
+      />
+      <div
+        style={{
+          position: 'absolute',
+          left: 0,
+          top: 8,
+          width: 17,
+          height: 1,
+          backgroundColor: mute,
+        }}
+      />
+    </div>
+  )
+}
+
 /**
- * A monochrome social card. No version number: platforms cache these images for weeks.
+ * A monochrome social card in the site's frame: hairline rails and rules with crosshairs where
+ * they cross, the mark and wordmark, then the title. No version number: platforms cache these
+ * images for weeks.
  */
 export function ogImage({ title, description }: { title: string; description?: string }) {
+  const left = 64
+  const right = ogSize.width - 64
+  const top = 112
+  const bottom = ogSize.height - 72
   return new ImageResponse(
     <div
       style={{
         display: 'flex',
-        flexDirection: 'column',
+        position: 'relative',
         width: '100%',
         height: '100%',
-        padding: '72px 80px',
-        backgroundColor: '#0e0e0e',
-        color: '#f2f2f2',
+        backgroundColor: '#0f0f0f',
+        color: '#ededed',
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
-        <Mark tile="#f4a261" ink="#1c1206" width={56} height={56} />
-        <span style={{ fontSize: 36, fontWeight: 600 }}>{site.name}</span>
+      <div
+        style={{
+          position: 'absolute',
+          left,
+          top: 0,
+          width: 1,
+          height: '100%',
+          backgroundColor: line,
+        }}
+      />
+      <div
+        style={{
+          position: 'absolute',
+          left: right,
+          top: 0,
+          width: 1,
+          height: '100%',
+          backgroundColor: line,
+        }}
+      />
+      <div
+        style={{
+          position: 'absolute',
+          left: 0,
+          top,
+          width: '100%',
+          height: 1,
+          backgroundColor: line,
+        }}
+      />
+      <div
+        style={{
+          position: 'absolute',
+          left: 0,
+          top: bottom,
+          width: '100%',
+          height: 1,
+          backgroundColor: line,
+        }}
+      />
+      <Plus x={left} y={top} />
+      <Plus x={right} y={top} />
+      <Plus x={left} y={bottom} />
+      <Plus x={right} y={bottom} />
+
+      <div
+        style={{
+          position: 'absolute',
+          left: left + 40,
+          right: ogSize.width - right + 40,
+          top: 34,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          <Mark ink="#ededed" width={40} height={40} />
+          <span style={{ fontSize: 26, fontWeight: 600, letterSpacing: 2 }}>
+            {site.name.toUpperCase()}
+          </span>
+        </div>
+        <span style={{ fontSize: 22, color: mute, letterSpacing: 3 }}>
+          {new URL(site.url).host.toUpperCase()}
+        </span>
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', marginTop: 'auto' }}>
-        <span style={{ fontSize: 72, fontWeight: 700, lineHeight: 1.1, letterSpacing: -1.5 }}>
+
+      <div
+        style={{
+          position: 'absolute',
+          left: left + 40,
+          right: ogSize.width - right + 40,
+          top: top + 56,
+          bottom: ogSize.height - bottom + 48,
+          display: 'flex',
+          flexDirection: 'column',
+        }}
+      >
+        <span
+          style={{
+            fontSize: 68,
+            fontWeight: 600,
+            lineHeight: 1.08,
+            letterSpacing: -1.5,
+            marginTop: 'auto',
+          }}
+        >
           {title}
         </span>
         {description && (
-          <span style={{ fontSize: 34, lineHeight: 1.35, color: '#a3a3a3', marginTop: 24 }}>
+          <span style={{ fontSize: 30, lineHeight: 1.35, color: mute, marginTop: 20 }}>
             {description}
           </span>
         )}
       </div>
-      <span style={{ fontSize: 28, color: '#f4a261', marginTop: 48 }}>
-        {new URL(site.url).host}
-      </span>
     </div>,
     ogSize,
   )

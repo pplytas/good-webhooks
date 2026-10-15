@@ -34,8 +34,8 @@ Registration requires HTTPS and rejects credentials in the URL and unsafe IP lit
 
 ## What you must enforce
 
-- **Authorization.** Scopes keep customers apart; they don't check permissions. Check the caller before `forScope()` or any provider method. See [scopes](/docs/concepts/scopes).
+- **Authorization.** Scopes keep endpoints and events apart; they don't check permissions. Check the caller before `forScope()` or any provider method. See [scopes](/docs/concepts/scopes).
 - **Trusted sources.** `management.source` returns plaintext signing secrets. Keep it in server code.
 - **Receiver body limits.** Bound the request body before buffering it. `parseWebhook()` rejects bodies over 512 KiB, but only after your server has read them.
 - **Receiver deduplication.** Verification proves who sent the bytes, not whether you already processed them.
-- **Delivery history.** Stored payloads and response bodies may contain customer data. Treat them like any other application data.
+- **Delivery history.** Stored payloads and response bodies may contain user data. Treat them like any other application data.

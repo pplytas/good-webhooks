@@ -1,6 +1,6 @@
 ---
 title: Publish events
-description: Define a typed event catalog, publish with idempotency keys, reach the right customer, and commit events with your own database writes.
+description: Define a typed event catalog, publish with idempotency keys, reach the right scope, and commit events with your own database writes.
 ---
 
 `publish()` records an event and one delivery per subscribed endpoint. It sends nothing itself; a [worker](/docs/operations/workers) does. The examples use the `webhooks` client from [installation](/docs/installation#create-the-client).
@@ -71,16 +71,16 @@ result.duplicate // true when this key was already accepted
 
 Keys are unique per [scope](/docs/concepts/scopes) and are released when the event is [pruned](/docs/operations/retries-and-replay#clean-up-history) (seven days by default).
 
-## Publish to a customer
+## Publish in a named scope
 
-The root client publishes in application scope. To reach a customer's endpoints, publish in their [scope](/docs/concepts/scopes):
+The root client publishes in application scope. To reach the endpoints in a named [scope](/docs/concepts/scopes), publish in that scope:
 
 ```ts
-const customer = webhooks.forScope({ type: 'organization', id: organizationId })
-await customer.publish({ type: 'invoice.paid', data, idempotencyKey })
+const organization = webhooks.forScope({ type: 'organization', id: organizationId })
+await organization.publish({ type: 'invoice.paid', data, idempotencyKey })
 ```
 
-A scope does not check permissions: decide in your app that this action belongs to this customer first.
+A scope does not check permissions: decide in your app that the caller may act for this scope first.
 
 ## Publish inside your transaction
 
@@ -118,7 +118,7 @@ If recipients depend on the payload or on uncommitted rows, use [transactional r
 By default each endpoint gets at most 2 requests at a time, across all workers. Change it per endpoint with [`deliverySettings`](/docs/reference/delivery#deliverysettings):
 
 ```ts
-await customer.deliverySettings.set(endpointId, { maxInFlight: 4 })
+await organization.deliverySettings.set(endpointId, { maxInFlight: 4 })
 ```
 
 Nothing is sent until a [worker](/docs/operations/workers) runs.

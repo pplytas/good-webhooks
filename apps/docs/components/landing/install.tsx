@@ -21,8 +21,8 @@ export function Install() {
   const [selected, setSelected] = useState(0)
   const option = options[selected]!
   return (
-    <div className="max-w-md overflow-hidden rounded-xl border bg-fd-card">
-      <div role="tablist" aria-label="Install" className="flex gap-4 border-b px-4 pt-2">
+    <div className="max-w-md overflow-hidden border bg-fd-card">
+      <div role="tablist" aria-label="Install" className="flex gap-4 border-b px-5 pt-3">
         {options.map((item, index) => (
           <button
             key={item.label}
@@ -36,7 +36,7 @@ export function Install() {
           </button>
         ))}
       </div>
-      <div role="tabpanel" className="flex items-start gap-2 py-2.5 pl-4 pr-2.5">
+      <div role="tabpanel" className="flex items-start gap-2 py-3.5 pl-5 pr-3">
         <p className="flex-1 pt-1 font-mono text-[13px] leading-relaxed">
           {option.command ? <span className="select-none text-fd-muted-foreground">$ </span> : null}
           {option.text}

@@ -1,7 +1,7 @@
 import type { ComponentProps } from 'react'
 import { Mark } from '@/components/mark'
 
-/** The mark in the theme's accent, like the primary button. */
+/** The bare glyph in the current text color, like Better Auth's monochrome header mark. */
 export function Logo(props: Omit<ComponentProps<'svg'>, 'viewBox' | 'fill'>) {
-  return <Mark tile="var(--color-fd-primary)" ink="var(--color-fd-primary-foreground)" {...props} />
+  return <Mark {...props} />
 }

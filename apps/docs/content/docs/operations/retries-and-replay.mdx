@@ -15,25 +15,25 @@ History and replay are server operations on the client for the endpoint's scope.
 ```ts
 import { webhooks } from './webhooks.js'
 
-const customer = webhooks.forScope({ type: 'organization', id: organizationId })
+const organization = webhooks.forScope({ type: 'organization', id: organizationId })
 
-const page = await customer.deliveries.list({ eventId: publication.eventId, limit: 25 })
+const page = await organization.deliveries.list({ eventId: publication.eventId, limit: 25 })
 for (const item of page.items) {
-  const detail = await customer.deliveries.get(item.id)
+  const detail = await organization.deliveries.get(item.id)
   console.log(detail.status, detail.lastStatus, detail.attempts.length)
 }
 ```
 
-Filter by `eventId`, `endpointId`, or `status`. Results are newest first; pass `page.nextCursor` as `before` for the next page. `get()` includes every attempt with its status code, captured response body (up to `maxResponseBytes`), and error. Payloads and response bodies can contain customer data, so treat history as sensitive.
+Filter by `eventId`, `endpointId`, or `status`. Results are newest first; pass `page.nextCursor` as `before` for the next page. `get()` includes every attempt with its status code, captured response body (up to `maxResponseBytes`), and error. Payloads and response bodies can contain user data, so treat history as sensitive.
 
 ## Replay
 
 After fixing the cause, replay the original delivery:
 
 ```ts
-const detail = await customer.deliveries.get(deliveryId)
+const detail = await organization.deliveries.get(deliveryId)
 if (detail.replayOf === null && ['succeeded', 'failed'].includes(detail.status)) {
-  const replay = await customer.deliveries.replay(detail.id)
+  const replay = await organization.deliveries.replay(detail.id)
 }
 ```
 

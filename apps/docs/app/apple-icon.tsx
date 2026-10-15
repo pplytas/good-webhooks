@@ -5,7 +5,7 @@ import { brand } from '@/lib/mark'
 export const size = { width: 180, height: 180 }
 export const contentType = 'image/png'
 
-/** iOS rounds the corners itself, so the mark sits on a full-bleed background. */
+/** iOS rounds the corners itself, so the tile fills the whole canvas. */
 export default function AppleIcon() {
   return new ImageResponse(
     <div
@@ -15,10 +15,9 @@ export default function AppleIcon() {
         justifyContent: 'center',
         width: '100%',
         height: '100%',
-        backgroundColor: brand.tile,
       }}
     >
-      <Mark tile={brand.tile} ink={brand.ink} width={168} height={168} />
+      <Mark tile={brand.tile} ink={brand.ink} width={180} height={180} />
     </div>,
     size,
   )

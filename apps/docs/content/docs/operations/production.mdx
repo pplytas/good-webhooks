@@ -1,6 +1,6 @@
 ---
 title: Production checklist
-description: Everything to settle before real customers receive webhooks, with a link to the details for each item.
+description: Everything to settle before webhooks reach real receivers, with a link to the details for each item.
 ---
 
 Work through this list once before launch.
@@ -8,7 +8,7 @@ Work through this list once before launch.
 ## Keys and secrets
 
 - [ ] The storage encryption key is generated once, kept in a secret manager, and loaded by every app and worker process. Never generate it at startup. [Manage endpoints](/docs/guides/endpoints)
-- [ ] Signing secrets are shown to the customer once, over a secure channel, and never logged. [Security model](/docs/concepts/security)
+- [ ] Signing secrets are shown to the endpoint owner once, over a secure channel, and never logged. [Security model](/docs/concepts/security)
 - [ ] You know how to rotate both a signing secret and the storage key. [Key rotation](/docs/operations/key-rotation)
 
 ## Database
@@ -34,7 +34,7 @@ Work through this list once before launch.
 ## History
 
 - [ ] A cleanup job calls `prune()` on a schedule. Workers never delete history. [Clean up history](/docs/operations/retries-and-replay#clean-up-history)
-- [ ] Delivery history is treated as customer data: it holds payloads and response bodies.
+- [ ] Delivery history is treated as user data: it holds payloads and response bodies.
 - [ ] Support staff know how to inspect deliveries and replay one. [Retries and replay](/docs/operations/retries-and-replay)
 
 ## Receivers

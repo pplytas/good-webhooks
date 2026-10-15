@@ -1,7 +1,7 @@
 'use client'
 
 import type { ReactNode, Ref } from 'react'
-import { useCallback, useEffect, useImperativeHandle, useRef } from 'react'
+import { useCallback, useEffect, useId, useImperativeHandle, useRef } from 'react'
 
 /**
  * The delivery path as a drawing you can run. One event leaves your app as a comet, slides
@@ -366,15 +366,16 @@ function Stage({
     },
   }))
 
-  const box = (center: Pt, width: number, height: number, rx: number) => ({
+  const box = (center: Pt, width: number, height: number) => ({
     x: center.x - width / 2,
     y: center.y - height / 2,
     width,
     height,
-    rx,
   })
   const line = 'fill-none stroke-fd-muted-foreground/40'
   const caption = 'fill-fd-muted-foreground font-mono text-[11px]'
+  // Both layouts render on the page, so each needs its own marker id.
+  const arrow = `arrow-${useId().replace(/:/g, '')}`
 
   return (
     <svg
@@ -382,11 +383,26 @@ function Stage({
       viewBox={`0 0 ${layout.width} ${layout.height}`}
       className={`h-auto w-full ${className ?? ''}`}
     >
-      {/* Links, then comets, then the opaque nodes the comets hide behind. */}
-      <path d={links.appDb} className={line} />
-      <path d={links.dbWorker} className={line} />
+      <defs>
+        <marker
+          id={arrow}
+          viewBox="0 0 6 8"
+          markerWidth={6}
+          markerHeight={8}
+          refX={6}
+          refY={4}
+          orient="auto"
+          markerUnits="userSpaceOnUse"
+        >
+          <path d="M0 0L6 4L0 8Z" className="fill-fd-muted-foreground" />
+        </marker>
+      </defs>
+      {/* Links, each with an arrowhead into the node it reaches, then comets, then the opaque
+          nodes the comets hide behind. */}
+      <path d={links.appDb} className={line} markerEnd={`url(#${arrow})`} />
+      <path d={links.dbWorker} className={line} markerEnd={`url(#${arrow})`} />
       {links.fan.map((d) => (
-        <path key={d} d={d} className={line} />
+        <path key={d} d={d} className={line} markerEnd={`url(#${arrow})`} />
       ))}
       <g ref={comets} className="motion-only" />
 
@@ -397,7 +413,7 @@ function Stage({
           ['worker', 'worker'],
         ] as const
       ).map(([key, label]) => {
-        const rect = box(nodes[key], layout.nodeWidth, layout.nodeHeight, 10)
+        const rect = box(nodes[key], layout.nodeWidth, layout.nodeHeight)
         return (
           <g key={key}>
             <rect {...rect} className="fill-fd-background stroke-fd-border" />
@@ -423,12 +439,7 @@ function Stage({
       })}
 
       {receivers.map((center, index) => {
-        const rect = box(
-          center,
-          layout.receiverWidth,
-          layout.receiverHeight,
-          layout.receiverHeight / 2,
-        )
+        const rect = box(center, layout.receiverWidth, layout.receiverHeight)
         const statusX = rect.x + rect.width - 12
         return (
           <g key={index}>
@@ -450,7 +461,7 @@ function Stage({
               opacity={0}
             />
             <text x={rect.x + 12} y={center.y} dy="0.35em" className={caption}>
-              customer {'ABC'[index]}
+              endpoint {'ABC'[index]}
             </text>
             <text
               ref={(el) => {
@@ -605,22 +616,27 @@ export function Delivery({ children }: { children?: ReactNode }) {
   }, [run, schedule])
 
   return (
-    <div className="overflow-hidden rounded-xl border bg-fd-card">
-      <div ref={drawing} className="px-4 pt-4 sm:px-6 sm:pt-5">
-        <Stage ref={wideStage} layout={wide} className="hidden md:block" />
-        <Stage ref={tallStage} layout={tall} className="mx-auto max-w-sm md:hidden" />
-      </div>
-      <div className="px-4 pb-4 pt-3 sm:px-6 sm:pb-5">
+    <div className="overflow-hidden border bg-fd-card">
+      <div ref={drawing} className="relative px-4 pb-6 pt-14 sm:px-6 sm:pt-12">
+        {/* A quiet control at the top left, where the eye enters the drawing; the hero buttons
+            above stay the page's main actions. */}
         <button
           type="button"
           onClick={run}
-          className="pressable inline-flex h-9 items-center gap-2 rounded-full bg-fd-primary pl-3 pr-4 text-sm font-medium text-fd-primary-foreground transition-[transform,background-color] duration-150 ease-out hover:bg-fd-primary/85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fd-ring focus-visible:ring-offset-2 focus-visible:ring-offset-fd-card"
+          className="pressable absolute left-4 top-4 inline-flex h-8 items-center gap-1.5 border bg-fd-background pl-2.5 pr-3 text-xs font-medium text-fd-muted-foreground transition-[transform,color,background-color] duration-150 ease-out hover:bg-fd-accent hover:text-fd-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fd-ring sm:left-6"
         >
-          <svg aria-hidden="true" viewBox="0 0 16 16" className="size-4" fill="currentColor">
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 16 16"
+            className="size-3.5 text-fd-primary"
+            fill="currentColor"
+          >
             <path d="M4.5 3.2a.75.75 0 0 1 1.14-.64l7 4.8a.75.75 0 0 1 0 1.28l-7 4.8A.75.75 0 0 1 4.5 12.8z" />
           </svg>
           Publish an event
         </button>
+        <Stage ref={wideStage} layout={wide} className="hidden md:block" />
+        <Stage ref={tallStage} layout={tall} className="mx-auto max-w-sm md:hidden" />
       </div>
       {children}
     </div>

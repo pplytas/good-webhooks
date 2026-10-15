@@ -37,7 +37,7 @@ const summary = [
   '',
   `Version ${site.version} (beta: pin the exact version). Requires Node.js 24 or later and PostgreSQL 16 or 17. Better Auth >=1.7.7 <1.8.0 is optional.`,
   '',
-  '**When to use it:** your application sends webhooks to customers and you want delivery to live in your own process and database, with no hosted service.',
+  '**When to use it:** your application sends webhooks to endpoints your users register and you want delivery to live in your own process and database, with no hosted service.',
   '',
   '**When not to use it:** edge runtimes, delivery storage other than PostgreSQL, or a fully hosted webhook service.',
   '',

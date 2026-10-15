@@ -26,7 +26,7 @@ function curve(x1: number, y1: number, x2: number, y2: number) {
 function Node({ x, y, label, hub }: { x: number; y: number; label: string; hub?: boolean }) {
   const w = textWidth(label) + (hub ? 28 : 22)
   const h = hub ? hubHeight : leafHeight
-  const box = { x, y: y - h / 2, width: w, height: h, rx: hub ? 8 : 6 }
+  const box = { x, y: y - h / 2, width: w, height: h }
   return (
     <g>
       <rect
