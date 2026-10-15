@@ -58,7 +58,7 @@ Two interactive examples show the full path from a business action to a verified
 - [Order fulfillment](examples/order-fulfillment): place a shop order, send it to a warehouse, simulate an outage, and replay a delivery without creating a second shipment.
 - [Better Auth billing](examples/better-auth-billing): sign in, manage personal endpoints, publish invoice events, and inspect delivery attempts within the signed-in user's scope.
 
-Each example has its own npm lockfile, PostgreSQL setup, browser UI, receiver, and separate worker process. Both install `good-webhooks@0.1.0-beta.3` from npm and can run together. Follow the [examples guide](examples/README.md) to get started.
+Each example has its own npm lockfile, PostgreSQL setup, browser UI, receiver, and separate worker process. Both install `good-webhooks@0.1.0-beta.5` from npm and can run together. Follow the [examples guide](examples/README.md) to get started.
 
 ## Work on the repository
 
@@ -118,7 +118,7 @@ pnpm --dir packages/good-webhooks pack
 In your application, install the resulting archive using npm or your preferred package manager:
 
 ```sh
-npm install /absolute/path/to/packages/good-webhooks/good-webhooks-0.1.0-beta.3.tgz
+npm install /absolute/path/to/packages/good-webhooks/good-webhooks-0.1.0-beta.5.tgz
 ```
 
 `pnpm test:package` verifies the archive with fresh npm consumers, both with and without Better Auth, including the published declarations and SQL exports. Registry publication is a separate release step.
