@@ -600,11 +600,15 @@ export function Delivery({ children }: { children?: ReactNode }) {
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (!entry?.isIntersecting) return
+        // Wait until three quarters of the drawing is on screen (or of a screen shorter than it),
+        // so a first run never plays half below the fold.
+        const fits = Math.min(entry.boundingClientRect.height, window.innerHeight)
+        if (entry.intersectionRect.height < fits * 0.75) return
         observer.disconnect()
         // A press before the drawing scrolled into view already started a run.
         if (runs.current === 0) schedule(600, run)
       },
-      { threshold: 0.4 },
+      { threshold: Array.from({ length: 21 }, (_, i) => i / 20) },
     )
     observer.observe(el)
     const pending = timers.current
@@ -623,7 +627,7 @@ export function Delivery({ children }: { children?: ReactNode }) {
         <button
           type="button"
           onClick={run}
-          className="pressable absolute left-4 top-4 inline-flex h-8 items-center gap-1.5 border bg-fd-background pl-2.5 pr-3 text-xs font-medium text-fd-muted-foreground transition-[transform,color,background-color] duration-150 ease-out hover:bg-fd-accent hover:text-fd-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fd-ring sm:left-6"
+          className="pressable absolute left-4 top-4 inline-flex h-8 items-center gap-1.5 border bg-fd-background pl-2.5 pr-3 text-xs font-medium text-fd-muted-foreground transition-[transform,color,background-color] duration-150 ease-out hover:bg-fd-accent hover:text-fd-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fd-ring"
         >
           <svg
             aria-hidden="true"
