@@ -31,7 +31,7 @@ export function initializeEnv() {
 }
 export async function migrate(pool: Pool) {
   const { getMigrations } = await import('better-auth/db/migration')
-  const { getPostgresMigration } = await import('good-webhooks/migrations')
+  const { getPostgresMigration, getPostgresUpgrade } = await import('good-webhooks/migrations')
   const { authOptions } = await import('./auth.ts')
   const tables = await pool.query("SELECT tablename FROM pg_tables WHERE schemaname = 'public'")
   if (tables.rowCount && !tables.rows.some((r) => r.tablename === 'billing_example_metadata')) {
@@ -50,12 +50,19 @@ export async function migrate(pool: Pool) {
       "SELECT value FROM billing_example_metadata WHERE name = 'schema-version'",
     )
     if (done.rowCount) {
-      if (done.rows[0].value !== '1') throw new Error('Unknown billing schema version')
+      const version = done.rows[0].value
+      if (version === '2') return
+      if (version !== '1') throw new Error('Unknown billing schema version')
+      // Version 1 databases were set up on good-webhooks delivery schema 4.
+      await client.query(getPostgresUpgrade({ component: 'delivery', from: 4 }))
+      await client.query(
+        "UPDATE billing_example_metadata SET value = '2' WHERE name = 'schema-version'",
+      )
       return
     }
     await client.query(getPostgresMigration({ component: 'delivery' }))
     await client.query(readFileSync(new URL('./schema.sql', import.meta.url), 'utf8'))
-    await client.query("INSERT INTO billing_example_metadata VALUES ('schema-version', '1')")
+    await client.query("INSERT INTO billing_example_metadata VALUES ('schema-version', '2')")
   })
 }
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

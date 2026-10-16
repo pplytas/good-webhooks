@@ -1,6 +1,6 @@
 # Northstar Supply
 
-A small shop admin and warehouse receiver built with the published `good-webhooks@0.1.1` package. Place an order, watch its delivery, take the warehouse offline, and replay an event without creating a second shipment.
+A small shop admin and warehouse receiver built with the published `good-webhooks@0.2.0` package. Place an order, watch its delivery, take the warehouse offline, and replay an event without creating a second shipment.
 
 This is an independent npm application. It has its own lockfile and does not use the repository's package source or pnpm workspace. You can copy this directory elsewhere and run it.
 
@@ -81,7 +81,7 @@ Shop HTTP request
 
 `src/application.ts` owns the business transaction and local administration API. `src/worker.ts` owns delivery execution. `src/receiver-app.ts` owns signature verification and durable receiver idempotency. They share an event schema and this example's database for convenience. Real external receivers would own their database, secret transfer, and deployment independently.
 
-The `001-app.sql` migration creates business and receiver tables. `002-good-webhooks-alpha.2.sql` is the combined SQL emitted by the package's public `getPostgresMigration({ schema: 'northstar' })` API at schema version 3, and `003-good-webhooks-schema-4.sql` is the upgrade emitted by `getPostgresUpgrade({ from: 3 })` when the pin moved to `0.1.0-beta.2`. Existing databases upgrade in place; fresh databases apply both in order. Setup commits each migration ledger update in the same transaction as its SQL. Runtime entrypoints never apply migrations. Follow the package's migration guidance before changing its pinned version.
+The `001-app.sql` migration creates business and receiver tables. `002-good-webhooks-alpha.2.sql` is the combined SQL emitted by the package's public `getPostgresMigration({ schema: 'northstar' })` API at schema version 3, `003-good-webhooks-schema-4.sql` is the upgrade emitted by `getPostgresUpgrade({ from: 3 })` when the pin moved to `0.1.0-beta.2`, and `004-good-webhooks-schema-5.sql` is the one emitted by `getPostgresUpgrade({ from: 4 })` for `0.2.0`. Existing databases upgrade in place; fresh databases apply them all in order. Setup commits each migration ledger update in the same transaction as its SQL. Runtime entrypoints never apply migrations. Follow the package's migration guidance before changing its pinned version.
 
 Publication idempotency and business idempotency have different jobs. This app permanently associates each order request key with its normalized customer, SKU, and quantity. Repeating the same request returns its order; changing the request with the same key returns `409`. The webhook publisher independently deduplicates its publication key. Warehouse receipts independently deduplicate the received event ID.
 
