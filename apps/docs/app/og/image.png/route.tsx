@@ -1,11 +1,9 @@
-import { ogImage, ogSize } from '@/lib/og'
+import { ogImage } from '@/lib/og'
 import { site } from '@/lib/site'
 
-export const alt = site.name
-export const size = ogSize
-export const contentType = 'image/png'
+export const dynamic = 'force-static'
 
-export default function Image() {
+export function GET() {
   return ogImage({
     title: site.description,
     description:

@@ -4,6 +4,12 @@ import { site } from '@/lib/site'
 
 export const ogSize = { width: 1200, height: 630 }
 
+/**
+ * Part of every card URL. X, LinkedIn, and Slack cache card images by URL for days, so bump this
+ * whenever the card design changes or they keep showing the old one.
+ */
+export const ogRevision = 2
+
 const line = '#252525'
 const mute = '#8f8f8f'
 

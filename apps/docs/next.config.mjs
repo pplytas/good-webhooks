@@ -23,6 +23,8 @@ const config = {
         destination: 'https://good-webhooks.dev/:path',
         permanent: true,
       },
+      // The home card's old URL, still referenced by pages shared before it was versioned.
+      { source: '/opengraph-image', destination: '/og/image.png', permanent: true },
       ...Object.entries(movedPages).flatMap(([source, destination]) => [
         { source, destination, permanent: true },
         { source: `${source}.md`, destination: `${destination.split('#')[0]}.md`, permanent: true },

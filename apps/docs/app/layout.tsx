@@ -5,11 +5,13 @@ import { RootProvider } from 'fumadocs-ui/provider/next'
 import { Analytics } from '@vercel/analytics/next'
 import { SpeedInsights } from '@vercel/speed-insights/next'
 import SearchDialog from '@/components/search'
+import { ogRevision, ogSize } from '@/lib/og'
 import { site } from '@/lib/site'
 import './global.css'
 
 const sans = Geist({ subsets: ['latin'], variable: '--font-sans' })
 const mono = Geist_Mono({ subsets: ['latin'], variable: '--font-mono' })
+const image = { url: `/og/image.png?v=${ogRevision}`, ...ogSize, alt: site.name }
 
 export const metadata: Metadata = {
   metadataBase: new URL(site.url),
@@ -19,8 +21,8 @@ export const metadata: Metadata = {
   },
   description: site.description,
   alternates: { canonical: '/' },
-  openGraph: { siteName: site.name, type: 'website', locale: 'en_US', url: '/' },
-  twitter: { card: 'summary_large_image' },
+  openGraph: { siteName: site.name, type: 'website', locale: 'en_US', url: '/', images: image },
+  twitter: { card: 'summary_large_image', images: image },
 }
 
 export const viewport: Viewport = {
