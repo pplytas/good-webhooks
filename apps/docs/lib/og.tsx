@@ -8,7 +8,7 @@ export const ogSize = { width: 1200, height: 630 }
  * Part of every card URL. X, LinkedIn, and Slack cache card images by URL for days, so bump this
  * whenever the card design changes or they keep showing the old one.
  */
-export const ogRevision = 2
+export const ogRevision = 3
 
 const line = '#252525'
 const mute = '#8f8f8f'
@@ -52,8 +52,9 @@ function Plus({ x, y }: { x: number; y: number }) {
 
 /**
  * A monochrome social card in the site's frame: hairline rails and rules with crosshairs where
- * they cross, the mark and wordmark, then the title. No version number: platforms cache these
- * images for weeks.
+ * they cross, the mark and wordmark, then the title centered between the rules. X overlays the
+ * page title along the bottom edge, so text stays clear of it. No version number: platforms cache
+ * these images for weeks.
  */
 export function ogImage({ title, description }: { title: string; description?: string }) {
   const left = 64
@@ -143,10 +144,11 @@ export function ogImage({ title, description }: { title: string; description?: s
           position: 'absolute',
           left: left + 40,
           right: ogSize.width - right + 40,
-          top: top + 56,
-          bottom: ogSize.height - bottom + 48,
+          top: top + 40,
+          bottom: ogSize.height - bottom + 40,
           display: 'flex',
           flexDirection: 'column',
+          justifyContent: 'center',
         }}
       >
         <span
@@ -155,7 +157,6 @@ export function ogImage({ title, description }: { title: string; description?: s
             fontWeight: 600,
             lineHeight: 1.08,
             letterSpacing: -1.5,
-            marginTop: 'auto',
           }}
         >
           {title}

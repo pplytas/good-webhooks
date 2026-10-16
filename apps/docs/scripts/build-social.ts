@@ -2,7 +2,7 @@
  * Draws the repository's GitHub social preview, `.github/social-preview.png`, at GitHub's
  * recommended 1280 by 640: the same framed card as the site's social images (`lib/og.tsx`),
  * with hairline rails and rules, crosshairs where they cross, the mark and wordmark, then the
- * tagline. GitHub has no API for this image, so upload the file under Settings, General, Social
+ * tagline centered between the rules. GitHub has no API for this image, so upload the file under Settings, General, Social
  * preview. Run with `pnpm build:social`; text uses Geist when installed.
  */
 import { writeFile } from 'node:fs/promises'
@@ -18,6 +18,8 @@ const left = 72
 const right = width - 72
 const top = 120
 const bottom = height - 80
+// First tagline baseline that centers the tagline and description between the rules.
+const baseline = (top + bottom) / 2 - 50
 
 /** The tagline on two lines, broken at the word nearest its middle. */
 function twoLines(text: string): [string, string] {
@@ -32,7 +34,7 @@ function twoLines(text: string): [string, string] {
 }
 
 const [first, second] = twoLines(site.description)
-// The same description as the site's root social card, app/opengraph-image.tsx.
+// The same description as the site's root social card, app/og/image.png/route.tsx.
 const description =
   'Typed events, Standard Webhooks signing, and transactional publish on PostgreSQL.'
 
@@ -47,10 +49,10 @@ const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${
   <text x="${left + 96}" y="72" font-family="${sans}" font-size="26" font-weight="600" letter-spacing="2" fill="${colors.ink}">${site.name.toUpperCase()}</text>
   <text x="${right - 40}" y="72" text-anchor="end" font-family="${sans}" font-size="22" letter-spacing="3" fill="${colors.mark}">${new URL(site.url).host.toUpperCase()}</text>
   <text font-family="${sans}" font-size="72" font-weight="500" letter-spacing="-2" fill="${colors.ink}">
-    <tspan x="${left + 40}" y="${bottom - 190}">${first}</tspan>
-    <tspan x="${left + 40}" y="${bottom - 110}">${second}</tspan>
+    <tspan x="${left + 40}" y="${baseline}">${first}</tspan>
+    <tspan x="${left + 40}" y="${baseline + 80}">${second}</tspan>
   </text>
-  <text x="${left + 40}" y="${bottom - 44}" font-family="${sans}" font-size="25" fill="${colors.mark}">${description}</text>
+  <text x="${left + 40}" y="${baseline + 146}" font-family="${sans}" font-size="25" fill="${colors.mark}">${description}</text>
 </svg>`
 
 const png = await sharp(Buffer.from(svg)).png().toBuffer()
