@@ -57,7 +57,7 @@ const sql = await readFile(
 )
 ```
 
-The current schema version is `4`, exported as `POSTGRES_SCHEMA_VERSION`. Every `check()` expects exactly that version for its component. Fresh-install assets never upgrade existing data; use `getPostgresUpgrade` for that.
+The current schema version is `5`, exported as `POSTGRES_SCHEMA_VERSION`. Every `check()` expects exactly that version for its component. Fresh-install assets never upgrade existing data; use `getPostgresUpgrade` for that.
 
 ## getPostgresUpgrade
 
@@ -70,8 +70,8 @@ import { writeFile } from 'node:fs/promises'
 import { getPostgresUpgrade } from 'good-webhooks/migrations'
 
 await writeFile(
-  'migrations/002-webhooks-schema-4.sql',
-  getPostgresUpgrade({ schema: 'webhooks', component: 'all', from: 3 }),
+  'migrations/003-webhooks-schema-5.sql',
+  getPostgresUpgrade({ schema: 'webhooks', component: 'all', from: 4 }),
 )
 ```
 
@@ -79,15 +79,18 @@ Returns SQL that moves storage recorded at version `from` to the current version
 
 <auto-type-table path="../../reference-types.ts" name="PostgresUpgradeOptions" />
 
-`from` is the version recorded in the database, and `3` is the only upgradable one. `from: 4` throws `INVALID_CONFIG` because no upgrade is needed. Versions before `3` were never published and need fresh storage.
+`from` is the version recorded in the database: `3` or `4`. From `3`, the SQL applies the published 3-to-4 step and then the 4-to-5 step. `from: 5` throws `INVALID_CONFIG` because no upgrade is needed. Versions before `3` were never published and need fresh storage.
 
 | Upgrade | Shipped asset for `public`                             | What it changes                                                                           |
 | ------- | ------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
 | 3 to 4  | `good-webhooks/migrations/upgrades/004-all.sql`        | Records a version per component. Delivery rewrites its version row; management gains one. |
 |         | `good-webhooks/migrations/upgrades/004-management.sql` | Management in its own namespace: creates the version table and records `management`.      |
 |         | `good-webhooks/migrations/upgrades/004-delivery.sql`   | Delivery in its own namespace: rewrites the version row.                                  |
+| 4 to 5  | `good-webhooks/migrations/upgrades/005-all.sql`        | Adds the columns for automatic pauses to both components.                                 |
+|         | `good-webhooks/migrations/upgrades/005-management.sql` | Adds `webhook_endpoints.pause_reason`.                                                    |
+|         | `good-webhooks/migrations/upgrades/005-delivery.sql`   | Adds `failing_since` and `failing_revision` to `webhook_endpoint_state`.                  |
 
-In a shared namespace apply `all`, or `delivery` before `management`; the management step needs the rewritten table and fails otherwise. No data tables change in this upgrade, so processes on the previous package keep working until they restart. The [migrations guide](/docs/operations/migrations#upgrades) gives the rollout order.
+Shipped upgrade files never change; each covers one step. For 3 to 4 in a shared namespace, apply `all`, or `delivery` before `management`; the management step needs the rewritten table and fails otherwise. The 4-to-5 components can run in either order. Neither upgrade rewrites data: they only add a version record or nullable columns, so processes on the previous package keep working until they restart. The [migrations guide](/docs/operations/migrations#upgrades) gives the rollout order.
 
 ## Schema names
 

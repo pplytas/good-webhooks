@@ -80,6 +80,34 @@ await organization.endpoints.remove(id)
 
 These calls return as soon as the record changes. A request already being sent can still arrive after a pause or remove. See [endpoint changes while work is queued](/docs/concepts/delivery-guarantees#endpoint-changes-while-work-is-queued).
 
+## Automatic pauses
+
+The worker pauses an endpoint when every attempt to it has failed for five days, or when it answers `410 Gone`. Nothing is deleted: subscriptions and queued deliveries stay, and `resume` works as usual once the receiver is fixed. `pauseReason` tells the two kinds of pause apart:
+
+| `pauseReason` | Meaning                                       |
+| ------------- | --------------------------------------------- |
+| `'owner'`     | Paused with `pause()`                         |
+| `'failing'`   | Every attempt failed for the whole period     |
+| `'gone'`      | The receiver answered `410 Gone`              |
+| `null`        | Not paused, or paused before schema version 5 |
+
+Tell the owner when it happens, for example by email, with the `onEndpointPaused` hook:
+
+```ts title="webhooks.ts"
+export const webhooks = createWebhooks({
+  database,
+  encryptionKey: process.env.WEBHOOK_ENCRYPTION_KEY!,
+  events,
+  hooks: {
+    // Queue the email; the worker awaits this hook before its next batch.
+    onEndpointPaused: ({ scope, endpointId, reason }) =>
+      jobs.enqueue('endpoint-paused', { scope, endpointId, reason }),
+  },
+})
+```
+
+Hooks are best-effort, so an endpoint list that shows `pauseReason` is the reliable record. Set `endpointHealth: { pauseAfterMs }` to change the period, or `endpointHealth: false` to turn automatic pauses off. The [delivery reference](/docs/reference/delivery#automatic-pauses) has every option.
+
 ## Limits
 
 A scope holds at most 1,000 live endpoints, and each endpoint subscribes to 1 to 100 of your configured event names. URLs must use HTTPS, carry no credentials, and be at most 2,048 characters. The [management reference](/docs/reference/management#inputs-and-limits) lists every limit.

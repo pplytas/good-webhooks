@@ -73,7 +73,9 @@ Budget pool connections across producers, workers, and cleanup jobs. A client-si
 
 ## What failures do
 
-Without `onError`, an internal failure rejects `run()` and the process exits; let your supervisor restart it with backoff. If you pass `onError` to log and continue, watch that deliveries keep moving. Receiver failures are not internal failures; they follow the [retry policy](/docs/concepts/delivery-guarantees#retries).
+Without `onError`, an internal failure rejects `run()` and the process exits; let your supervisor restart it with backoff. If you pass `onError` to log and continue, watch that deliveries keep moving. Receiver failures are not internal failures; they follow the [retry policy](/docs/concepts/delivery-guarantees#retries), and an endpoint that keeps failing is [paused automatically](/docs/guides/endpoints#automatic-pauses). Errors thrown by [hooks](/docs/reference/delivery#hooks) are reported like internal failures, after the outcome is recorded.
+
+For metrics and logs per attempt, pass an `onAttempt` [hook](/docs/reference/delivery#hooks) to the engine: it gets the outcome, status, error, and duration of every attempt.
 
 Every failure below ends with the delivery retried under the same event ID, or the process exiting for a supervisor to restart. Each row is [checked by a test](https://github.com/pplytas/good-webhooks/blob/main/docs/operations.md#where-each-failure-claim-is-checked).
 

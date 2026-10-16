@@ -11,9 +11,10 @@ import type { EndpointSource } from 'good-webhooks/management'
 // interface EndpointSource {
 //   matchRecipients(scope, eventType): Promise<readonly string[]>
 //   resolveEndpoint(scope, endpointId): Promise<
-//     | { status: 'active'; url: string; secrets: readonly string[] }
+//     | { status: 'active'; url: string; secrets: readonly string[]; revision?: string }
 //     | { status: 'paused' | 'deleted' }
 //   >
+//   pause?(scope, endpointId, { reason, revision }): Promise<boolean>
 // }
 ```
 
@@ -54,6 +55,8 @@ Do this for retries too. The URL and secrets from publish time may be stale.
 
 </Step>
 </Steps>
+
+To pause endpoints that keep failing, as the built-in worker does, call `source.pause(scope, endpointId, { reason: 'failing', revision })` with the `revision` from the resolution your failed attempts used. It pauses only if the endpoint hasn't changed since, and the owner sees `pauseReason: 'failing'`.
 
 Durable queuing, bounded retries, attempt history, retention, and concurrency limits are also yours. If that list is longer than you want, connect the [built-in delivery](/docs/better-auth/delivery) to the same source instead.
 

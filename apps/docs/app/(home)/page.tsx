@@ -245,7 +245,7 @@ const features: { title: string; body: string; art: ReactNode }[] = [
   {
     title: 'Retries and replay',
     art: <Retries />,
-    body: 'Bounded retry schedule, every attempt recorded, replay without changing the event ID.',
+    body: 'Bounded retries that honor Retry-After, every attempt recorded, and failing endpoints paused, never deleted.',
   },
   {
     title: 'Better Auth plugin',

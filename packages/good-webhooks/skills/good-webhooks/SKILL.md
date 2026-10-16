@@ -25,6 +25,7 @@ Follow these. They are the mistakes agents make most often with this library.
 9. Give every `publish()` that can repeat an `idempotencyKey` derived from the business fact, such as `invoice.paid:${invoiceId}`.
 10. `allowLocalhost: true` is for local development only.
 11. Signing secrets (`whsec_…`) are returned once by `create()` and `rotateSecret()`. Never log them.
+12. The worker pauses an endpoint whose attempts have all failed for five days, or that answers `410`. Show `endpoint.pauseReason` (`'owner'`, `'failing'`, `'gone'`) in endpoint UIs, tell owners through `hooks: { onEndpointPaused }` on `createWebhooks()`, and reactivate with `resume(id)`. A custom `EndpointSource` without `pause()` needs `endpointHealth: false` to run a worker.
 
 ## Setup (standalone PostgreSQL)
 
@@ -109,6 +110,7 @@ const { endpoint, secret } = await customer.endpoints.create({
   eventTypes: ['invoice.paid'],
 })
 // update(id, patch) · pause(id) · resume(id) · rotateSecret(id, { graceMs }) · remove(id)
+// endpoint.pauseReason: 'owner' after pause(), 'failing' or 'gone' after an automatic pause
 ```
 
 ## Receiver (Web Request, for example Next.js route handlers)

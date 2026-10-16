@@ -38,7 +38,8 @@ You publish typed events. Good Webhooks stores them in your PostgreSQL database,
 - **Typed events.** Any [Standard Schema](https://standardschema.dev) validator. Bad payloads are rejected on publish, and receivers decode into the same types.
 - **Standard Webhooks signing.** Every request carries `webhook-id`, `webhook-timestamp`, and an HMAC-SHA256 signature, so any compliant verifier works.
 - **Transactional publish.** Pass your open PostgreSQL client. If your write rolls back, the event never existed.
-- **Retries and replay.** A bounded retry schedule, every attempt recorded, and replay without changing the event ID.
+- **Retries and replay.** A bounded retry schedule that honors `Retry-After`, every attempt recorded, and replay without changing the event ID.
+- **Endpoint health.** Endpoints that fail for days or answer `410 Gone` are paused, never deleted, and a hook tells you so you can tell their owners.
 - **Better Auth plugin.** Signed-in users manage their own endpoints through authenticated routes.
 - **Nothing implicit.** No connections, migrations, or workers start on their own. You own the pool and the process.
 

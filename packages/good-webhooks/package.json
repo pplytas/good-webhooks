@@ -1,6 +1,6 @@
 {
   "name": "good-webhooks",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Build webhook delivery into your TypeScript application.",
   "keywords": [
     "webhooks",

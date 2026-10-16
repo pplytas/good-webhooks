@@ -5,7 +5,7 @@ description: Inspect delivery history, replay an event without changing its iden
 
 Retries follow the [retry policy](/docs/concepts/delivery-guarantees#retries). Two things look like failures but are not receiver failures:
 
-- **Paused endpoint.** The delivery waits until resume or expiry.
+- **Paused endpoint.** The delivery waits until resume or expiry. That includes endpoints the worker [paused automatically](/docs/guides/endpoints#automatic-pauses).
 - **Provider lookup failure.** The delivery is deferred without consuming an attempt, and the error goes to the worker's `onError`.
 
 History and replay are server operations on the client for the endpoint's scope. They are not exposed as Better Auth routes.

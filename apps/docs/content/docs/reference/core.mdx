@@ -69,8 +69,8 @@ The client exposes `publish`, `deliveries`, `deliverySettings`, and `worker` fro
 | `endpoints.list()`                         | Returns all nondeleted endpoints in application scope.                                           |
 | `endpoints.get(id)`                        | Returns one endpoint, including its deleted state.                                               |
 | `endpoints.update(id, patch)`              | Changes URL, description, or subscribed event names.                                             |
-| `endpoints.pause(id)`                      | Records paused state.                                                                            |
-| `endpoints.resume(id)`                     | Records active state after URL validation.                                                       |
+| `endpoints.pause(id)`                      | Records paused state with `pauseReason: 'owner'`.                                                |
+| `endpoints.resume(id)`                     | Records active state after URL validation, including after an automatic pause.                   |
 | `endpoints.remove(id)`                     | Records permanent deletion and clears stored signing secrets.                                    |
 | `endpoints.rotateSecret(id, { graceMs? })` | Returns a new signing secret and the endpoint.                                                   |
 | `check()`                                  | Checks the default management provider, if constructed here, then delivery schema compatibility. |
@@ -140,11 +140,11 @@ Returns 32 cryptographically random bytes encoded as base64. The key is the stor
 
 The root also exports these types:
 
-| Group       | Types                                                                                                                                   |
-| ----------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| Events      | `EventDefinitions`, `EventName`, `JsonValue`, `PublishInput`, `PublishOptions`, `PublishResult`                                         |
-| Database    | `SqlClient`, `DatabaseClient`, `Database`                                                                                               |
-| Endpoints   | `Endpoint`, `EndpointStatus`, `EndpointWithSecret`, `EndpointInput`, `EndpointPatch`                                                    |
-| Delivery    | `Delivery`, `DeliveryDetail`, `DeliveryStatus`, `DeliveryQuery`, `Attempt`, `Page`, `WorkerResult`, `DeliveryOptions`, `DeliveryEngine` |
-| Composition | `WebhookOptions`, `Webhooks`, `WebhookClient`, `EndpointManagement`, `EndpointSource`, `EndpointResolution`, `ManagementScope`, `Scope` |
-| Errors      | `WebhookErrorCode`                                                                                                                      |
+| Group       | Types                                                                                                                                                                                                                    |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Events      | `EventDefinitions`, `EventName`, `JsonValue`, `PublishInput`, `PublishOptions`, `PublishResult`                                                                                                                          |
+| Database    | `SqlClient`, `DatabaseClient`, `Database`                                                                                                                                                                                |
+| Endpoints   | `Endpoint`, `EndpointStatus`, `PauseReason`, `EndpointWithSecret`, `EndpointInput`, `EndpointPatch`                                                                                                                      |
+| Delivery    | `Delivery`, `DeliveryDetail`, `DeliveryStatus`, `DeliveryQuery`, `Attempt`, `Page`, `WorkerResult`, `DeliveryOptions`, `DeliveryEngine`, `DeliveryHooks`, `AttemptEvent`, `EndpointPausedEvent`, `EndpointHealthOptions` |
+| Composition | `WebhookOptions`, `Webhooks`, `WebhookClient`, `EndpointManagement`, `EndpointSource`, `EndpointResolution`, `AutomaticPauseInput`, `AutomaticPauseReason`, `ManagementScope`, `Scope`                                   |
+| Errors      | `WebhookErrorCode`                                                                                                                                                                                                       |

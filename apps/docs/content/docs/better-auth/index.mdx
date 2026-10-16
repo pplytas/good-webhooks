@@ -50,7 +50,7 @@ npx auth@1.7.10 migrate --config ./src/auth.ts   # built-in SQL adapters
 npx auth@1.7.10 generate --config ./src/auth.ts  # Drizzle or Prisma, then run their migrations
 ```
 
-Keep every generated field and the unique `allocationKey` index; it enforces the per-scope endpoint limit under concurrent creates. Do not apply Good Webhooks' `management.sql` here: that file is for the standalone PostgreSQL provider.
+Keep every generated field and the unique `allocationKey` index; it enforces the per-scope endpoint limit under concurrent creates. Run the same command again after upgrading Good Webhooks to a release that adds fields, such as `0.2.0`, which adds `pauseReason`. Do not apply Good Webhooks' `management.sql` here: that file is for the standalone PostgreSQL provider.
 
 </Step>
 <Step>

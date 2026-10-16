@@ -17,12 +17,13 @@ Receivers handle rules 2 and 3 by [processing each `event.id` once](/docs/guides
 
 A delivery is `pending` until a worker sends it (`in_flight`), then ends `succeeded`, `failed`, or `cancelled` (the endpoint was deleted). Each attempt's response decides what happens next:
 
-| Response                                  | Result                                      |
-| ----------------------------------------- | ------------------------------------------- |
-| `2xx`                                     | `succeeded`                                 |
-| Network error, `408`, `425`, `429`, `5xx` | Back to `pending` until the next retry time |
-| Any other `4xx`                           | `failed`, no retry                          |
-| `3xx`                                     | `failed`. Redirects are never followed      |
+| Response                                  | Result                                                              |
+| ----------------------------------------- | ------------------------------------------------------------------- |
+| `2xx`                                     | `succeeded`                                                         |
+| Network error, `408`, `425`, `429`, `5xx` | Back to `pending` until the next retry time                         |
+| `410`                                     | `failed`, no retry, and the endpoint is [paused](#automatic-pauses) |
+| Any other `4xx`                           | `failed`, no retry                                                  |
+| `3xx`                                     | `failed`. Redirects are never followed                              |
 
 By default a delivery gets up to seven attempts within 24 hours:
 
@@ -30,7 +31,11 @@ By default a delivery gets up to seven attempts within 24 hours:
 | ------- | --- | --- | --- | ---- | --- | ---- | ---- |
 | Waits   | now | 1 s | 5 s | 30 s | 2 m | 10 m | 30 m |
 
-Change it with `retry: { delaysMs, maxAgeMs }` on `createWebhooks()` or `createDelivery()`. Every retry keeps the event ID and body and gets a fresh timestamp and signature.
+Change it with `retry: { delaysMs, maxAgeMs }` on `createWebhooks()` or `createDelivery()`. A `429` or `503` with a longer `Retry-After` header waits that long instead, within the same 24 hours. Every retry keeps the event ID and body and gets a fresh timestamp and signature.
+
+### Automatic pauses
+
+An endpoint whose attempts have all failed for five days, or that answers `410 Gone`, is paused by the worker. Its queued deliveries wait as for any pause, and its `pauseReason` says why. Resuming it, editing it, or one successful attempt starts the five days again. Hook `onEndpointPaused` to tell the owner, and see [automatic pauses](/docs/reference/delivery#automatic-pauses) for the options.
 
 ## Publication
 
@@ -46,6 +51,7 @@ Change it with `retry: { delaysMs, maxAgeMs }` on `createWebhooks()` or `createD
 | Change                | Effect on queued deliveries                                                |
 | --------------------- | -------------------------------------------------------------------------- |
 | Pause                 | Held until resume, or until the delivery passes its age limit              |
+| Automatic pause       | Same as a pause                                                            |
 | Resume                | Eligible deliveries send again                                             |
 | Delete                | Pending work is cancelled when the worker sees it. Secrets are cleared     |
 | Change URL            | The next attempt uses the new URL                                          |

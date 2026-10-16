@@ -8,8 +8,12 @@ description: Publication, delivery history, worker execution, and PostgreSQL sen
 ```ts
 import { createDelivery } from 'good-webhooks/delivery'
 import type {
+  AttemptEvent,
   DeliveryEngine,
+  DeliveryHooks,
   DeliveryOptions,
+  EndpointHealthOptions,
+  EndpointPausedEvent,
   EndpointSource,
   EndpointResolution,
   ManagementScope,
@@ -45,17 +49,20 @@ export const delivery = createDelivery({ database, events, source: management.so
 
 Any [`EndpointSource`](/docs/reference/management#endpointsource) works as `source`, including [Better Auth management](/docs/better-auth/delivery). The constructor starts no work.
 
-| Option           | Default                                        | Contract                                                                                                                                |
-| ---------------- | ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `database`       | Required                                       | PostgreSQL executor with `query()` and `connect()`. A checked-out client has `query()` and `release()`. `pg.Pool` satisfies this shape. |
-| `events`         | Required                                       | Nonempty map of event names to Standard Schema validators.                                                                              |
-| `source`         | Required                                       | Trusted `EndpointSource` with `matchRecipients` and `resolveEndpoint`.                                                                  |
-| `schema`         | `'public'`                                     | PostgreSQL schema containing delivery tables.                                                                                           |
-| `retry.delaysMs` | `[1000, 5000, 30000, 120000, 600000, 1800000]` | At most 20 integer delays, each from 1 through 86,400,000 ms. An empty array disables retries.                                          |
-| `retry.maxAgeMs` | `86400000`                                     | Delivery age limit from 100 through 2,592,000,000 ms.                                                                                   |
-| `retentionMs`    | `604800000`                                    | Event retention from 1,000 through 31,536,000,000 ms. Must be at least `retry.maxAgeMs`.                                                |
-| `allowLocalhost` | `false`                                        | Permits HTTP loopback destinations for development. Other private addresses stay forbidden.                                             |
-| `delivery`       | See below                                      | Per-attempt and per-batch limits.                                                                                                       |
+| Option                    | Default                                        | Contract                                                                                                                                |
+| ------------------------- | ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `database`                | Required                                       | PostgreSQL executor with `query()` and `connect()`. A checked-out client has `query()` and `release()`. `pg.Pool` satisfies this shape. |
+| `events`                  | Required                                       | Nonempty map of event names to Standard Schema validators.                                                                              |
+| `source`                  | Required                                       | Trusted `EndpointSource` with `matchRecipients` and `resolveEndpoint`.                                                                  |
+| `schema`                  | `'public'`                                     | PostgreSQL schema containing delivery tables.                                                                                           |
+| `retry.delaysMs`          | `[1000, 5000, 30000, 120000, 600000, 1800000]` | At most 20 integer delays, each from 1 through 86,400,000 ms. An empty array disables retries.                                          |
+| `retry.maxAgeMs`          | `86400000`                                     | Delivery age limit from 100 through 2,592,000,000 ms.                                                                                   |
+| `retry.respectRetryAfter` | `true`                                         | Wait at least as long as a `429` or `503` response's `Retry-After` asks. See [attempt outcomes](#attempt-outcomes).                     |
+| `endpointHealth`          | On                                             | Automatic pauses, or `false` to turn them off. See [automatic pauses](#automatic-pauses).                                               |
+| `hooks`                   | None                                           | Callbacks after each recorded outcome. See [hooks](#hooks).                                                                             |
+| `retentionMs`             | `604800000`                                    | Event retention from 1,000 through 31,536,000,000 ms. Must be at least `retry.maxAgeMs`.                                                |
+| `allowLocalhost`          | `false`                                        | Permits HTTP loopback destinations for development. Other private addresses stay forbidden.                                             |
+| `delivery`                | See below                                      | Per-attempt and per-batch limits.                                                                                                       |
 
 Event names match `^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,119}$`. The constructor validates each event's Standard Schema interface. Any invalid option throws `INVALID_CONFIG`. [Delivery guarantees](/docs/concepts/delivery-guarantees) explains how `retry` plays out.
 
@@ -272,7 +279,43 @@ All worker methods cover every scope in the configured delivery database and sch
 | URL resolves to an unsafe address at send time             | `failed`, no retry                                  |
 | Worker stopped or lease expired mid-request                | `abandoned`. The delivery retries if budget remains |
 
-Each retry waits its configured delay plus up to 20% random jitter. A retry that would land after `retry.maxAgeMs` is not scheduled.
+Each retry waits its configured delay plus up to 20% random jitter. When a `429` or `503` response carries a `Retry-After` header (seconds or an HTTP date) that asks for longer, the retry waits that long instead, unless `retry.respectRetryAfter` is `false`. A retry that would land after `retry.maxAgeMs` is not scheduled, so the delivery fails.
+
+### Automatic pauses
+
+The worker pauses an endpoint when every attempt to it has failed for `endpointHealth.pauseAfterMs`, or as soon as it answers `410 Gone`. The endpoint's [`pauseReason`](/docs/reference/management#results) becomes `'failing'` or `'gone'`, its queued deliveries wait, and its owner [resumes](/docs/guides/endpoints#automatic-pauses) it like any paused endpoint.
+
+| `endpointHealth` field | Default     | Contract                                                         |
+| ---------------------- | ----------- | ---------------------------------------------------------------- |
+| `pauseAfterMs`         | `432000000` | Five days. Integer from 60,000 through 2,592,000,000 ms.         |
+| `pauseOnGone`          | `true`      | Pause on the first `410` response instead of waiting the period. |
+
+- Every attempt without a `2xx` counts as a failure, including timeouts, DNS errors, and unsafe addresses. `abandoned` attempts don't count.
+- A success, a resume, or any change to the endpoint starts a new period. The pause applies only if the endpoint hasn't changed since the failures were counted.
+- Pausing needs an endpoint source with [`pause()`](/docs/reference/management#endpointsource). The built-in PostgreSQL and Better Auth providers have it. `run()` and `runOnce()` throw `INVALID_CONFIG` for a source without it unless `endpointHealth` is `false`. An engine that only publishes never needs it.
+
+### Hooks
+
+```ts title="delivery.ts"
+export const delivery = createDelivery({
+  database,
+  events,
+  source: management.source,
+  // metrics and notifyOwner stand for your own code.
+  hooks: {
+    onAttempt: ({ outcome, responseStatus, durationMs }) =>
+      metrics.record('webhook.attempt', durationMs, { outcome, status: responseStatus }),
+    onEndpointPaused: ({ scope, endpointId, reason }) => notifyOwner(scope, endpointId, reason),
+  },
+})
+```
+
+| Hook               | Called with                                                                                                                                                                |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `onAttempt`        | `AttemptEvent`: `scope`, `endpointId`, `deliveryId`, `eventId`, `eventType`, `attempt`, `outcome`, `responseStatus`, `error`, and `durationMs`. Once per recorded attempt. |
+| `onEndpointPaused` | `EndpointPausedEvent`: `scope`, `endpointId`, and `reason` (`'failing'` or `'gone'`). Once per automatic pause. Manual pauses don't call it.                               |
+
+The worker awaits each hook after the outcome is committed, so keep hooks fast and queue slow work such as email. A hook can't change the outcome. Its errors are reported like other batch failures: to `onError` in `run`, or in the `AggregateError` from `runOnce`. Hooks are best-effort: a crash between the commit and the call skips them, so read `pauseReason` when you need the record.
 
 ### prune
 
@@ -280,11 +323,12 @@ Each retry waits its configured delay plus up to 20% random jitter. A retry that
 
 ### Worker errors
 
-| Error            | When                                                                    |
-| ---------------- | ----------------------------------------------------------------------- |
-| `INVALID_INPUT`  | `pollIntervalMs` or `shutdownGraceMs` is out of range.                  |
-| `INVALID_STATE`  | This instance already has an active `run` loop or batch.                |
-| `AggregateError` | Internal failures in a batch. Thrown after all sibling attempts settle. |
+| Error            | When                                                                                                     |
+| ---------------- | -------------------------------------------------------------------------------------------------------- |
+| `INVALID_INPUT`  | `pollIntervalMs` or `shutdownGraceMs` is out of range.                                                   |
+| `INVALID_CONFIG` | Automatic pauses are on and the endpoint source has no `pause()`.                                        |
+| `INVALID_STATE`  | This instance already has an active `run` loop or batch.                                                 |
+| `AggregateError` | Internal failures in a batch, including hook and pause errors. Thrown after all sibling attempts settle. |
 
 <Accordions>
 <Accordion title="Shutdown and the grace period">
@@ -314,6 +358,6 @@ const organization = delivery.forScope({ type: 'organization', id: 'org_123' })
 await organization.deliveries.list()
 ```
 
-`check()` verifies delivery schema version `4` and throws `SCHEMA_MISMATCH` otherwise, naming the SQL to apply. It never applies migrations and does not check management storage.
+`check()` verifies delivery schema version `5` and throws `SCHEMA_MISMATCH` otherwise, naming the SQL to apply. It never applies migrations and does not check management storage.
 
 `forScope(scope)` returns `publish`, `deliveries`, and `deliverySettings` bound to one named scope. An invalid scope throws `INVALID_INPUT`. The root methods use application scope. Scope selection does not authorize access. See [scopes](/docs/concepts/scopes).
