@@ -16,7 +16,7 @@ import type {
 } from './types.js'
 
 const ENDPOINT_LIMIT = 1000
-const FIELDS = `id,url,description,event_types AS "eventTypes",status,
+const FIELDS = `id,url,description,event_types AS "eventTypes",status,pause_reason AS "pauseReason",
   secret AS "encryptedSecret",previous_secret AS "previousEncryptedSecret",
   previous_secret_expires_at AS "previousSecretExpiresAt",revision,
   created_at AS "createdAt",updated_at AS "updatedAt"`
@@ -79,8 +79,8 @@ export function createPostgresManagementRepository(
             `A scope may have at most ${ENDPOINT_LIMIT} nondeleted endpoints.`,
           )
         const result = await client.query<StoredEndpoint & Record<string, unknown>>(
-          `INSERT INTO ${table}(id,scope_key,url,description,event_types,status,secret,previous_secret,previous_secret_expires_at,revision,created_at,updated_at)
-           VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING ${FIELDS}`,
+          `INSERT INTO ${table}(id,scope_key,url,description,event_types,status,pause_reason,secret,previous_secret,previous_secret_expires_at,revision,created_at,updated_at)
+           VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING ${FIELDS}`,
           [
             randomUUID(),
             scopeId,
@@ -88,6 +88,7 @@ export function createPostgresManagementRepository(
             endpoint.description,
             endpoint.eventTypes,
             endpoint.status,
+            endpoint.pauseReason ?? null,
             endpoint.encryptedSecret,
             endpoint.previousEncryptedSecret,
             endpoint.previousSecretExpiresAt,
@@ -111,6 +112,7 @@ export function createPostgresManagementRepository(
         description: 'description',
         eventTypes: 'event_types',
         status: 'status',
+        pauseReason: 'pause_reason',
         encryptedSecret: 'secret',
         previousEncryptedSecret: 'previous_secret',
         previousSecretExpiresAt: 'previous_secret_expires_at',

@@ -76,6 +76,7 @@ describe('portable endpoint management', () => {
       status: 'active',
       url: input.url,
       secrets: [result.secret],
+      revision: '0',
     })
     expect(await management.source.resolveEndpoint(null, result.endpoint.id)).toEqual({
       status: 'deleted',
@@ -129,6 +130,49 @@ describe('portable endpoint management', () => {
       code: 'INVALID_STATE',
     })
     await expect(management.remove(null, endpoint.id)).resolves.toMatchObject({ status: 'deleted' })
+  })
+
+  it('records who paused an endpoint and clears the reason on resume', async () => {
+    const { management } = setup()
+    const { endpoint } = await management.create(null, input)
+    expect(endpoint.pauseReason).toBeNull()
+    expect((await management.pause(null, endpoint.id)).pauseReason).toBe('owner')
+    expect((await management.resume(null, endpoint.id)).pauseReason).toBeNull()
+    await management.pause(null, endpoint.id)
+    expect((await management.remove(null, endpoint.id)).pauseReason).toBeNull()
+  })
+
+  it('pauses for the worker only while the endpoint is active and unchanged', async () => {
+    const { management } = setup()
+    const pause = management.source.pause!
+    const { endpoint } = await management.create(null, input)
+    expect(await management.source.resolveEndpoint(null, endpoint.id)).toMatchObject({
+      revision: '0',
+    })
+    await management.update(null, endpoint.id, { description: 'changed' })
+    expect(await pause(null, endpoint.id, { reason: 'failing', revision: '0' })).toBe(false)
+    expect((await management.get(null, endpoint.id)).status).toBe('active')
+    expect(await pause(null, endpoint.id, { reason: 'gone', revision: '1' })).toBe(true)
+    expect(await management.get(null, endpoint.id)).toMatchObject({
+      status: 'paused',
+      pauseReason: 'gone',
+    })
+    expect(await management.source.resolveEndpoint(null, endpoint.id)).toEqual({
+      status: 'paused',
+    })
+    expect(await pause(null, endpoint.id, { reason: 'failing' })).toBe(false)
+    await management.resume(null, endpoint.id)
+    expect(await pause(null, endpoint.id, { reason: 'failing' })).toBe(true)
+    expect((await management.get(null, endpoint.id)).pauseReason).toBe('failing')
+    expect(await pause(null, 'missing', { reason: 'failing' })).toBe(false)
+    await expect(pause(null, endpoint.id, { reason: 'owner' as 'failing' })).rejects.toMatchObject({
+      code: 'INVALID_INPUT',
+    })
+
+    const orphaned = setup({ scopeExists: async () => false })
+    expect(await orphaned.management.source.pause!(null, endpoint.id, { reason: 'gone' })).toBe(
+      false,
+    )
   })
 
   it('retries conflicting patches without losing fields or reviving deletion', async () => {

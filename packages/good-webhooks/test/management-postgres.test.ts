@@ -43,6 +43,29 @@ describe('standalone PostgreSQL management', () => {
     ).toEqual({ status: 'deleted' })
   })
 
+  it('stores the pause reason and pauses for the worker with a revision guard', async () => {
+    const management = create()
+    const { endpoint } = await management.create(null, input)
+    expect((await management.pause(null, endpoint.id)).pauseReason).toBe('owner')
+    const resumed = await management.resume(null, endpoint.id)
+    expect(resumed.pauseReason).toBeNull()
+    const resolution = await management.source.resolveEndpoint(null, endpoint.id)
+    expect(resolution).toMatchObject({ status: 'active', revision: '2' })
+    expect(
+      await management.source.pause!(null, endpoint.id, { reason: 'failing', revision: '1' }),
+    ).toBe(false)
+    expect(
+      await management.source.pause!(null, endpoint.id, { reason: 'failing', revision: '2' }),
+    ).toBe(true)
+    expect(await management.get(null, endpoint.id)).toMatchObject({
+      status: 'paused',
+      pauseReason: 'failing',
+    })
+    await expect(
+      pool.query("UPDATE public.webhook_endpoints SET pause_reason='other'"),
+    ).rejects.toMatchObject({ code: '23514' })
+  })
+
   it('enforces the strict limit under concurrent creation and reclaims deleted capacity', async () => {
     const management = create()
     const first = await management.create(null, input)

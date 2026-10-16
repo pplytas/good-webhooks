@@ -65,15 +65,17 @@ assert.throws(() => require.resolve('better-auth'), { code: 'MODULE_NOT_FOUND' }
 for (const value of [createWebhooks, createDelivery, createManagement, createPostgresManagement, parseWebhook]) assert.equal(typeof value, 'function')
 for (const [entry, name] of [['good-webhooks', 'createWebhooks'], ['good-webhooks/delivery', 'createDelivery'], ['good-webhooks/management', 'createManagement'], ['good-webhooks/management/postgres', 'createPostgresManagement'], ['good-webhooks/verify', 'parseWebhook'], ['good-webhooks/migrations', 'getPostgresMigration']]) assert.equal(typeof require(entry)[name], 'function')
 assert.ok(getPostgresMigration({schema:'custom',component:'delivery'}).includes('"custom"."webhook_events"'))
-assert.equal(POSTGRES_SCHEMA_VERSION, 4)
+assert.equal(POSTGRES_SCHEMA_VERSION, 5)
 assert.ok(getPostgresUpgrade({schema:'custom',component:'delivery',from:3}).includes('"custom"."webhook_schema_version"'))
 for (const name of ['001-initial', 'management', 'delivery']) {
   const sql = await readFile(new URL(import.meta.resolve('good-webhooks/migrations/' + name + '.sql')), 'utf8')
   assert.ok(sql.includes('CREATE SCHEMA'))
 }
 for (const name of ['all', 'management', 'delivery']) {
-  const sql = await readFile(new URL(import.meta.resolve('good-webhooks/migrations/upgrades/004-' + name + '.sql')), 'utf8')
-  assert.equal(sql, getPostgresUpgrade({ component: name, from: 3 }))
+  const step4 = await readFile(new URL(import.meta.resolve('good-webhooks/migrations/upgrades/004-' + name + '.sql')), 'utf8')
+  assert.ok(step4.includes('Upgrades schema version 3 to 4'))
+  const step5 = await readFile(new URL(import.meta.resolve('good-webhooks/migrations/upgrades/005-' + name + '.sql')), 'utf8')
+  assert.equal(step5, getPostgresUpgrade({ component: name, from: 4 }))
 }
 `,
   )

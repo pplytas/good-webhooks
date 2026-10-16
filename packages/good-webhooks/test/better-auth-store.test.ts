@@ -87,6 +87,12 @@ describe('Better Auth management repository with real SQLite adapter and generat
       expect(await repository.get({ type: 'user', id: 'OWNER' }, created.id)).toBeNull()
       expect(await repository.list(null)).toEqual([])
       expect(await repository.list(scope)).toEqual([created])
+      const paused = await repository.update(scope, created.id, created.revision, {
+        status: 'paused',
+        pauseReason: 'failing',
+      })
+      expect(paused).toMatchObject({ status: 'paused', pauseReason: 'failing' })
+      expect(await repository.get(scope, created.id)).toEqual(paused)
     })
   }
 

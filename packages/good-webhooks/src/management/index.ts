@@ -52,6 +52,7 @@ function dto(row: StoredEndpoint): ManagedEndpoint {
     description: row.description,
     eventTypes: Object.freeze([...row.eventTypes]) as string[],
     status: row.status,
+    pauseReason: row.status === 'paused' ? (row.pauseReason ?? null) : null,
     createdAt: new Date(row.createdAt),
     updatedAt: new Date(row.updatedAt),
   })
@@ -153,6 +154,7 @@ export function createManagement(options: ManagementOptions): EndpointManagement
         id,
         () => ({
           status: 'deleted',
+          pauseReason: null,
           encryptedSecret: '',
           previousEncryptedSecret: null,
           previousSecretExpiresAt: null,
@@ -187,7 +189,32 @@ export function createManagement(options: ManagementOptions): EndpointManagement
           row.previousSecretExpiresAt.getTime() > Date.now()
         )
           secrets.push(await cipher.decrypt(row.previousEncryptedSecret))
-        return { status: 'active', url: row.url, secrets }
+        return { status: 'active', url: row.url, secrets, revision: String(row.revision) }
+      },
+      async pause(inputScope, id, input) {
+        const scope = snapshotScope(inputScope)
+        endpointId(id)
+        inputObject(input, 'Pause input')
+        const { reason, revision } = input
+        if (reason !== 'failing' && reason !== 'gone')
+          invalid('An automatic pause reason must be failing or gone.')
+        if (revision !== undefined && typeof revision !== 'string')
+          invalid('An endpoint revision must be a string.')
+        if (!(await ownerExists(scope))) return false
+        const row = await repository.get(scope, id)
+        if (
+          !row ||
+          row.status !== 'active' ||
+          (revision !== undefined && String(row.revision) !== revision)
+        )
+          return false
+        // One guarded write: a concurrent change means the failures no longer describe this endpoint.
+        const updated = await repository.update(scope, id, row.revision, {
+          status: 'paused',
+          pauseReason: reason,
+          updatedAt: new Date(),
+        })
+        return updated !== null
       },
     }),
     async create(inputScope, input) {
@@ -206,6 +233,7 @@ export function createManagement(options: ManagementOptions): EndpointManagement
         description: desc,
         eventTypes: subscriptions,
         status: 'active',
+        pauseReason: null,
         encryptedSecret,
         previousEncryptedSecret: null,
         previousSecretExpiresAt: null,
@@ -247,7 +275,7 @@ export function createManagement(options: ManagementOptions): EndpointManagement
       const scope = snapshotScope(inputScope)
       endpointId(id)
       await requireOwner(scope)
-      return dto(await edit(scope, id, () => ({ status: 'paused' })))
+      return dto(await edit(scope, id, () => ({ status: 'paused', pauseReason: 'owner' })))
     },
     async resume(inputScope, id) {
       const scope = snapshotScope(inputScope)
@@ -256,7 +284,7 @@ export function createManagement(options: ManagementOptions): EndpointManagement
       return dto(
         await edit(scope, id, async (row) => {
           await safeUrl(row.url)
-          return { status: 'active' }
+          return { status: 'active', pauseReason: null }
         }),
       )
     },

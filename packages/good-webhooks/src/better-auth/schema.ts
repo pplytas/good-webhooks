@@ -17,6 +17,7 @@ const fields = {
     returned: false,
   },
   status: { type: 'string', required: true },
+  pauseReason: { type: 'string', required: false },
   encryptedSecret: { type: 'string', required: true, input: false, returned: false },
   previousEncryptedSecret: { type: 'string', required: false, input: false, returned: false },
   previousSecretExpiresAt: { type: 'date', required: false, input: false, returned: false },

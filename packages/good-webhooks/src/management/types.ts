@@ -1,4 +1,5 @@
 import type {
+  PauseReason,
   Scope,
   Endpoint,
   CreateEndpointInput,
@@ -14,12 +15,31 @@ export type UpdateManagedEndpoint = UpdateEndpointInput
 export type ManagedEndpointWithSecret = EndpointWithSecret
 
 export type EndpointResolution =
-  { status: 'active'; url: string; secrets: readonly string[] } | { status: 'paused' | 'deleted' }
+  | {
+      status: 'active'
+      url: string
+      secrets: readonly string[]
+      /** Changes whenever the endpoint changes. Automatic pauses use it to ignore stale failures. */
+      revision?: string
+    }
+  | { status: 'paused' | 'deleted' }
+
+export type AutomaticPauseReason = Exclude<PauseReason, 'owner'>
+export interface AutomaticPauseInput {
+  reason: AutomaticPauseReason
+  /** Pause only if the endpoint still has this revision. */
+  revision?: string
+}
 
 /** Trusted server capability. Lookup failures reject; missing records resolve as deleted. */
 export interface EndpointSource {
   matchRecipients(scope: ManagementScope, eventType: string): Promise<readonly string[]>
   resolveEndpoint(scope: ManagementScope, id: string): Promise<EndpointResolution>
+  /**
+   * Pause an active endpoint on the worker's behalf. Resolves false, without changing anything,
+   * when the endpoint is no longer active or no longer has the given revision.
+   */
+  pause?(scope: ManagementScope, id: string, input: AutomaticPauseInput): Promise<boolean>
 }
 
 export interface EndpointManagement {

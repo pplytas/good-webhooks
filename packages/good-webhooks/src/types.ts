@@ -77,12 +77,16 @@ export interface ResolvedConfig {
 }
 
 export type EndpointStatus = 'active' | 'paused' | 'deleted'
+/** Who paused an endpoint: its owner, or the worker after sustained failure or an HTTP 410 answer. */
+export type PauseReason = 'owner' | 'failing' | 'gone'
 export interface Endpoint {
   id: string
   url: string
   description: string | null
   eventTypes: string[]
   status: EndpointStatus
+  /** Set while paused. null when active, deleted, or paused before schema version 5. */
+  pauseReason?: PauseReason | null
   createdAt: Date
   updatedAt: Date
 }

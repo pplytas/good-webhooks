@@ -139,6 +139,8 @@ describe('Better Auth endpoint management plugin', () => {
       status: 'active',
       url: input.url,
       secrets: [created.secret],
+
+      revision: expect.any(String),
     })
     const raw = database.prepare('SELECT encryptedSecret FROM webhookEndpoint').get()!
     expect(raw.encryptedSecret).not.toContain(created.secret)
@@ -157,6 +159,8 @@ describe('Better Auth endpoint management plugin', () => {
       status: 'active',
       url: input.url,
       secrets: [rotated.secret, created.secret],
+
+      revision: expect.any(String),
     })
     await expect(
       auth.api.rotateWebhookEndpointSecret({
@@ -457,6 +461,8 @@ describe('Better Auth endpoint management plugin', () => {
       status: 'active',
       url: input.url,
       secrets: [rotated.secret, created.secret],
+
+      revision: expect.any(String),
     })
     expect(await worker.reencrypt(scope)).toBe(1)
     const raw = database
@@ -472,6 +478,6 @@ describe('Better Auth endpoint management plugin', () => {
       await (
         await createBetterAuthManagement(retiredAuth)
       ).source.resolveEndpoint(scope, created.endpoint.id),
-    ).toEqual(before)
+    ).toEqual({ ...before, revision: expect.any(String) })
   })
 })

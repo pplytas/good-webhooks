@@ -4,12 +4,14 @@ CREATE SCHEMA IF NOT EXISTS "public";
 
 CREATE TABLE IF NOT EXISTS "public"."webhook_schema_version" (component text PRIMARY KEY, version integer NOT NULL CHECK (version > 0));
 
-INSERT INTO "public"."webhook_schema_version" (component, version) VALUES ('delivery', 4);
+INSERT INTO "public"."webhook_schema_version" (component, version) VALUES ('delivery', 5);
 
 CREATE TABLE "public"."webhook_endpoint_state" (
   scope_key text NOT NULL,
   endpoint_id text NOT NULL,
   max_in_flight integer NOT NULL DEFAULT 2 CHECK (max_in_flight BETWEEN 1 AND 50),
+  failing_since timestamptz,
+  failing_revision text,
   PRIMARY KEY (scope_key,endpoint_id)
 );
 

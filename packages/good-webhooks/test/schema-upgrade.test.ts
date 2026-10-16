@@ -1,17 +1,20 @@
+import { randomUUID } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { once } from 'node:events'
 import { createServer } from 'node:http'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { z } from 'zod'
+import { encryptSecret, generateSecret } from '../src/crypto.js'
 import { createDelivery } from '../src/delivery.js'
 import { createWebhooks } from '../src/index.js'
 import { createPostgresManagement } from '../src/management/postgres.js'
 import { getPostgresMigration, getPostgresUpgrade } from '../src/migrations.js'
 import { quotePostgresSchema } from '../src/postgres-schema.js'
+import { scopeKey } from '../src/scope.js'
 import { closeDatabase, dropWebhookTables, pool, TEST_ENCRYPTION_KEY } from './db.js'
 
-const fixture = (name: string) =>
-  readFile(new URL(`./fixtures/schema-3-${name}.sql`, import.meta.url), 'utf8')
+const fixture = (name: string, version: 3 | 4 = 3) =>
+  readFile(new URL(`./fixtures/schema-${version}-${name}.sql`, import.meta.url), 'utf8')
 const events = { 'invoice.paid': z.object({ id: z.string() }) }
 const app = () =>
   createWebhooks({
@@ -41,6 +44,42 @@ async function apply(sql: string) {
   }
 }
 
+/** Queue one pending delivery with plain SQL, as a process on the older package would. */
+async function seedBacklog(url: string): Promise<string> {
+  const scope = scopeKey({ type: 'user', id: 'owner' })
+  const endpointId = randomUUID()
+  const eventId = randomUUID()
+  await pool.query(
+    `INSERT INTO public.webhook_endpoints(id,scope_key,url,event_types,secret) VALUES ($1,$2,$3,$4,$5)`,
+    [
+      endpointId,
+      scope,
+      url,
+      ['invoice.paid'],
+      encryptSecret(generateSecret(), TEST_ENCRYPTION_KEY),
+    ],
+  )
+  await pool.query(
+    'INSERT INTO public.webhook_endpoint_state(scope_key,endpoint_id) VALUES ($1,$2)',
+    [scope, endpointId],
+  )
+  const body = {
+    id: eventId,
+    type: 'invoice.paid',
+    occurredAt: new Date().toISOString(),
+    data: { id: 'inv_1' },
+  }
+  await pool.query(
+    `INSERT INTO public.webhook_events(id,scope_key,type,body,fingerprint) VALUES ($1,$2,'invoice.paid',$3,'seed')`,
+    [eventId, scope, JSON.stringify(body)],
+  )
+  await pool.query(
+    'INSERT INTO public.webhook_deliveries(scope_key,endpoint_id,event_id) VALUES ($1,$2,$3)',
+    [scope, endpointId, eventId],
+  )
+  return endpointId
+}
+
 const customSchemas = ['upgrade_management', 'upgrade_delivery']
 async function cleanup() {
   await dropWebhookTables(pool)
@@ -53,14 +92,40 @@ afterAll(async () => {
   await closeDatabase()
 })
 
-describe('schema upgrade from version 3 to 4', () => {
+describe('schema upgrade to version 5', () => {
   it('generates upgrade SQL only for a recorded version it can upgrade', () => {
-    expect(() => getPostgresUpgrade({ from: 4 })).toThrow(/current/)
-    expect(() => getPostgresUpgrade({ from: 2 })).toThrow(/from must be 3/)
+    expect(() => getPostgresUpgrade({ from: 5 })).toThrow(/current/)
+    expect(() => getPostgresUpgrade({ from: 2 })).toThrow(/from must be 3 or 4/)
+    expect(() => getPostgresUpgrade({ from: '4' as unknown as number })).toThrow(/from must be/)
     expect(() => getPostgresUpgrade({ from: 3, component: 'both' as 'all' })).toThrow(/component/)
     expect(() => getPostgresUpgrade(undefined as unknown as { from: 3 })).toThrow(/from/)
-    expect(getPostgresUpgrade({ from: 3, component: 'management' })).not.toContain('ALTER TABLE')
+    expect(getPostgresUpgrade({ from: 3, component: 'management' })).not.toContain(
+      'DROP CONSTRAINT',
+    )
     expect(getPostgresUpgrade({ from: 3, component: 'delivery' })).not.toContain("'management'")
+    expect(getPostgresUpgrade({ from: 4, component: 'management' })).not.toContain('delivery')
+    expect(getPostgresUpgrade({ from: 4, component: 'delivery' })).not.toContain('management')
+  })
+
+  it('refuses to start on version 4 storage and names the upgrade', async () => {
+    await apply(await fixture('all', 4))
+    await expect(app().check()).rejects.toMatchObject({
+      code: 'SCHEMA_MISMATCH',
+      message: expect.stringContaining(
+        'getPostgresUpgrade({ schema: "public", component: \'management\', from: 4 })',
+      ),
+    })
+    const management = createPostgresManagement({
+      database: pool,
+      encryptionKey: TEST_ENCRYPTION_KEY,
+      eventTypes: ['invoice.paid'],
+    })
+    await expect(
+      createDelivery({ database: pool, source: management.source, events }).check(),
+    ).rejects.toMatchObject({
+      code: 'SCHEMA_MISMATCH',
+      message: expect.stringContaining("component: 'delivery', from: 4 })"),
+    })
   })
 
   it('refuses to start on version 3 storage and names the upgrade', async () => {
@@ -87,46 +152,44 @@ describe('schema upgrade from version 3 to 4', () => {
     await expect(app().check()).rejects.toMatchObject({ code: 'SCHEMA_MISMATCH' })
   })
 
-  it('upgrades a shared installation and keeps a pending backlog deliverable', async () => {
-    await apply(await fixture('all'))
-    let received = 0
-    const server = createServer((_request, response) => {
-      received++
-      response.writeHead(204).end()
-    })
-    server.listen(0, '127.0.0.1')
-    await once(server, 'listening')
-    try {
-      const { port } = server.address() as { port: number }
-      // Version 3 and 4 share every table except the version record, so work queued before the upgrade is real backlog.
-      const before = app().forScope({ type: 'user', id: 'owner' })
-      const { endpoint } = await before.endpoints.create({
-        url: `http://127.0.0.1:${port}/hook`,
-        eventTypes: ['invoice.paid'],
+  it.each([3, 4] as const)(
+    'upgrades a shared installation from version %i and keeps a pending backlog deliverable',
+    async (from) => {
+      await apply(await fixture('all', from))
+      let received = 0
+      const server = createServer((_request, response) => {
+        received++
+        response.writeHead(204).end()
       })
-      expect(
-        (await before.publish({ type: 'invoice.paid', data: { id: 'inv_1' } })).deliveryCount,
-      ).toBe(1)
+      server.listen(0, '127.0.0.1')
+      await once(server, 'listening')
+      try {
+        const { port } = server.address() as { port: number }
+        const endpointId = await seedBacklog(`http://127.0.0.1:${port}/hook`)
 
-      await apply(getPostgresUpgrade({ from: 3 }))
-      expect(await versions()).toEqual([
-        { component: 'delivery', version: 4 },
-        { component: 'management', version: 4 },
-      ])
+        await apply(getPostgresUpgrade({ from }))
+        expect(await versions()).toEqual([
+          { component: 'delivery', version: 5 },
+          { component: 'management', version: 5 },
+        ])
 
-      const after = app()
-      await after.check()
-      expect((await after.worker.runOnce()).succeeded).toBe(1)
-      expect(received).toBe(1)
-      const user = after.forScope({ type: 'user', id: 'owner' })
-      expect((await user.endpoints.get(endpoint.id)).status).toBe('active')
-      expect((await user.deliveries.list()).items[0]?.status).toBe('succeeded')
-    } finally {
-      await new Promise<void>((resolve, reject) =>
-        server.close((error) => (error ? reject(error) : resolve())),
-      )
-    }
-  })
+        const after = app()
+        await after.check()
+        expect((await after.worker.runOnce()).succeeded).toBe(1)
+        expect(received).toBe(1)
+        const user = after.forScope({ type: 'user', id: 'owner' })
+        expect(await user.endpoints.get(endpointId)).toMatchObject({
+          status: 'active',
+          pauseReason: null,
+        })
+        expect((await user.deliveries.list()).items[0]?.status).toBe('succeeded')
+      } finally {
+        await new Promise<void>((resolve, reject) =>
+          server.close((error) => (error ? reject(error) : resolve())),
+        )
+      }
+    },
+  )
 
   it('rolls back as one unit and can be retried', async () => {
     await apply(await fixture('all'))
@@ -179,7 +242,21 @@ describe('schema upgrade from version 3 to 4', () => {
     await expect(apply(getPostgresUpgrade({ from: 3 }))).rejects.toThrow(
       /expected delivery schema version 3/,
     )
+    await expect(apply(getPostgresUpgrade({ from: 4 }))).rejects.toThrow(
+      /expected delivery schema version 4/,
+    )
     expect(await versions()).toHaveLength(2)
+  })
+
+  it('upgrades the version 4 components of a shared schema in either order', async () => {
+    await apply(await fixture('all', 4))
+    await apply(getPostgresUpgrade({ from: 4, component: 'management' }))
+    expect(await versions()).toEqual([
+      { component: 'delivery', version: 4 },
+      { component: 'management', version: 5 },
+    ])
+    await apply(getPostgresUpgrade({ from: 4, component: 'delivery' }))
+    await app().check()
   })
 
   it('upgrades separately installed components in their own schemas', async () => {
@@ -219,8 +296,8 @@ describe('schema upgrade from version 3 to 4', () => {
     await apply(getPostgresUpgrade({ from: 3, schema: deliverySchema, component: 'delivery' }))
     await management.check()
     await webhooks.check()
-    expect(await versions(managementSchema)).toEqual([{ component: 'management', version: 4 }])
-    expect(await versions(deliverySchema)).toEqual([{ component: 'delivery', version: 4 }])
+    expect(await versions(managementSchema)).toEqual([{ component: 'management', version: 5 }])
+    expect(await versions(deliverySchema)).toEqual([{ component: 'delivery', version: 5 }])
   })
 
   it('refuses the management step before the delivery step in a shared schema', async () => {
@@ -238,7 +315,7 @@ describe('schema upgrade from version 3 to 4', () => {
   it('refuses storage newer than the package and asks for a package upgrade', async () => {
     await apply(getPostgresMigration())
     await pool.query(
-      "UPDATE public.webhook_schema_version SET version = 5 WHERE component = 'delivery'",
+      "UPDATE public.webhook_schema_version SET version = 6 WHERE component = 'delivery'",
     )
     await expect(app().check()).rejects.toMatchObject({
       code: 'SCHEMA_MISMATCH',

@@ -14,7 +14,13 @@ import type {
 } from './types.js'
 
 export type { DeliveryOptions } from './types.js'
-export type { EndpointSource, EndpointResolution, ManagementScope } from './management/types.js'
+export type {
+  AutomaticPauseInput,
+  AutomaticPauseReason,
+  EndpointSource,
+  EndpointResolution,
+  ManagementScope,
+} from './management/types.js'
 
 /** PostgreSQL publication and delivery, backed by any compatible endpoint source. */
 export function createDelivery<const E extends EventDefinitions>(options: DeliveryOptions<E>) {

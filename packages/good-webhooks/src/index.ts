@@ -30,6 +30,7 @@ export type {
   EventName,
   JsonValue,
   Page,
+  PauseReason,
   PublishInput,
   PublishOptions,
   PublishResult,
@@ -49,6 +50,8 @@ export { createDelivery } from './delivery.js'
 export type { DeliveryEngine } from './delivery.js'
 export type { DeliveryOptions } from './types.js'
 export type {
+  AutomaticPauseInput,
+  AutomaticPauseReason,
   EndpointManagement,
   EndpointSource,
   EndpointResolution,

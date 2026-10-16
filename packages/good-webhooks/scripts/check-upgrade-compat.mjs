@@ -14,7 +14,7 @@ import { getPostgresUpgrade, POSTGRES_SCHEMA_VERSION } from '../dist/migrations.
 
 const connectionString = process.env.TEST_DATABASE_URL
 if (!connectionString) throw new Error('Set TEST_DATABASE_URL to a disposable PostgreSQL database.')
-const previous = process.env.PREVIOUS_GOOD_WEBHOOKS_VERSION ?? '0.1.0-beta.1'
+const previous = process.env.PREVIOUS_GOOD_WEBHOOKS_VERSION ?? '0.1.1'
 const encryptionKey = Buffer.alloc(32, 7).toString('base64')
 const events = {
   'invoice.paid': {
@@ -97,6 +97,8 @@ try {
     ...(await import(pathToFileURL(join(previousPackage, 'dist/index.js')).href)),
     ...(await import(pathToFileURL(join(previousPackage, 'dist/migrations.js')).href)),
   }
+  // Packages before beta.2 do not export their schema version; they wrote version 3.
+  const from = old.POSTGRES_SCHEMA_VERSION ?? 3
   const oldApp = old.createWebhooks({ database: pool, encryptionKey, events, allowLocalhost: true })
   const newApp = createWebhooks({ database: pool, encryptionKey, events, allowLocalhost: true })
 
@@ -114,7 +116,7 @@ try {
   await expectMismatch(newApp.check(), `new ${POSTGRES_SCHEMA_VERSION} on old storage`)
 
   // 3. Upgrade SQL runs while the backlog is pending; the old process keeps working until it restarts.
-  await apply(getPostgresUpgrade({ from: 3 }))
+  await apply(getPostgresUpgrade({ from }))
   const result = await drain(oldApp)
   assert(
     result.succeeded === 3,
@@ -144,7 +146,7 @@ try {
   )
 
   console.log(
-    `Upgrade compatibility passed: ${previous} storage and backlog upgraded to schema ${POSTGRES_SCHEMA_VERSION}.`,
+    `Upgrade compatibility passed: ${previous} storage (schema ${from}) and backlog upgraded to schema ${POSTGRES_SCHEMA_VERSION}.`,
   )
 } finally {
   await reset().catch(() => {})

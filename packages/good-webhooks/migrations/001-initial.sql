@@ -4,7 +4,7 @@ CREATE SCHEMA IF NOT EXISTS "public";
 
 CREATE TABLE IF NOT EXISTS "public"."webhook_schema_version" (component text PRIMARY KEY, version integer NOT NULL CHECK (version > 0));
 
-INSERT INTO "public"."webhook_schema_version" (component, version) VALUES ('management', 4);
+INSERT INTO "public"."webhook_schema_version" (component, version) VALUES ('management', 5);
 
 CREATE TABLE "public"."webhook_endpoints" (
   id text PRIMARY KEY,
@@ -13,6 +13,7 @@ CREATE TABLE "public"."webhook_endpoints" (
   description text,
   event_types text[] NOT NULL CHECK (cardinality(event_types) BETWEEN 1 AND 100),
   status text NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'paused', 'deleted')),
+  pause_reason text CHECK (pause_reason IN ('owner', 'failing', 'gone')),
   secret text NOT NULL,
   previous_secret text,
   previous_secret_expires_at timestamptz,
@@ -26,12 +27,14 @@ CREATE TABLE "public"."webhook_endpoints" (
 CREATE INDEX webhook_endpoints_scope_idx ON "public"."webhook_endpoints"(scope_key)
   WHERE status <> 'deleted';
 
-INSERT INTO "public"."webhook_schema_version" (component, version) VALUES ('delivery', 4);
+INSERT INTO "public"."webhook_schema_version" (component, version) VALUES ('delivery', 5);
 
 CREATE TABLE "public"."webhook_endpoint_state" (
   scope_key text NOT NULL,
   endpoint_id text NOT NULL,
   max_in_flight integer NOT NULL DEFAULT 2 CHECK (max_in_flight BETWEEN 1 AND 50),
+  failing_since timestamptz,
+  failing_revision text,
   PRIMARY KEY (scope_key,endpoint_id)
 );
 

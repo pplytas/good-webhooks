@@ -60,6 +60,9 @@
     "./migrations/upgrades/004-all.sql": "./migrations/upgrades/004-all.sql",
     "./migrations/upgrades/004-management.sql": "./migrations/upgrades/004-management.sql",
     "./migrations/upgrades/004-delivery.sql": "./migrations/upgrades/004-delivery.sql",
+    "./migrations/upgrades/005-all.sql": "./migrations/upgrades/005-all.sql",
+    "./migrations/upgrades/005-management.sql": "./migrations/upgrades/005-management.sql",
+    "./migrations/upgrades/005-delivery.sql": "./migrations/upgrades/005-delivery.sql",
     "./migrations": {
       "types": "./dist/migrations.d.ts",
       "default": "./dist/migrations.js"

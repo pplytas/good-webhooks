@@ -42,12 +42,18 @@ describe('PostgreSQL schema configuration', () => {
       const sql = await readFile(new URL(`../migrations/${file}.sql`, import.meta.url), 'utf8')
       expect(sql).toBe(getPostgresMigration({ component }))
     }
-    for (const component of ['all', 'management', 'delivery'] as const) {
-      const sql = await readFile(
-        new URL(`../migrations/upgrades/004-${component}.sql`, import.meta.url),
+    const upgrade = async (version: string, component: string) =>
+      readFile(
+        new URL(`../migrations/upgrades/${version}-${component}.sql`, import.meta.url),
         'utf8',
       )
-      expect(sql).toBe(getPostgresUpgrade({ component, from: 3 }))
+    const body = (sql: string) => sql.slice(sql.indexOf('\n'))
+    for (const component of ['all', 'management', 'delivery'] as const) {
+      const step5 = await upgrade('005', component)
+      expect(step5).toBe(getPostgresUpgrade({ component, from: 4 }))
+      // Published steps never change: upgrading from 3 replays the shipped 004 step, then 005.
+      const fromThree = getPostgresUpgrade({ component, from: 3 })
+      expect(body(fromThree)).toBe(body(await upgrade('004', component)) + body(step5).slice(1))
     }
   })
 
