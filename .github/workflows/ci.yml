@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
   # Weekly run so new Better Auth releases in the "latest" matrix entries are tested without a push.
   schedule:
-    - cron: '0 6 * * 1'
+    - cron: '0 3 * * 1'
 permissions:
   contents: read
 concurrency:
