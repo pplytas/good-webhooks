@@ -82,11 +82,11 @@ import { getPostgresUpgrade } from 'good-webhooks/migrations'
 const sql = getPostgresUpgrade({ from: 4 }) // both components in 'public'
 ```
 
-The shipped equivalent is `good-webhooks/migrations/upgrades/005-all.sql`. From version 3, `from: 3` produces both steps; the shipped files are `004-all.sql` followed by `005-all.sql`. Separate namespaces take `component` with their own `schema`. The SQL checks the recorded version first, so applying it twice or against the wrong version rolls back.
+The shipped equivalent is `good-webhooks/migrations/upgrades/005-all.sql`. From version 3, `from: 3` produces both steps, the same SQL as `004-all.sql` followed by `005-all.sql`. Separate namespaces take `component` with their own `schema`. The SQL checks the recorded version first, so applying it twice or against the wrong version rolls back.
 
 ### Rollout order
 
-1. Deploy nothing yet. Apply the upgrade SQL with your migration runner in one transaction. Processes on the previous package keep running when the release notes say the upgrade is compatible with them; the 3 to 4 and 4 to 5 upgrades are. With Better Auth management, also run your Better Auth migration in this step: `0.2.0` adds the optional `pauseReason` field to the endpoint model, and the new package writes it.
+1. Deploy nothing yet. Apply the upgrade SQL with your migration runner in one transaction. Processes on the previous package keep running when the release notes say the upgrade is compatible with them. The 3 to 4 and 4 to 5 upgrades are. With Better Auth management, also run your Better Auth migration in this step. `0.2.0` adds the optional `pauseReason` field to the endpoint model, and the new package writes it.
 2. Restart producers on the new package. Their `check()` now passes.
 3. Restart workers and cleanup jobs on the new package. A restarted process on the old package fails fast with `SCHEMA_MISMATCH`, so finish the rollout rather than mixing versions for long.
 

@@ -82,7 +82,7 @@ These calls return as soon as the record changes. A request already being sent c
 
 ## Automatic pauses
 
-The worker pauses an endpoint when every attempt to it has failed for five days, or when it answers `410 Gone`. Nothing is deleted: subscriptions and queued deliveries stay, and `resume` works as usual once the receiver is fixed. `pauseReason` tells the two kinds of pause apart:
+The worker pauses an endpoint when every attempt to it has failed for five days, or when it answers `410 Gone`. Nothing is deleted. Subscriptions and queued deliveries stay, and `resume` works as usual once the receiver works again. `pauseReason` tells the two kinds of pause apart:
 
 | `pauseReason` | Meaning                                       |
 | ------------- | --------------------------------------------- |

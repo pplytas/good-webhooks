@@ -90,7 +90,7 @@ Returns SQL that moves storage recorded at version `from` to the current version
 |         | `good-webhooks/migrations/upgrades/005-management.sql` | Adds `webhook_endpoints.pause_reason`.                                                    |
 |         | `good-webhooks/migrations/upgrades/005-delivery.sql`   | Adds `failing_since` and `failing_revision` to `webhook_endpoint_state`.                  |
 
-Shipped upgrade files never change; each covers one step. For 3 to 4 in a shared namespace, apply `all`, or `delivery` before `management`; the management step needs the rewritten table and fails otherwise. The 4-to-5 components can run in either order. Neither upgrade rewrites data: they only add a version record or nullable columns, so processes on the previous package keep working until they restart. The [migrations guide](/docs/operations/migrations#upgrades) gives the rollout order.
+Shipped upgrade files never change, and each covers one step. For 3 to 4 in a shared namespace, apply `all`, or `delivery` before `management`; the management step needs the rewritten table and fails otherwise. The 4-to-5 components can run in either order. Neither upgrade rewrites data. They only add a version record or nullable columns, so processes on the previous package keep working until they restart. The [migrations guide](/docs/operations/migrations#upgrades) gives the rollout order.
 
 ## Schema names
 

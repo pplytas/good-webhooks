@@ -2,28 +2,28 @@
 
 ## 0.2.0 (2026-10-16)
 
-Endpoint health. The worker pauses endpoints that keep failing, reports what it does through hooks, and honors `Retry-After`. Announced in `0.1.1` and released under the [0.x minor rules](apps/docs/content/docs/operations/compatibility.mdx#releases): the new behaviors are on by default, and storage moves to schema version `5`. Tracked in [issue #58](https://github.com/pplytas/good-webhooks/issues/58); [ADR 0012](docs/adr/0012-automatic-pause-through-management.md) records the design.
+The worker now pauses endpoints that keep failing, reports what it does through hooks, and honors `Retry-After`. `0.1.1` announced these changes, and this release follows the [0.x minor rules](apps/docs/content/docs/operations/compatibility.mdx#releases). The new behaviors are on by default, and storage moves to schema version `5`. [Issue #58](https://github.com/pplytas/good-webhooks/issues/58) tracked the work, and [ADR 0012](docs/adr/0012-automatic-pause-through-management.md) records the design.
 
 ### Upgrade
 
 1. Apply `getPostgresUpgrade({ from: 4 })`, or `migrations/upgrades/005-all.sql` (per-component files for separate namespaces), with your migration runner. It only adds nullable columns, so processes on `0.1.x` keep working until they restart. From version 3, `from: 3` applies both steps.
 2. With Better Auth management, run your Better Auth migration (`auth migrate`, or `auth generate` and your ORM's migration) for the new optional `pauseReason` field before deploying. The new package writes it.
 3. Restart producers, then workers, on `0.2.0`. See the [rollout order](apps/docs/content/docs/operations/migrations.mdx#rollout-order).
-4. If your engine's `source` is a custom `EndpointSource` without `pause()`, a worker now refuses to start with `INVALID_CONFIG`. Implement `pause()` or pass `endpointHealth: false`. Engines that only publish are unaffected. Report a `revision` from `resolveEndpoint()` too; without it, only a success starts a new failure period.
+4. If your engine's `source` is a custom `EndpointSource` without `pause()`, a worker now refuses to start with `INVALID_CONFIG`. Implement `pause()` or pass `endpointHealth: false`. Engines that only publish are unaffected. Report a `revision` from `resolveEndpoint()` too. Without it, only a success starts a new failure period.
 5. A custom `ManagementRepository` now receives `pauseReason` in `create` records and in `pause`, `resume`, and `remove` patches. Store it, or drop it before writing if your storage rejects unknown fields.
 
 ### Breaking
 
 - **Schema upgrade required.** Schema version `5` adds `webhook_endpoints.pause_reason` and, on `webhook_endpoint_state`, `failing_since` and `failing_revision`. `check()` on `0.2.0` refuses version 4 storage and names the upgrade.
-- **Automatic pauses, on by default.** When every attempt to an endpoint has failed for five days (`endpointHealth.pauseAfterMs`), or it answers `410 Gone` (`endpointHealth.pauseOnGone`), the worker pauses it with `pauseReason` `'failing'` or `'gone'`. Nothing is deleted, and `resume()` works as usual. A success, any endpoint change, or a resume starts a new period; abandoned attempts don't count. `endpointHealth: false` restores the previous behavior.
-- **`Retry-After` honored by default.** On `429` and `503`, the next attempt waits at least as long as the header asks (seconds or an HTTP date), but never past `retry.maxAgeMs`; a longer wait fails the delivery. `retry.respectRetryAfter: false` restores the plain schedule.
+- **Automatic pauses, on by default.** When every attempt to an endpoint has failed for five days (`endpointHealth.pauseAfterMs`), or it answers `410 Gone` (`endpointHealth.pauseOnGone`), the worker pauses it with `pauseReason` `'failing'` or `'gone'`. Nothing is deleted, and `resume()` works as usual. A success, any endpoint change, or a resume starts a new period. Abandoned attempts don't count. `endpointHealth: false` restores the previous behavior.
+- **`Retry-After` honored by default.** On `429` and `503`, the next attempt waits at least as long as the header asks (seconds or an HTTP date), but never past `retry.maxAgeMs`. A longer wait fails the delivery. `retry.respectRetryAfter: false` restores the plain schedule.
 
 ### Added
 
 - `Endpoint.pauseReason`: `'owner'` after `pause()`, `'failing'` or `'gone'` after an automatic pause, and `null` otherwise. The Better Auth routes and client return it too.
-- `hooks.onAttempt` and `hooks.onEndpointPaused` on `createWebhooks()` and `createDelivery()`. The worker awaits them after each outcome is committed; their errors join the batch errors without changing outcomes. Types: `DeliveryHooks`, `AttemptEvent`, `EndpointPausedEvent`, `EndpointHealthOptions`, `PauseReason`.
+- `hooks.onAttempt` and `hooks.onEndpointPaused` on `createWebhooks()` and `createDelivery()`. The worker awaits them after it commits each outcome. Their errors join the batch errors without changing outcomes. Types: `DeliveryHooks`, `AttemptEvent`, `EndpointPausedEvent`, `EndpointHealthOptions`, `PauseReason`.
 - `EndpointSource.pause()` and an optional `revision` on active resolutions, with `AutomaticPauseInput` and `AutomaticPauseReason`. The built-in PostgreSQL and Better Auth providers implement both. Custom senders can call `pause()` to apply the same policy.
-- `getPostgresUpgrade()` accepts `from: 3` or `from: 4`. Shipped upgrade files are immutable; `migrations/upgrades/005-*.sql` adds the new step.
+- `getPostgresUpgrade()` accepts `from: 3` or `from: 4`. Shipped upgrade files never change, so `migrations/upgrades/005-*.sql` adds the new step.
 - CI rehearses the upgrade from the latest published release (`0.1.1`) with a pending backlog.
 
 ## 0.1.1 (2026-10-16)

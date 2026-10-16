@@ -257,7 +257,7 @@ interface ManagementRepository {
 
 Repository errors propagate. [`createPostgresManagementRepository`](/docs/reference/postgres#createpostgresmanagementrepository) is the built-in implementation.
 
-`StoredEndpoint` adds `revision`, `encryptedSecret`, nullable `previousEncryptedSecret`, and nullable `previousSecretExpiresAt` to the endpoint shape. Store `pauseReason` too. From `0.2.0`, `create` records and `pause`, `resume`, and `remove` patches include it, so a repository that passes records straight to an ORM needs the column, or must drop the field before writing; then every pause reports `null`. `StoredEndpointPatch` is a partial stored record without `id`, `createdAt`, or `revision`. Stored records must never be sent to clients.
+`StoredEndpoint` adds `revision`, `encryptedSecret`, nullable `previousEncryptedSecret`, and nullable `previousSecretExpiresAt` to the endpoint shape. Store `pauseReason` too. From `0.2.0`, `create` records and `pause`, `resume`, and `remove` patches include it. A repository that passes records straight to an ORM needs the column. A repository that drops the field before writing reports `null` for every pause. `StoredEndpointPatch` is a partial stored record without `id`, `createdAt`, or `revision`. Stored records must never be sent to clients.
 
 ## SecretCipher
 

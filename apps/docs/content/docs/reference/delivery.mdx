@@ -279,7 +279,7 @@ All worker methods cover every scope in the configured delivery database and sch
 | URL resolves to an unsafe address at send time             | `failed`, no retry                                  |
 | Worker stopped or lease expired mid-request                | `abandoned`. The delivery retries if budget remains |
 
-Each retry waits its configured delay plus up to 20% random jitter. When a `429` or `503` response carries a `Retry-After` header (seconds or an HTTP date) that asks for longer, the retry waits at least that long, plus the same jitter, unless `retry.respectRetryAfter` is `false`. A retry that would land after `retry.maxAgeMs` is not scheduled, so the delivery fails.
+Each retry waits its configured delay plus up to 20% random jitter. When a `429` or `503` response carries a `Retry-After` header (seconds or an HTTP date) that asks for longer, the retry waits at least that long, plus the same jitter, unless `retry.respectRetryAfter` is `false`. The worker doesn't schedule a retry that would land after `retry.maxAgeMs`, so the delivery fails.
 
 ### Automatic pauses
 
@@ -291,7 +291,7 @@ The worker pauses an endpoint when every attempt to it has failed for `endpointH
 | `pauseOnGone`          | `true`      | Pause on the first `410` response instead of waiting the period. |
 
 - Every attempt without a `2xx` counts as a failure, including timeouts, DNS errors, and unsafe addresses. `abandoned` attempts don't count.
-- A success, a resume, or any change to the endpoint starts a new period. The pause applies only if the endpoint hasn't changed since the failures were counted. Both rely on the source's `revision`; with a source that reports none, only a success starts a new period.
+- A success, a resume, or any change to the endpoint starts a new period. The pause applies only if the endpoint hasn't changed since the worker counted the failures. Both rely on the source's `revision`. With a source that reports none, only a success starts a new period.
 - Pausing needs an endpoint source with [`pause()`](/docs/reference/management#endpointsource). The built-in PostgreSQL and Better Auth providers have it. `run()` and `runOnce()` throw `INVALID_CONFIG` for a source without it unless `endpointHealth` is `false`. An engine that only publishes never needs it.
 
 ### Hooks
@@ -315,7 +315,7 @@ export const delivery = createDelivery({
 | `onAttempt`        | `AttemptEvent`: `scope`, `endpointId`, `deliveryId`, `eventId`, `eventType`, `attempt`, `outcome`, `responseStatus`, `error`, and `durationMs`. Once per recorded attempt. |
 | `onEndpointPaused` | `EndpointPausedEvent`: `scope`, `endpointId`, and `reason` (`'failing'` or `'gone'`). Once per automatic pause. Manual pauses don't call it.                               |
 
-The worker awaits each hook after the outcome is committed, so keep hooks fast and queue slow work such as email. A hook can't change the outcome. Its errors are reported like other batch failures: to `onError` in `run`, or in the `AggregateError` from `runOnce`. Hooks are best-effort: a crash between the commit and the call skips them, so read `pauseReason` when you need the record.
+The worker awaits each hook after it commits the outcome, so keep hooks fast and queue slow work such as email. A hook can't change the outcome. Like other batch failures, hook errors go to `onError` in `run`, or into the `AggregateError` from `runOnce`. Hooks are best-effort. A crash between the commit and the call skips them, so read `pauseReason` when you need the record.
 
 ### prune
 
