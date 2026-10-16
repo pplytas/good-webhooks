@@ -5,10 +5,13 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+  # Weekly run so new Better Auth releases in the "latest" matrix entries are tested without a push.
+  schedule:
+    - cron: '0 6 * * 1'
 permissions:
   contents: read
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 jobs:
   verify:
