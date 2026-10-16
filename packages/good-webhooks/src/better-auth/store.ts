@@ -46,11 +46,7 @@ function endpoint(row: EndpointRow): StoredEndpoint {
     !validEventChunk(row.eventTypes) ||
     !validEventChunk(row.additionalEventTypes) ||
     !['active', 'paused', 'deleted'].includes(row.status) ||
-    !(
-      row.pauseReason === null ||
-      row.pauseReason === undefined ||
-      ['owner', 'failing', 'gone'].includes(row.pauseReason)
-    ) ||
+    ![null, undefined, 'owner', 'failing', 'gone'].includes(row.pauseReason) ||
     !Number.isSafeInteger(row.revision) ||
     row.revision < 0 ||
     typeof row.encryptedSecret !== 'string' ||

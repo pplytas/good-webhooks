@@ -129,7 +129,7 @@ export interface PostgresUpgradeOptions {
   schema?: string
   /** Upgrade only the component in this namespace, or both for a shared namespace. Defaults to all. */
   component?: 'all' | 'management' | 'delivery'
-  /** The schema version currently recorded in the database: 3 or 4. */
+  /** The schema version currently recorded in the database, from 3 up to the version before the current one. */
   from: number
 }
 
@@ -202,7 +202,7 @@ export function getPostgresUpgrade(options: PostgresUpgradeOptions): string {
   if (typeof from !== 'number' || !Object.hasOwn(UPGRADES, from))
     throw new WebhookError(
       'INVALID_CONFIG',
-      'from must be 3 or 4. Earlier prototype storage needs fresh storage; later versions need a newer package.',
+      `from must be one of ${Object.keys(UPGRADES).join(', ')}. Earlier prototype storage needs fresh storage; later versions need a newer package.`,
     )
   const tables = postgresTables(options.schema)
   const steps = [

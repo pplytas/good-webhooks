@@ -1,34 +1,27 @@
-import { once } from 'node:events'
-import { createServer, type Server } from 'node:http'
+import type { Server } from 'node:http'
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import { createWebhooks } from '../src/index.js'
 import type { AttemptEvent, EndpointHealthOptions, EndpointPausedEvent } from '../src/types.js'
 import { closeDatabase, pool, resetDatabase } from './db.js'
+import { closeReceivers, startReceiver } from './receiver.js'
 
 const events = { 'invoice.paid': z.object({ id: z.string() }) }
 const scope = { type: 'user', id: 'owner' }
-const servers: Server[] = []
 let status = 500
+let server: Server
 
 beforeEach(async () => {
   status = 500
   await resetDatabase()
 })
-afterEach(async () => {
-  for (const server of servers.splice(0)) {
-    server.closeAllConnections()
-    await new Promise<void>((resolve) => server.close(() => resolve()))
-  }
-})
+afterEach(closeReceivers)
 afterAll(closeDatabase)
 
 async function receiver(): Promise<string> {
-  const server = createServer((_request, response) => response.writeHead(status).end())
-  servers.push(server)
-  server.listen(0, '127.0.0.1')
-  await once(server, 'listening')
-  return `http://127.0.0.1:${(server.address() as { port: number }).port}/hook`
+  const started = await startReceiver((_request, response) => response.writeHead(status).end())
+  server = started.server
+  return started.url
 }
 
 function setup(endpointHealth?: false | EndpointHealthOptions) {
@@ -175,7 +168,6 @@ describe('automatic pause', () => {
     await user.publish({ type: 'invoice.paid', data: { id: 'inv_1' } })
     const controller = new AbortController()
     const sending = vi.fn()
-    const server = servers[0]!
     server.removeAllListeners('request')
     server.on('request', () => {
       sending()

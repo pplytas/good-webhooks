@@ -15,8 +15,21 @@ type SendResult = {
   status: number | null
   responseBody: string
   error: string | null
-  /** Raw Retry-After response header, when the receiver sent one. */
-  retryAfter?: string
+  /** Parsed Retry-After response header, when the receiver sent a valid one. */
+  retryAfterMs?: number
+}
+
+const MAX_RETRY_AFTER_MS = 31_536_000_000
+
+/** Parse delta-seconds or an HTTP date into a wait. Unparseable values are ignored. */
+export function parseRetryAfter(value: string | undefined, now = Date.now()): number | null {
+  if (value === undefined) return null
+  const text = value.trim()
+  if (/^\d+$/.test(text)) return Math.min(Number(text) * 1000, MAX_RETRY_AFTER_MS)
+  // HTTP dates contain letters; this rejects negative numbers and decimals that Date.parse accepts.
+  if (!/[A-Za-z]/.test(text)) return null
+  const date = Date.parse(text)
+  return Number.isFinite(date) ? Math.min(Math.max(0, date - now), MAX_RETRY_AFTER_MS) : null
 }
 
 class TransportFailure extends Error {
@@ -101,12 +114,13 @@ function performRequest(
       if (settled) return
       settled = true
       signal.removeEventListener('abort', abort)
-      const retryAfter = response?.headers?.['retry-after']
+      const header = response?.headers?.['retry-after']
+      const retryAfterMs = parseRetryAfter(typeof header === 'string' ? header : undefined)
       resolve({
         status: response?.statusCode ?? null,
         responseBody: responsePreview(chunks, size, input.maxResponseBytes),
         error,
-        ...(typeof retryAfter === 'string' && retryAfter ? { retryAfter } : {}),
+        ...(retryAfterMs === null ? {} : { retryAfterMs }),
       })
       response?.destroy()
       request?.destroy()

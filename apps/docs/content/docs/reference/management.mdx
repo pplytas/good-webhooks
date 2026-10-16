@@ -176,7 +176,7 @@ The sender calls `matchRecipients` once at publication and `resolveEndpoint` bef
 | `resolveEndpoint` | Returns current state. Active results contain the current URL and usable Standard Webhooks signing secrets. Deleted or missing records return `'deleted'`.                                                                                                                 |
 | `pause`           | Optional. Pauses an active endpoint for the worker and resolves `true`. Resolves `false` without changing anything when the endpoint isn't active or no longer has `revision`. Required by a worker with [automatic pauses](/docs/reference/delivery#automatic-pauses) on. |
 
-`revision` is optional and opaque. It must change whenever the endpoint changes, so the worker can tell that earlier failures no longer describe it. The built-in sources report the record's revision.
+`revision` is optional and opaque. It must change whenever the endpoint changes, including on resume, so the worker can tell that earlier failures no longer describe it. Without it, a resumed endpoint that fails again is paused at once, and only a success starts a new period. The built-in sources report the record's revision.
 
 The built-in source returns the new signing secret first and the previous secret only while the overlap remains active. It rejects an unknown event name with `INVALID_INPUT`. Lookup and decryption failures reject.
 
@@ -257,7 +257,7 @@ interface ManagementRepository {
 
 Repository errors propagate. [`createPostgresManagementRepository`](/docs/reference/postgres#createpostgresmanagementrepository) is the built-in implementation.
 
-`StoredEndpoint` adds `revision`, `encryptedSecret`, nullable `previousEncryptedSecret`, and nullable `previousSecretExpiresAt` to the endpoint shape. Store `pauseReason` too; a repository that drops it reports `null` for every pause. `StoredEndpointPatch` is a partial stored record without `id`, `createdAt`, or `revision`. Stored records must never be sent to clients.
+`StoredEndpoint` adds `revision`, `encryptedSecret`, nullable `previousEncryptedSecret`, and nullable `previousSecretExpiresAt` to the endpoint shape. Store `pauseReason` too. From `0.2.0`, `create` records and `pause`, `resume`, and `remove` patches include it, so a repository that passes records straight to an ORM needs the column, or must drop the field before writing; then every pause reports `null`. `StoredEndpointPatch` is a partial stored record without `id`, `createdAt`, or `revision`. Stored records must never be sent to clients.
 
 ## SecretCipher
 

@@ -11,7 +11,7 @@ import { PassThrough, Writable } from 'node:stream'
 import type { DetailedPeerCertificate } from 'node:tls'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { sendWebhook } from '../src/transport.js'
+import { parseRetryAfter, sendWebhook } from '../src/transport.js'
 import { VERSION } from '../src/version.js'
 import { validateResolvedUrl } from '../src/management/node-url.js'
 
@@ -334,8 +334,19 @@ describe('HTTP delivery', () => {
       status: 429,
       responseBody: '',
       error: null,
-      retryAfter: '30',
+      retryAfterMs: 30_000,
     })
+  })
+
+  it('parses Retry-After as delta-seconds or an HTTP date and ignores anything else', () => {
+    const now = Date.parse('2026-10-16T12:00:00Z')
+    expect(parseRetryAfter('120', now)).toBe(120_000)
+    expect(parseRetryAfter(' 0 ', now)).toBe(0)
+    expect(parseRetryAfter('Fri, 16 Oct 2026 12:02:00 GMT', now)).toBe(120_000)
+    expect(parseRetryAfter('Fri, 16 Oct 2026 11:00:00 GMT', now)).toBe(0)
+    expect(parseRetryAfter('99999999999', now)).toBe(31_536_000_000)
+    for (const value of [undefined, '', '-5', '1.5', 'soon', '12abc'])
+      expect(parseRetryAfter(value, now)).toBeNull()
   })
 
   it('returns redirects without following them', async () => {

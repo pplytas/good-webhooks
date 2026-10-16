@@ -12,13 +12,13 @@ export interface DeliveryOutcome {
   retryable: boolean
   abandoned?: boolean
   /** The receiver asked for at least this long before the next attempt. */
-  retryAfterMs?: number
+  retryAfterMs?: number | null
 }
 export type Completion = 'succeeded' | 'retried' | 'failed' | 'stale'
 export interface CompletionResult {
   completion: Completion
   /** Recorded attempt outcome; null when the claim was stale and nothing was recorded. */
-  outcome: 'succeeded' | 'retry' | 'failed' | 'abandoned' | null
+  attempt: 'succeeded' | 'retry' | 'failed' | 'abandoned' | null
   /** Set when this failure makes the endpoint due for an automatic pause. */
   pause: AutomaticPauseReason | null
 }
@@ -62,14 +62,16 @@ export function createWorkerStore(config: ResolvedConfig) {
     attemptCount: number,
     createdAt: Date,
     now: Date,
-    minimumDelayMs = 0,
+    minimumDelayMs: number | null = null,
   ): Date | null {
-    const delay = config.retryDelaysMs[attemptCount - 1]
-    if (delay === undefined || now.getTime() - createdAt.getTime() >= config.maxAgeMs) return null
+    const scheduled = config.retryDelaysMs[attemptCount - 1]
+    if (scheduled === undefined || now.getTime() - createdAt.getTime() >= config.maxAgeMs)
+      return null
+    // A longer Retry-After wins, but never extends the retry window.
+    const delay = Math.max(scheduled, minimumDelayMs ?? 0)
     // A bounded 0-20% delay avoids synchronized retries without retrying early.
     const jitter = delay > 0 ? randomInt(Math.min(Math.floor(delay / 5), 2 ** 48 - 2) + 1) : 0
-    // A longer Retry-After wins, but never extends the retry window.
-    const next = new Date(now.getTime() + Math.max(delay + jitter, minimumDelayMs))
+    const next = new Date(now.getTime() + delay + jitter)
     return next.getTime() <= createdAt.getTime() + config.maxAgeMs ? next : null
   }
 
@@ -310,9 +312,7 @@ export function createWorkerStore(config: ResolvedConfig) {
           attemptCount: reservation.attempt_count + 1,
           createdAt: reservation.created_at,
           eventCreatedAt: reservation.event_created_at,
-          ...(resolution.endpoint.revision === undefined
-            ? {}
-            : { revision: resolution.endpoint.revision }),
+          revision: resolution.endpoint.revision ?? null,
         })
       }
       // A stop request can arrive while a database read above is in progress.
@@ -369,7 +369,7 @@ export function createWorkerStore(config: ResolvedConfig) {
         FOR UPDATE`,
         [claim.id, claim.token],
       )
-      if (!current.rows[0]) return { completion: 'stale', outcome: null, pause: null }
+      if (!current.rows[0]) return { completion: 'stale', attempt: null, pause: null }
       const succeeded =
         !outcome.abandoned &&
         outcome.error === null &&
@@ -412,17 +412,15 @@ export function createWorkerStore(config: ResolvedConfig) {
           outcome.error,
         ],
       )
-      const pause = outcome.abandoned
-        ? null
-        : await recordHealth(
-            client,
-            claim,
-            succeeded,
-            outcome.status,
-            current.rows[0].now,
-            state.rows[0],
-          )
-      return { completion, outcome: attemptOutcome, pause }
+      const pause = await recordHealth(
+        client,
+        claim,
+        outcome,
+        succeeded,
+        current.rows[0].now,
+        state.rows[0],
+      )
+      return { completion, attempt: attemptOutcome, pause }
     })
   }
 
@@ -433,13 +431,13 @@ export function createWorkerStore(config: ResolvedConfig) {
   async function recordHealth(
     client: DatabaseClient,
     claim: ClaimedDelivery,
+    outcome: DeliveryOutcome,
     succeeded: boolean,
-    status: number | null,
     now: Date,
     state: { failing_since: Date | null; failing_revision: string | null } | undefined,
   ): Promise<AutomaticPauseReason | null> {
     const health = config.endpointHealth
-    if (!health || !state) return null
+    if (!health || !state || outcome.abandoned) return null
     const key = [claim.scopeKey, claim.endpointId]
     if (succeeded) {
       if (state.failing_since)
@@ -450,7 +448,7 @@ export function createWorkerStore(config: ResolvedConfig) {
         )
       return null
     }
-    const revision = claim.revision ?? null
+    const { revision } = claim
     let due = false
     if (!state.failing_since || state.failing_revision !== revision) {
       await client.query(
@@ -461,7 +459,7 @@ export function createWorkerStore(config: ResolvedConfig) {
     } else {
       due = now.getTime() - state.failing_since.getTime() >= health.pauseAfterMs
     }
-    if (health.pauseOnGone && status === 410) return 'gone'
+    if (health.pauseOnGone && outcome.status === 410) return 'gone'
     return due ? 'failing' : null
   }
 

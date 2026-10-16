@@ -213,8 +213,8 @@ export interface ClaimedDelivery {
   body: string
   url: string
   secrets: readonly string[]
-  /** Endpoint revision the attempt was prepared with, when the source reports one. */
-  revision?: string
+  /** Endpoint revision the attempt was prepared with, or null when the source reports none. */
+  revision: string | null
   attemptCount: number
   createdAt: Date
   eventCreatedAt: Date

@@ -82,14 +82,23 @@ export function resolveConfig<E extends EventDefinitions>(
   if (typeof respectRetryAfter !== 'boolean')
     throw new WebhookError('INVALID_CONFIG', 'retry.respectRetryAfter must be a boolean.')
   const health = options.endpointHealth ?? {}
-  if (health !== false && (typeof health !== 'object' || health === null))
-    throw new WebhookError('INVALID_CONFIG', 'endpointHealth must be false or an object.')
-  if (
-    health !== false &&
-    health.pauseOnGone !== undefined &&
-    typeof health.pauseOnGone !== 'boolean'
-  )
-    throw new WebhookError('INVALID_CONFIG', 'endpointHealth.pauseOnGone must be a boolean.')
+  let endpointHealth: ResolvedConfig['endpointHealth'] = null
+  if (health !== false) {
+    if (typeof health !== 'object' || health === null)
+      throw new WebhookError('INVALID_CONFIG', 'endpointHealth must be false or an object.')
+    if (health.pauseOnGone !== undefined && typeof health.pauseOnGone !== 'boolean')
+      throw new WebhookError('INVALID_CONFIG', 'endpointHealth.pauseOnGone must be a boolean.')
+    endpointHealth = Object.freeze({
+      pauseAfterMs: integer(
+        'endpointHealth.pauseAfterMs',
+        health.pauseAfterMs,
+        432_000_000,
+        60_000,
+        2_592_000_000,
+      ),
+      pauseOnGone: health.pauseOnGone ?? true,
+    })
+  }
   const hooks = options.hooks ?? {}
   if (
     typeof hooks !== 'object' ||
@@ -122,19 +131,8 @@ export function resolveConfig<E extends EventDefinitions>(
       65536,
     ),
     allowLocalhost: options.allowLocalhost ?? false,
-    endpointHealth:
-      health === false
-        ? null
-        : Object.freeze({
-            pauseAfterMs: integer(
-              'endpointHealth.pauseAfterMs',
-              health.pauseAfterMs,
-              432_000_000,
-              60_000,
-              2_592_000_000,
-            ),
-            pauseOnGone: health.pauseOnGone ?? true,
-          }),
-    hooks: Object.freeze({ ...hooks }),
+    endpointHealth,
+    // Keep the caller's object so class instances keep their methods and this.
+    hooks,
   })
 }

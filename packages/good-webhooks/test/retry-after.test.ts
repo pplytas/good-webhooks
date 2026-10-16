@@ -1,26 +1,20 @@
-import { once } from 'node:events'
-import { createServer, type Server } from 'node:http'
 import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import { createWebhooks } from '../src/index.js'
-import { parseRetryAfter } from '../src/worker.js'
 import { closeDatabase, pool, resetDatabase } from './db.js'
+import { closeReceivers, startReceiver } from './receiver.js'
 
-const servers: Server[] = []
 let reply: { status: number; retryAfter?: string } = { status: 429 }
 
 beforeEach(async () => {
   reply = { status: 429 }
   await resetDatabase()
 })
-afterEach(async () => {
-  for (const server of servers.splice(0))
-    await new Promise<void>((resolve) => server.close(() => resolve()))
-})
+afterEach(closeReceivers)
 afterAll(closeDatabase)
 
 async function setup(respectRetryAfter?: boolean) {
-  const server = createServer((_request, response) =>
+  const { url } = await startReceiver((_request, response) =>
     response
       .writeHead(
         reply.status,
@@ -28,9 +22,6 @@ async function setup(respectRetryAfter?: boolean) {
       )
       .end(),
   )
-  servers.push(server)
-  server.listen(0, '127.0.0.1')
-  await once(server, 'listening')
   const app = createWebhooks({
     database: pool,
     encryptionKey: new Uint8Array(32).fill(7),
@@ -43,7 +34,7 @@ async function setup(respectRetryAfter?: boolean) {
     },
   })
   await app.endpoints.create({
-    url: `http://127.0.0.1:${(server.address() as { port: number }).port}/hook`,
+    url,
     eventTypes: ['invoice.paid'],
   })
   await app.publish({ type: 'invoice.paid', data: { id: 'inv_1' } })
@@ -70,7 +61,8 @@ describe('Retry-After', () => {
       expect((await app.worker.runOnce()).retried).toBe(1)
       const next = await nextAttemptIn()
       expect(next.seconds).toBeGreaterThan(seconds - 10)
-      expect(next.seconds).toBeLessThan(seconds + 10)
+      // Retry-After gets the usual 0-20% jitter on top.
+      expect(next.seconds).toBeLessThan(seconds * 1.2 + 10)
     },
   )
 
@@ -93,16 +85,5 @@ describe('Retry-After', () => {
     const app = await setup()
     expect((await app.worker.runOnce()).failed).toBe(1)
     expect((await nextAttemptIn()).status).toBe('failed')
-  })
-
-  it('parses delta-seconds and HTTP dates and ignores anything else', () => {
-    const now = Date.parse('2026-10-16T12:00:00Z')
-    expect(parseRetryAfter('120', now)).toBe(120_000)
-    expect(parseRetryAfter(' 0 ', now)).toBe(0)
-    expect(parseRetryAfter('Fri, 16 Oct 2026 12:02:00 GMT', now)).toBe(120_000)
-    expect(parseRetryAfter('Fri, 16 Oct 2026 11:00:00 GMT', now)).toBe(0)
-    expect(parseRetryAfter('99999999999', now)).toBe(31_536_000_000)
-    for (const value of [undefined, '', '-5', '1.5', 'soon', '12abc'])
-      expect(parseRetryAfter(value, now)).toBeNull()
   })
 })

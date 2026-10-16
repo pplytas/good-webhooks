@@ -9,7 +9,8 @@ Endpoint health. The worker pauses endpoints that keep failing, reports what it 
 1. Apply `getPostgresUpgrade({ from: 4 })`, or `migrations/upgrades/005-all.sql` (per-component files for separate namespaces), with your migration runner. It only adds nullable columns, so processes on `0.1.x` keep working until they restart. From version 3, `from: 3` applies both steps.
 2. With Better Auth management, run your Better Auth migration (`auth migrate`, or `auth generate` and your ORM's migration) for the new optional `pauseReason` field before deploying. The new package writes it.
 3. Restart producers, then workers, on `0.2.0`. See the [rollout order](apps/docs/content/docs/operations/migrations.mdx#rollout-order).
-4. If your engine's `source` is a custom `EndpointSource` without `pause()`, a worker now refuses to start with `INVALID_CONFIG`. Implement `pause()` or pass `endpointHealth: false`. Engines that only publish are unaffected.
+4. If your engine's `source` is a custom `EndpointSource` without `pause()`, a worker now refuses to start with `INVALID_CONFIG`. Implement `pause()` or pass `endpointHealth: false`. Engines that only publish are unaffected. Report a `revision` from `resolveEndpoint()` too; without it, only a success starts a new failure period.
+5. A custom `ManagementRepository` now receives `pauseReason` in `create` records and in `pause`, `resume`, and `remove` patches. Store it, or drop it before writing if your storage rejects unknown fields.
 
 ### Breaking
 

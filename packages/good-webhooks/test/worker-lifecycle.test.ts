@@ -23,6 +23,7 @@ const claim: ClaimedDelivery = {
   endpointId: 'endpoint',
   eventId: 'event',
   eventType: 'order.created',
+  revision: null,
   token: 'token',
   body: '{}',
   url: 'https://example.com/hook',
@@ -56,7 +57,7 @@ const store = {
 const success = { status: 200, responseBody: 'ok', error: null }
 const completed = (completion: Completion): CompletionResult => ({
   completion,
-  outcome: completion === 'stale' ? null : completion === 'retried' ? 'retry' : completion,
+  attempt: completion === 'stale' ? null : completion === 'retried' ? 'retry' : completion,
   pause: null,
 })
 
@@ -251,7 +252,7 @@ describe('hooks and automatic pauses', () => {
     store.claim.mockResolvedValueOnce({ claims: [scopedClaim], errors: [] })
     store.complete.mockResolvedValueOnce({
       completion: 'retried',
-      outcome: 'retry',
+      attempt: 'retry',
       pause: 'failing',
     })
     const worker = createWorker({
@@ -278,10 +279,41 @@ describe('hooks and automatic pauses', () => {
     })
   })
 
+  it('calls pause() and hooks as methods, so class instances keep this', async () => {
+    class Source {
+      paused: string[] = []
+      matchRecipients = vi.fn()
+      resolveEndpoint = vi.fn()
+      async pause(_scope: unknown, id: string) {
+        this.paused.push(id)
+        return true
+      }
+    }
+    class Hooks {
+      reasons: string[] = []
+      async onEndpointPaused(event: { reason: string }) {
+        this.reasons.push(event.reason)
+      }
+    }
+    const source = new Source()
+    const hooks = new Hooks()
+    store.claim.mockResolvedValueOnce({ claims: [scopedClaim], errors: [] })
+    store.complete.mockResolvedValueOnce({ completion: 'failed', attempt: 'failed', pause: 'gone' })
+    const worker = createWorker({
+      ...config,
+      source,
+      endpointHealth: { pauseAfterMs: 432_000_000, pauseOnGone: true },
+      hooks,
+    })
+    expect(await worker.runOnce()).toMatchObject({ failed: 1 })
+    expect(source.paused).toEqual(['endpoint'])
+    expect(hooks.reasons).toEqual(['gone'])
+  })
+
   it('reports a pause only when the source applied it', async () => {
     const onEndpointPaused = vi.fn()
     store.claim.mockResolvedValueOnce({ claims: [scopedClaim], errors: [] })
-    store.complete.mockResolvedValueOnce({ completion: 'failed', outcome: 'failed', pause: 'gone' })
+    store.complete.mockResolvedValueOnce({ completion: 'failed', attempt: 'failed', pause: 'gone' })
     const worker = createWorker({
       ...config,
       source: { ...config.source, pause: async () => false },

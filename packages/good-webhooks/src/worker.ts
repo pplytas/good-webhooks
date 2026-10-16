@@ -2,7 +2,12 @@ import { signWebhook } from './crypto.js'
 import { WebhookError } from './errors.js'
 import { sendWebhook } from './transport.js'
 import { scopeFromKey } from './scope.js'
-import { createWorkerStore, type Completion, type CompletionResult } from './worker-store.js'
+import {
+  createWorkerStore,
+  type Completion,
+  type CompletionResult,
+  type DeliveryOutcome,
+} from './worker-store.js'
 import type { ClaimedDelivery, ResolvedConfig, WorkerResult } from './types.js'
 
 function emptyResult(): WorkerResult {
@@ -20,19 +25,6 @@ function waitForPoll(milliseconds: number, signal: AbortSignal): Promise<void> {
     const timer = setTimeout(finish, milliseconds)
     signal.addEventListener('abort', finish, { once: true })
   })
-}
-
-const MAX_RETRY_AFTER_MS = 31_536_000_000
-
-/** Parse delta-seconds or an HTTP date. Unparseable values are ignored. */
-export function parseRetryAfter(value: string | undefined, now = Date.now()): number | null {
-  if (value === undefined) return null
-  const text = value.trim()
-  if (/^\d+$/.test(text)) return Math.min(Number(text) * 1000, MAX_RETRY_AFTER_MS)
-  // HTTP dates contain letters; this rejects negative numbers and decimals that Date.parse accepts.
-  if (!/[A-Za-z]/.test(text)) return null
-  const date = Date.parse(text)
-  return Number.isFinite(date) ? Math.min(Math.max(0, date - now), MAX_RETRY_AFTER_MS) : null
 }
 
 /** Stop claims on caller abort, but give prepared attempts time to finish. */
@@ -80,39 +72,38 @@ export function createWorker(config: ResolvedConfig) {
   async function after(
     claim: ClaimedDelivery,
     result: CompletionResult,
-    response: { status: number | null; error: string | null },
+    outcome: DeliveryOutcome,
     durationMs: number,
     errors: unknown[],
   ): Promise<void> {
-    if (!result.outcome) return
-    const { onAttempt, onEndpointPaused } = config.hooks
-    const pause = config.source.pause
-    if (!onAttempt && !(result.pause && pause)) return
+    const { hooks, source } = config
+    if (!result.attempt || (!hooks.onAttempt && !result.pause)) return
     const scope = scopeFromKey(claim.scopeKey)
     try {
-      await onAttempt?.({
+      await hooks.onAttempt?.({
         scope,
         endpointId: claim.endpointId,
         deliveryId: claim.id,
         eventId: claim.eventId,
         eventType: claim.eventType,
         attempt: claim.attemptCount,
-        outcome: result.outcome,
-        responseStatus: response.status,
-        error: response.error,
+        outcome: result.attempt,
+        responseStatus: outcome.status,
+        error: outcome.error,
         durationMs,
       })
     } catch (error) {
       errors.push(error)
     }
-    if (!result.pause || !pause) return
+    if (!result.pause) return
     try {
-      const paused = await pause(scope, claim.endpointId, {
+      // requirePause() guarantees pause() whenever endpoint health can produce a pause.
+      const paused = await source.pause!(scope, claim.endpointId, {
         reason: result.pause,
-        ...(claim.revision === undefined ? {} : { revision: claim.revision }),
+        ...(claim.revision === null ? {} : { revision: claim.revision }),
       })
       if (paused)
-        await onEndpointPaused?.({
+        await hooks.onEndpointPaused?.({
           scope,
           endpointId: claim.endpointId,
           reason: result.pause,
@@ -122,30 +113,20 @@ export function createWorker(config: ResolvedConfig) {
     }
   }
 
-  async function deliver(
-    claim: ClaimedDelivery,
-    errors: unknown[],
-    signal?: AbortSignal,
-  ): Promise<Completion> {
-    if (signal?.aborted) {
-      const outcome = {
-        status: null,
-        responseBody: '',
-        error: 'Worker stopped; receiver outcome is unknown',
-        retryable: true,
-        abandoned: true,
-      }
-      const result = await store.complete(claim, outcome)
-      await after(claim, result, outcome, 0, errors)
-      return result.completion
+  /** Send one attempt and classify its response. Never throws for receiver failures. */
+  async function attempt(claim: ClaimedDelivery, signal?: AbortSignal): Promise<DeliveryOutcome> {
+    const stopped = {
+      error: 'Worker stopped; receiver outcome is unknown',
+      retryable: true,
+      abandoned: true,
     }
+    if (signal?.aborted) return { status: null, responseBody: '', ...stopped }
     const headers = signWebhook({
       id: claim.eventId,
       timestamp: Math.floor(Date.now() / 1000),
       body: claim.body,
       secrets: claim.secrets,
     })
-    const started = performance.now()
     const response = await sendWebhook({
       url: claim.url,
       body: claim.body,
@@ -155,43 +136,42 @@ export function createWorker(config: ResolvedConfig) {
       allowLocalhost: config.allowLocalhost,
       ...(signal ? { signal } : {}),
     })
-    const durationMs = Math.round(performance.now() - started)
-    if (signal?.aborted) {
-      const outcome = {
-        ...response,
-        error: 'Worker stopped; receiver outcome is unknown',
-        retryable: true,
-        abandoned: true,
-      }
-      const result = await store.complete(claim, outcome)
-      await after(claim, result, outcome, durationMs, errors)
-      return result.completion
-    }
+    const { status, responseBody } = response
+    if (signal?.aborted) return { status, responseBody, ...stopped }
     const retryable =
       response.error !== 'unsafe_url' &&
       response.error !== 'invalid_request' &&
       (response.error !== null ||
-        response.status === null ||
-        response.status === 408 ||
-        response.status === 425 ||
-        response.status === 429 ||
-        (response.status >= 500 && response.status < 600))
-    const retryAfterMs =
-      config.respectRetryAfter && (response.status === 429 || response.status === 503)
-        ? parseRetryAfter(response.retryAfter)
-        : null
-    const outcome = {
-      ...response,
+        status === null ||
+        status === 408 ||
+        status === 425 ||
+        status === 429 ||
+        (status >= 500 && status < 600))
+    return {
+      status,
+      responseBody,
       retryable,
-      ...(retryAfterMs === null ? {} : { retryAfterMs }),
+      retryAfterMs:
+        config.respectRetryAfter && (status === 429 || status === 503)
+          ? (response.retryAfterMs ?? null)
+          : null,
       error:
         response.error ??
-        (response.status !== null && (response.status < 200 || response.status >= 300)
-          ? `Receiver returned HTTP ${response.status}`
+        (status !== null && (status < 200 || status >= 300)
+          ? `Receiver returned HTTP ${status}`
           : null),
     }
+  }
+
+  async function deliver(
+    claim: ClaimedDelivery,
+    errors: unknown[],
+    signal?: AbortSignal,
+  ): Promise<Completion> {
+    const started = performance.now()
+    const outcome = await attempt(claim, signal)
     const result = await store.complete(claim, outcome)
-    await after(claim, result, outcome, durationMs, errors)
+    await after(claim, result, outcome, Math.round(performance.now() - started), errors)
     return result.completion
   }
 
