@@ -63,14 +63,29 @@ jobs:
         run: pnpm example
 
   adapters:
-    name: Better Auth storage adapters
+    name: Better Auth ${{ matrix.label }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Lowest supported version, from the lockfile.
+          - label: 1.7.7
+            version: ''
+          # Newest release in each supported line, resolved on every run.
+          - label: latest 1.7
+            version: ~1.7.7
+          - label: latest 1.8
+            version: ~1.8.0-0
+    env:
+      TEST_DATABASE_URL: postgres://postgres:webhooks_dev_only@127.0.0.1:55439/webhooks
     services:
       postgres:
         image: postgres:16
         env:
           POSTGRES_PASSWORD: webhooks_dev_only
+          POSTGRES_DB: webhooks
         ports:
           - 55439:5432
         options: >-
@@ -112,7 +127,18 @@ jobs:
           node-version: 24
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
+      - name: Install the Better Auth version under test
+        if: matrix.version != ''
+        env:
+          BETTER_AUTH_VERSION: ${{ matrix.version }}
+        run: pnpm --filter good-webhooks add -D "better-auth@$BETTER_AUTH_VERSION"
+      - run: pnpm --filter good-webhooks ls better-auth
+      - run: pnpm check:package
+      - name: Run the Better Auth integration tests
+        run: pnpm --filter good-webhooks exec vitest run test/better-auth-
       - run: pnpm test:adapters
+      - name: Verify a packed Better Auth consumer
+        run: pnpm test:package
 
   package:
     name: Package consumers

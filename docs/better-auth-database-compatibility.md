@@ -1,6 +1,6 @@
 # Better Auth database compatibility
 
-The public summary is in the [Better Auth plugin guide](../apps/docs/content/docs/better-auth/index.mdx#supported-databases). This page keeps the test matrix, storage internals, and upstream contracts for contributors. The baseline is Better Auth 1.7.7 on Node.js 24.
+The public summary is in the [Better Auth plugin guide](../apps/docs/content/docs/better-auth/index.mdx#supported-databases). This page keeps the test matrix, storage internals, and upstream contracts for contributors. The baseline is Better Auth 1.7.7 on Node.js 24. CI repeats the matrix on the newest 1.7 and 1.8 releases, including 1.8 betas; upstream source links below point at 1.7.7.
 
 ## Verified profiles
 

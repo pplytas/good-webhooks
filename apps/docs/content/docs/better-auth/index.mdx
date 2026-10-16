@@ -15,7 +15,7 @@ The plugin manages endpoints only; it sends nothing. To send events, add the [bu
 good-webhooks@beta better-auth@1.7.7
 ```
 
-Supports Better Auth `>=1.7.7 <1.8.0`.
+Supports Better Auth `>=1.7.7 <1.8.0 || >=1.8.0-beta.0 <1.9.0`: 1.7.7 or later in 1.7, and 1.8 including its betas.
 
 </Step>
 <Step>
@@ -118,7 +118,7 @@ Regenerate and apply the schema after changing `schema`. Your Better Auth databa
 
 ## Supported databases
 
-The plugin stores endpoints through Better Auth's public adapter interface. With Better Auth 1.7.7 on Node.js 24, CI runs it against real SQLite, PostgreSQL 16, MySQL 8.4, MongoDB 8, SQL Server 2022, libSQL, and Cloudflare D1 (local Miniflare) databases, and through Drizzle and Prisma on PostgreSQL. Each run covers concurrent creates at the endpoint limit, revision-guarded updates, and maximum-length Unicode values.
+The plugin stores endpoints through Better Auth's public adapter interface. On Node.js 24, with Better Auth 1.7.7 and the newest 1.7 and 1.8 releases, CI runs it against real SQLite, PostgreSQL 16, MySQL 8.4, MongoDB 8, SQL Server 2022, libSQL, and Cloudflare D1 (local Miniflare) databases, and through Drizzle and Prisma on PostgreSQL. Each run covers concurrent creates at the endpoint limit, revision-guarded updates, and maximum-length Unicode values.
 
 <Callout type="warn" title="SQL Server needs a UTF-8 collation">
   Better Auth generates `varchar` columns, so a non-UTF-8 collation corrupts Unicode scope IDs,

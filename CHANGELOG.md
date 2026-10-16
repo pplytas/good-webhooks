@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- The optional Better Auth peer range is now `>=1.7.7 <1.8.0 || >=1.8.0-beta.0 <1.9.0`, so installs with Better Auth 1.8 betas no longer report a peer conflict. The 1.8.0-beta.0 breaking changes cover device authorization, OAuth provider, and sign-up flows, none of which the plugin uses.
+- CI runs the Better Auth type check, integration tests, adapter matrix, and packed-consumer check on 1.7.7 and on the newest 1.7 and 1.8 releases.
+
 ## 0.1.0-beta.5 (2026-10-15)
 
 Documentation update for the redesigned site. The npm README shows the new square logo and a pipeline diagram in the same style as [good-webhooks.dev](https://good-webhooks.dev), its badges use the site font, and the endpoint example uses `receiver.example`. Images from earlier README versions stay online, so their READMEs keep working. Runtime behavior, public APIs, dependencies, and database schema are unchanged from `0.1.0-beta.4`. No migration is required.
