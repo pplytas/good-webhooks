@@ -58,10 +58,11 @@ async function nextAttemptIn() {
 }
 
 describe('Retry-After', () => {
-  it.each([
+  const cases: [status: number, retryAfter: () => string, seconds: number][] = [
     [429, () => '120', 120],
     [503, () => new Date(Date.now() + 300_000).toUTCString(), 300],
-  ] as const)(
+  ]
+  it.each(cases)(
     'waits as long as a %i response asks when that is longer than the schedule',
     async (status, retryAfter, seconds) => {
       reply = { status, retryAfter: retryAfter() }
