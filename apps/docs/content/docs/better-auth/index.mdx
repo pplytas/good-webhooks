@@ -12,7 +12,7 @@ The plugin manages endpoints only; it sends nothing. To send events, add the [bu
 ### Install
 
 ```package-install
-good-webhooks better-auth@1.7.7
+good-webhooks better-auth@1.7.10
 ```
 
 Supports Better Auth `>=1.7.7 <1.8.0 || >=1.8.0-beta.0 <1.9.0-0`: 1.7.7 or later in 1.7, and 1.8 including the 1.8.0 betas.
@@ -46,8 +46,8 @@ Keep the tuple in its own module so the browser can import it without server cod
 Use [Better Auth's CLI](https://better-auth.com/docs/concepts/cli) at your installed version:
 
 ```sh
-npx auth@1.7.7 migrate --config ./src/auth.ts   # built-in SQL adapters
-npx auth@1.7.7 generate --config ./src/auth.ts  # Drizzle or Prisma, then run their migrations
+npx auth@1.7.10 migrate --config ./src/auth.ts   # built-in SQL adapters
+npx auth@1.7.10 generate --config ./src/auth.ts  # Drizzle or Prisma, then run their migrations
 ```
 
 Keep every generated field and the unique `allocationKey` index; it enforces the per-scope endpoint limit under concurrent creates. Do not apply Good Webhooks' `management.sql` here: that file is for the standalone PostgreSQL provider.

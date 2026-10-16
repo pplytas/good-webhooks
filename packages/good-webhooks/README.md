@@ -62,7 +62,7 @@ yarn add good-webhooks pg zod
 The plugin uses your existing Better Auth database adapter. PostgreSQL is only needed for built-in delivery.
 
 ```sh
-npm install good-webhooks better-auth@1.7.7
+npm install good-webhooks better-auth@1.7.10
 ```
 
 Then follow the [Better Auth quick start](https://good-webhooks.dev/docs/better-auth/quick-start).

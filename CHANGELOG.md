@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Install commands in the docs and the npm README name Better Auth 1.7.10, the newest 1.7 release, instead of 1.7.7. The supported range is unchanged.
+
 ## 0.1.0 (2026-10-16)
 
 First stable release. The public API, the shipped SQL, and the schema upgrade path now follow the [stability policy](apps/docs/content/docs/operations/compatibility.mdx#stability-policy): semantic versioning, a deprecation in an earlier minor before any breaking change, and security fixes for the previous minor for three months. `0.1.0` claims a stable API and upgrade path, not verified behavior at throughput beyond the [measured profile](apps/docs/content/docs/operations/performance.mdx).
