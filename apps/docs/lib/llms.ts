@@ -35,7 +35,7 @@ const summary = [
   '',
   `> ${site.name} is a TypeScript library for sending webhooks from a Node.js application. You publish typed events; it stores them in your PostgreSQL database, delivers signed Standard Webhooks requests from a worker you run, retries failures, keeps attempt history, and supports replay. Receivers verify requests with one function. Endpoints are managed through a standalone PostgreSQL provider or a Better Auth plugin.`,
   '',
-  `Version ${site.version}. Requires Node.js 24 or later and PostgreSQL 16 or 17. Better Auth ${site.betterAuthRange} is optional.`,
+  `Version ${site.version}. Requires Node.js 24 or later and PostgreSQL 16, 17, or 18. Better Auth ${site.betterAuthRange} is optional.`,
   '',
   '**When to use it:** your application sends webhooks to endpoints your users register and you want delivery to live in your own process and database, with no hosted service.',
   '',

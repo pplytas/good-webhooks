@@ -24,7 +24,7 @@ webhook-timestamp: 1760000000
 webhook-signature: v1,K5oZfzN95Z9UVu1EsfQmfVNQhnkZ2pj6D2hFcTjqRVo=
 ```
 
-The signature is HMAC-SHA256 over `{id}.{timestamp}.{body}`. During a secret rotation the header carries one signature per usable secret, and `parseWebhook()` accepts the request if any matches and the timestamp is within five minutes.
+The signature is HMAC-SHA256 over `{id}.{timestamp}.{body}`. Each request is a `POST` with `content-type: application/json` and `user-agent: good-webhooks/<version>`, which receivers can use in firewall rules. The user agent is not signed, so never treat it as proof of the sender. During a secret rotation the header carries one signature per usable secret, and `parseWebhook()` accepts the request if any matches and the timestamp is within five minutes.
 
 ## Destination checks
 

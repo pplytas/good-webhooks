@@ -1,8 +1,21 @@
 # Changelog
 
-## Unreleased
+## 0.1.1 (2026-10-16)
 
+Public APIs, dependencies, and database schema (version `4`) are unchanged from `0.1.0`. No migration is required.
+
+- Every delivery attempt sends `user-agent: good-webhooks/<version>`. Node.js sends no user agent by default, and some firewalls reject requests without one. The header is not signed.
+- PostgreSQL 18 is supported. CI runs the full integration suite on PostgreSQL 16, 17, and 18, and on Node.js 26 with PostgreSQL 18.
+- The [stability policy](apps/docs/content/docs/operations/compatibility.mdx#stability-policy) now states that additions (new optional options, result fields, exports, and request headers) are not breaking. Before `1.0`, a minor may change a default or require upgrade SQL without a deprecation period, provided the previous release announces it.
 - Install commands in the docs and the npm README name Better Auth 1.7.10, the newest 1.7 release, instead of 1.7.7. The supported range is unchanged.
+
+### Coming in 0.2.0
+
+`0.2.0` will be a breaking minor, tracked in [issue #58](https://github.com/pplytas/good-webhooks/issues/58):
+
+- **Upgrade SQL required.** Storage moves to schema version `5`. Better Auth users also run a schema migration for a new endpoint field.
+- **Automatic pause, on by default.** The worker pauses an endpoint that has failed every attempt for five days, or that answers HTTP 410. Opt out with `endpointHealth: false`.
+- **`Retry-After` honored by default** on 429 and 503 responses. Opt out with `retry.respectRetryAfter: false`.
 
 ## 0.1.0 (2026-10-16)
 

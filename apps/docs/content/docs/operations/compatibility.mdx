@@ -7,9 +7,9 @@ description: Supported runtimes and databases, what each release promises, and h
 
 | Component   | Supported                                         | Verified in CI                                                                                               |
 | ----------- | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| Node.js     | 24 or later                                       | Node.js 24, ESM and CommonJS consumers                                                                       |
+| Node.js     | 24 or later                                       | Node.js 24, ESM and CommonJS consumers; full integration suite on Node.js 26                                 |
 | TypeScript  | 5.9.3 or later                                    | 5.9.3 and 7.0, with NodeNext and Bundler resolution                                                          |
-| PostgreSQL  | 16 and 17                                         | Full integration suite on both                                                                               |
+| PostgreSQL  | 16, 17, and 18                                    | Full integration suite on each                                                                               |
 | Better Auth | 1.7.7 or later 1.7, and 1.8 including 1.8.0 betas | 1.7.7 and the newest 1.7 and 1.8 releases across the [adapter matrix](/docs/better-auth#supported-databases) |
 
 The package ships ESM and also loads through CommonJS `require()`. Standalone consumers are checked with `strict: true` and `skipLibCheck: false`. Better Auth consumers need `skipLibCheck` for upstream declarations; their own types stay fully checked. Other JavaScript runtimes are not verified.
@@ -23,9 +23,10 @@ The [entry points](/docs/reference), every name they export, and the shipped SQL
 ### Releases
 
 - Releases follow [semantic versioning](https://semver.org). While the major version is `0`, a minor release may contain breaking changes; a patch release never does.
-- Breaking means a passing consumer type-check fails, observable runtime behavior changes, a supported runtime or database version is dropped, or SQL must run before upgrading. Observable behavior includes option defaults, error codes, the request format, and the signature scheme.
+- Breaking means a passing consumer type-check fails, existing runtime behavior changes, a supported runtime or database version is dropped, or SQL must run before upgrading. Existing behavior includes option defaults, error codes, the request format, and the signature scheme.
+- Additions are not breaking: new optional options, new fields in results (optional in types that hosts implement), new exports, and new request headers. Changing or removing an existing one is.
 - Any schema change ships upgrade SQL and a [rollout order](/docs/operations/migrations#rollout-order). Package and schema versions are independent, and downgrading is never assumed safe.
-- Every breaking change is deprecated in at least one earlier minor with a runtime or type-level warning, and the release notes state the migration.
+- Every breaking change is deprecated in at least one earlier minor with a runtime or type-level warning, and the release notes state the migration. Before `1.0`, a minor may instead change a default or require upgrade SQL without a deprecation period: the previous release announces the change, and the release notes give the migration.
 - The latest minor receives all fixes. Security fixes also reach the previous minor for three months after the next minor ships.
 - `0.1.0` claims a stable API and upgrade path, not verified behavior at throughput beyond the [measured profile](/docs/operations/performance).
 - Alpha and beta versions receive no fixes. Upgrade to the latest release.

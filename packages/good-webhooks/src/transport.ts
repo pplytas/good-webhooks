@@ -4,6 +4,7 @@ import { isIP } from 'node:net'
 import { StringDecoder } from 'node:string_decoder'
 import { checkServerIdentity } from 'node:tls'
 import { WebhookError } from './errors.js'
+import { VERSION } from './version.js'
 import {
   DnsResolutionError,
   resolveTarget,
@@ -55,6 +56,7 @@ function requestHeaders(
   }
   return {
     'content-type': 'application/json',
+    'user-agent': `good-webhooks/${VERSION}`,
     ...result,
     host: target.url.host,
     'content-length': String(Buffer.byteLength(body)),

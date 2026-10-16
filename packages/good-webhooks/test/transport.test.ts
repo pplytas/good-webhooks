@@ -10,7 +10,9 @@ import https from 'node:https'
 import { PassThrough, Writable } from 'node:stream'
 import type { DetailedPeerCertificate } from 'node:tls'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
 import { sendWebhook } from '../src/transport.js'
+import { VERSION } from '../src/version.js'
 import { validateResolvedUrl } from '../src/management/node-url.js'
 
 vi.mock('node:dns/promises', () => ({ lookup: vi.fn() }))
@@ -279,6 +281,11 @@ describe('URL and DNS validation', () => {
 })
 
 describe('HTTP delivery', () => {
+  it('names the package version in the User-Agent header', () => {
+    const manifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
+    expect(VERSION).toBe(manifest.version)
+  })
+
   it('posts exact UTF-8 bytes with a matching content length only when localhost is enabled', async () => {
     const seen: { body: string; method: string | undefined; headers: http.IncomingHttpHeaders }[] =
       []
@@ -312,6 +319,7 @@ describe('HTTP delivery', () => {
         headers: expect.objectContaining({
           'content-length': String(Buffer.byteLength(body)),
           'content-type': 'application/json',
+          'user-agent': `good-webhooks/${VERSION}`,
           'webhook-id': 'msg_123',
         }),
       },
