@@ -31,12 +31,12 @@ You publish typed events. Good Webhooks stores them in your PostgreSQL database,
   </picture>
 </p>
 
-> **Beta.** The public API is frozen except for correctness and security fixes. Pin the exact version and read the [stability policy](https://good-webhooks.dev/docs/operations/compatibility#stability-policy).
+> **Stable API.** From `0.1.0` the public API and upgrade path follow the [stability policy](https://good-webhooks.dev/docs/operations/compatibility#stability-policy). Throughput beyond the [measured profile](https://good-webhooks.dev/docs/operations/performance) is not yet verified.
 
 ## Install
 
 ```sh
-npm install good-webhooks@beta pg zod
+npm install good-webhooks pg zod
 ```
 
 Requires Node.js 24 or later. Built-in delivery and standalone management need PostgreSQL 16 or 17. Better Auth management uses your existing Better Auth database adapter. See [installation](https://good-webhooks.dev/docs/installation) for each setup's dependencies and the [compatibility policy](https://good-webhooks.dev/docs/operations/compatibility) for tested versions.

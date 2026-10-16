@@ -90,9 +90,10 @@ A `fetch()` in a request handler loses events when a receiving server is down, s
 
 Nothing starts on its own: creating the client opens no connections, runs no migrations, and starts no workers.
 
-<Callout type="info" title="Beta">
-  The public API is frozen except for correctness and security fixes. Pin the exact version and read
-  the [stability policy](/docs/operations/compatibility#stability-policy) before upgrading.
+<Callout type="info" title="Stable API">
+  From `0.1.0` the public API and upgrade path follow the [stability
+  policy](/docs/operations/compatibility#stability-policy). Throughput beyond the [measured
+  profile](/docs/operations/performance) is not yet verified.
 </Callout>
 
 <Cards>

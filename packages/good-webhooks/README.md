@@ -31,7 +31,7 @@ You publish typed events. Good Webhooks stores them in your PostgreSQL database,
   </picture>
 </p>
 
-> **Beta.** The public API is frozen except for correctness and security fixes. Pin the exact version and read the [stability policy](https://good-webhooks.dev/docs/operations/compatibility#stability-policy).
+> **Stable API.** From `0.1.0` the public API and upgrade path follow the [stability policy](https://good-webhooks.dev/docs/operations/compatibility#stability-policy). Throughput beyond the [measured profile](https://good-webhooks.dev/docs/operations/performance) is not yet verified.
 
 ## Features
 
@@ -45,15 +45,15 @@ You publish typed events. Good Webhooks stores them in your PostgreSQL database,
 ## Install
 
 ```sh
-npm install good-webhooks@beta pg zod
+npm install good-webhooks pg zod
 ```
 
 ```sh
-pnpm add good-webhooks@beta pg zod
+pnpm add good-webhooks pg zod
 ```
 
 ```sh
-yarn add good-webhooks@beta pg zod
+yarn add good-webhooks pg zod
 ```
 
 <details>
@@ -62,7 +62,7 @@ yarn add good-webhooks@beta pg zod
 The plugin uses your existing Better Auth database adapter. PostgreSQL is only needed for built-in delivery.
 
 ```sh
-npm install good-webhooks@beta better-auth@1.7.7
+npm install good-webhooks better-auth@1.7.7
 ```
 
 Then follow the [Better Auth quick start](https://good-webhooks.dev/docs/better-auth/quick-start).

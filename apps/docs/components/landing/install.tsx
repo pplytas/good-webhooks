@@ -10,9 +10,9 @@ import { quickStartPrompt } from '@/lib/prompts'
  * several times while reading.
  */
 const options = [
-  { label: 'npm', text: 'npm install good-webhooks@beta', command: true },
-  { label: 'pnpm', text: 'pnpm add good-webhooks@beta', command: true },
-  { label: 'bun', text: 'bun add good-webhooks@beta', command: true },
+  { label: 'npm', text: 'npm install good-webhooks', command: true },
+  { label: 'pnpm', text: 'pnpm add good-webhooks', command: true },
+  { label: 'bun', text: 'bun add good-webhooks', command: true },
   { label: 'Skill', text: 'npx skills add pplytas/good-webhooks', command: true },
   { label: 'Prompt', text: quickStartPrompt, command: false },
 ] as const

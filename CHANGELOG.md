@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.0 (2026-10-16)
+
+First stable release. The public API, the shipped SQL, and the schema upgrade path now follow the [stability policy](apps/docs/content/docs/operations/compatibility.mdx#stability-policy): semantic versioning, a deprecation in an earlier minor before any breaking change, and security fixes for the previous minor for three months. `0.1.0` claims a stable API and upgrade path, not verified behavior at throughput beyond the [measured profile](apps/docs/content/docs/operations/performance.mdx).
+
+The code, public APIs, dependencies, and database schema (version `4`) are identical to `0.1.0-beta.6`. No migration is required from beta.2 or later; from beta.1, apply the schema 4 upgrade described under `0.1.0-beta.2`. Install commands no longer name the `beta` tag.
+
 ## 0.1.0-beta.6 (2026-10-16)
 
 Better Auth 1.8 support. Runtime behavior, public APIs, and database schema are unchanged from `0.1.0-beta.5`. No migration is required.

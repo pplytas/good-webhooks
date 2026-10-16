@@ -16,23 +16,16 @@ The package ships ESM and also loads through CommonJS `require()`. Standalone co
 
 ## Stability policy
 
-Good Webhooks is in beta. The beta series leads to the stable `0.1.0` release; progress is tracked in [issue #22](https://github.com/pplytas/good-webhooks/issues/22).
-
 ### Public surface
 
 The [entry points](/docs/reference), every name they export, and the shipped SQL files are the public API. Imports from `dist/` or `src/`, anything not reachable from an entry point, and types with `Internal` in their name can change without notice.
 
-### During beta
-
-- Pin the exact version and commit your lockfile. Only the latest beta receives fixes.
-- The public API is frozen. A breaking change is allowed only to fix a correctness or security defect. The changelog labels it **Breaking**, states the migration, and the release is a new beta.
-- Observable behavior is part of the API: option defaults, error codes, the request format, and the signature scheme.
-- Any schema change ships upgrade SQL and a [rollout order](/docs/operations/migrations#rollout-order). Package and schema versions are independent, and downgrading is never assumed safe.
-
-### From 0.1.0
+### Releases
 
 - Releases follow [semantic versioning](https://semver.org). While the major version is `0`, a minor release may contain breaking changes; a patch release never does.
-- Breaking means a passing consumer type-check fails, observable runtime behavior changes, a supported runtime or database version is dropped, or SQL must run before upgrading.
+- Breaking means a passing consumer type-check fails, observable runtime behavior changes, a supported runtime or database version is dropped, or SQL must run before upgrading. Observable behavior includes option defaults, error codes, the request format, and the signature scheme.
+- Any schema change ships upgrade SQL and a [rollout order](/docs/operations/migrations#rollout-order). Package and schema versions are independent, and downgrading is never assumed safe.
 - Every breaking change is deprecated in at least one earlier minor with a runtime or type-level warning, and the release notes state the migration.
 - The latest minor receives all fixes. Security fixes also reach the previous minor for three months after the next minor ships.
 - `0.1.0` claims a stable API and upgrade path, not verified behavior at throughput beyond the [measured profile](/docs/operations/performance).
+- Alpha and beta versions receive no fixes. Upgrade to the latest release.
