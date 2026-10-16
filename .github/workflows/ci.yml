@@ -75,12 +75,12 @@ jobs:
         include:
           # Lowest supported version, from the lockfile.
           - label: 1.7.7
-            version: ''
+            range: ''
           # Newest release in each supported line, resolved on every run.
           - label: latest 1.7
-            version: ~1.7.7
+            range: ~1.7.7
           - label: latest 1.8
-            version: ~1.8.0-0
+            range: ~1.8.0-0
     env:
       TEST_DATABASE_URL: postgres://postgres:webhooks_dev_only@127.0.0.1:55439/webhooks
     services:
@@ -131,11 +131,18 @@ jobs:
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
       - name: Install the Better Auth version under test
-        if: matrix.version != ''
+        if: matrix.range != ''
+        working-directory: packages/good-webhooks
         env:
-          BETTER_AUTH_VERSION: ${{ matrix.version }}
-        run: pnpm --filter good-webhooks add -D "better-auth@$BETTER_AUTH_VERSION"
-      - run: pnpm --filter good-webhooks ls better-auth
+          BETTER_AUTH_RANGE: ${{ matrix.range }}
+        run: |
+          version=$(node scripts/better-auth-version.mjs "$BETTER_AUTH_RANGE")
+          pnpm add -D "better-auth@$version" "auth@$version"
+          for name in better-auth auth; do
+            installed=$(node -p "require('./node_modules/$name/package.json').version")
+            echo "$name $installed"
+            test "$installed" = "$version"
+          done
       - run: pnpm check:package
       - name: Run the Better Auth integration tests
         run: pnpm --filter good-webhooks exec vitest run test/better-auth-

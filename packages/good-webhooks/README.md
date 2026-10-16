@@ -149,13 +149,13 @@ const event = await parseWebhook({
 
 ## Requirements
 
-| Dependency  | Supported                                                              |
-| ----------- | ---------------------------------------------------------------------- |
-| Node.js     | 24 or later                                                            |
-| PostgreSQL  | 16 or 17, for built-in delivery and standalone management              |
-| TypeScript  | 5.9.3 or later, with `NodeNext` or `Bundler` resolution                |
-| Better Auth | 1.7.7 or later 1.7, and 1.8 including betas; optional peer dependency  |
-| Validators  | Any [Standard Schema](https://standardschema.dev) library, such as Zod |
+| Dependency  | Supported                                                                   |
+| ----------- | --------------------------------------------------------------------------- |
+| Node.js     | 24 or later                                                                 |
+| PostgreSQL  | 16 or 17, for built-in delivery and standalone management                   |
+| TypeScript  | 5.9.3 or later, with `NodeNext` or `Bundler` resolution                     |
+| Better Auth | 1.7.7 or later 1.7, and 1.8 including 1.8.0 betas; optional peer dependency |
+| Validators  | Any [Standard Schema](https://standardschema.dev) library, such as Zod      |
 
 ## Guarantees
 

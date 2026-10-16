@@ -50,7 +50,7 @@ The fresh-install SQL is defined in `packages/good-webhooks/src/migrations.ts`. 
 
 `pnpm test:adapters` runs the [database matrix](docs/better-auth-database-compatibility.md). It requires local disposable server instances and creates its own temporary databases. You can select profiles, for example `pnpm test:adapters libsql,d1` without database servers or `pnpm test:adapters postgres,drizzle,prisma` with PostgreSQL. The CI adapter job supplies PostgreSQL, MySQL, MongoDB, and SQL Server services.
 
-CI runs these Better Auth checks on 1.7.7, the newest 1.7, and the newest 1.8, including betas. The newest entries resolve on every run, and CI also runs every Monday, so a breaking upstream release fails CI without a push here. When Better Auth starts a new minor line, add a matrix entry for it in `.github/workflows/ci.yml` (for example `~1.9.0-0`), and widen the peer range in `packages/good-webhooks/package.json` only after that entry passes. Once a line has a stable release, drop its prerelease clause from the range.
+CI runs these Better Auth checks on 1.7.7, the newest 1.7, and the newest 1.8, including betas. `scripts/better-auth-version.mjs` resolves the newest entries on every run, and CI also runs every Monday, so a breaking upstream release fails CI without a push here. When Better Auth starts a new minor line, add a matrix entry for it in `.github/workflows/ci.yml` (for example `~1.9.0-0`), and widen the peer range in `packages/good-webhooks/package.json` only after that entry passes.
 
 ## Work on documentation
 
