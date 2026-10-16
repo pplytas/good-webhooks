@@ -54,6 +54,7 @@ function config(source: EndpointSource, options: Partial<ResolvedConfig> = {}): 
     maxResponseBytes: 1024,
     retentionMs: 86_400_000,
     allowLocalhost: true,
+    respectRetryAfter: true,
     endpointHealth: null,
     hooks: {},
     ...options,

@@ -22,6 +22,19 @@ function waitForPoll(milliseconds: number, signal: AbortSignal): Promise<void> {
   })
 }
 
+const MAX_RETRY_AFTER_MS = 31_536_000_000
+
+/** Parse delta-seconds or an HTTP date. Unparseable values are ignored. */
+export function parseRetryAfter(value: string | undefined, now = Date.now()): number | null {
+  if (value === undefined) return null
+  const text = value.trim()
+  if (/^\d+$/.test(text)) return Math.min(Number(text) * 1000, MAX_RETRY_AFTER_MS)
+  // HTTP dates contain letters; this rejects negative numbers and decimals that Date.parse accepts.
+  if (!/[A-Za-z]/.test(text)) return null
+  const date = Date.parse(text)
+  return Number.isFinite(date) ? Math.min(Math.max(0, date - now), MAX_RETRY_AFTER_MS) : null
+}
+
 /** Stop claims on caller abort, but give prepared attempts time to finish. */
 function shutdown(options: { signal?: AbortSignal; shutdownGraceMs?: number }) {
   const graceMs = options.shutdownGraceMs ?? 30_000
@@ -163,9 +176,14 @@ export function createWorker(config: ResolvedConfig) {
         response.status === 425 ||
         response.status === 429 ||
         (response.status >= 500 && response.status < 600))
+    const retryAfterMs =
+      config.respectRetryAfter && (response.status === 429 || response.status === 503)
+        ? parseRetryAfter(response.retryAfter)
+        : null
     const outcome = {
       ...response,
       retryable,
+      ...(retryAfterMs === null ? {} : { retryAfterMs }),
       error:
         response.error ??
         (response.status !== null && (response.status < 200 || response.status >= 300)

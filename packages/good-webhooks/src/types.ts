@@ -46,7 +46,12 @@ export interface DeliveryOptions<E extends EventDefinitions> {
   schema?: string
   events: E
   source: EndpointSource
-  retry?: { delaysMs?: readonly number[]; maxAgeMs?: number }
+  retry?: {
+    delaysMs?: readonly number[]
+    maxAgeMs?: number
+    /** Wait at least as long as a 429 or 503 response's Retry-After header asks. Defaults to true. */
+    respectRetryAfter?: boolean
+  }
   delivery?: {
     timeoutMs?: number
     concurrency?: number
@@ -109,6 +114,7 @@ export interface ResolvedConfig {
   source: EndpointSource
   retryDelaysMs: readonly number[]
   maxAgeMs: number
+  respectRetryAfter: boolean
   timeoutMs: number
   concurrency: number
   leaseMs: number

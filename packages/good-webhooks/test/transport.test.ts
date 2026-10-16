@@ -326,6 +326,18 @@ describe('HTTP delivery', () => {
     ])
   })
 
+  it('returns the Retry-After header only when the receiver sends one', async () => {
+    const url = await receiver((_request, response) =>
+      response.writeHead(429, { 'retry-after': '30' }).end(),
+    )
+    expect(await sendWebhook({ ...defaultInput, url })).toEqual({
+      status: 429,
+      responseBody: '',
+      error: null,
+      retryAfter: '30',
+    })
+  })
+
   it('returns redirects without following them', async () => {
     const paths: string[] = []
     const url = await receiver((request, response) => {

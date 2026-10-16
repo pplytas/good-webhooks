@@ -11,7 +11,13 @@ import {
   type ResolvedTarget as Target,
 } from './management/node-url.js'
 
-type SendResult = { status: number | null; responseBody: string; error: string | null }
+type SendResult = {
+  status: number | null
+  responseBody: string
+  error: string | null
+  /** Raw Retry-After response header, when the receiver sent one. */
+  retryAfter?: string
+}
 
 class TransportFailure extends Error {
   constructor(readonly reason: string) {
@@ -95,10 +101,12 @@ function performRequest(
       if (settled) return
       settled = true
       signal.removeEventListener('abort', abort)
+      const retryAfter = response?.headers?.['retry-after']
       resolve({
         status: response?.statusCode ?? null,
         responseBody: responsePreview(chunks, size, input.maxResponseBytes),
         error,
+        ...(typeof retryAfter === 'string' && retryAfter ? { retryAfter } : {}),
       })
       response?.destroy()
       request?.destroy()

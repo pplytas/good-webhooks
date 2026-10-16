@@ -11,6 +11,8 @@ export interface DeliveryOutcome {
   error: string | null
   retryable: boolean
   abandoned?: boolean
+  /** The receiver asked for at least this long before the next attempt. */
+  retryAfterMs?: number
 }
 export type Completion = 'succeeded' | 'retried' | 'failed' | 'stale'
 export interface CompletionResult {
@@ -56,12 +58,18 @@ export function createWorkerStore(config: ResolvedConfig) {
     }
   }
 
-  function retryAt(attemptCount: number, createdAt: Date, now: Date): Date | null {
+  function retryAt(
+    attemptCount: number,
+    createdAt: Date,
+    now: Date,
+    minimumDelayMs = 0,
+  ): Date | null {
     const delay = config.retryDelaysMs[attemptCount - 1]
     if (delay === undefined || now.getTime() - createdAt.getTime() >= config.maxAgeMs) return null
     // A bounded 0-20% delay avoids synchronized retries without retrying early.
     const jitter = delay > 0 ? randomInt(Math.min(Math.floor(delay / 5), 2 ** 48 - 2) + 1) : 0
-    const next = new Date(now.getTime() + delay + jitter)
+    // A longer Retry-After wins, but never extends the retry window.
+    const next = new Date(now.getTime() + Math.max(delay + jitter, minimumDelayMs))
     return next.getTime() <= createdAt.getTime() + config.maxAgeMs ? next : null
   }
 
@@ -370,7 +378,7 @@ export function createWorkerStore(config: ResolvedConfig) {
         outcome.status < 300
       const next =
         !succeeded && outcome.retryable
-          ? retryAt(claim.attemptCount, claim.createdAt, current.rows[0].now)
+          ? retryAt(claim.attemptCount, claim.createdAt, current.rows[0].now, outcome.retryAfterMs)
           : null
       const completion = succeeded ? 'succeeded' : next ? 'retried' : 'failed'
       const attemptOutcome = outcome.abandoned

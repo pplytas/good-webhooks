@@ -78,6 +78,9 @@ export function resolveConfig<E extends EventDefinitions>(
       'INVALID_CONFIG',
       'delivery.leaseMs must be at least twice delivery.timeoutMs.',
     )
+  const respectRetryAfter = options.retry?.respectRetryAfter ?? true
+  if (typeof respectRetryAfter !== 'boolean')
+    throw new WebhookError('INVALID_CONFIG', 'retry.respectRetryAfter must be a boolean.')
   const health = options.endpointHealth ?? {}
   if (health !== false && (typeof health !== 'object' || health === null))
     throw new WebhookError('INVALID_CONFIG', 'endpointHealth must be false or an object.')
@@ -106,6 +109,7 @@ export function resolveConfig<E extends EventDefinitions>(
     source: options.source,
     retryDelaysMs: Object.freeze([...delays]),
     maxAgeMs,
+    respectRetryAfter,
     timeoutMs,
     leaseMs,
     retentionMs,

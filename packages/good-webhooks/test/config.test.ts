@@ -30,6 +30,10 @@ describe('configuration', () => {
   it('rejects invalid concurrency, retry values, and leases', () => {
     expect(() => resolveConfig({ ...options, delivery: { concurrency: 0 } })).toThrow(/concurrency/)
     expect(() => resolveConfig({ ...options, retry: { delaysMs: [-1] } })).toThrow(/delaysMs/)
+    expect(resolveConfig(options).respectRetryAfter).toBe(true)
+    expect(() =>
+      resolveConfig({ ...options, retry: { respectRetryAfter: 'yes' as unknown as boolean } }),
+    ).toThrow(/respectRetryAfter/)
     expect(() => resolveConfig({ ...options, delivery: { leaseMs: 1000 } })).toThrow(/leaseMs/)
     expect(() => resolveConfig({ ...options, retentionMs: 1000 })).toThrow(/retentionMs/)
     expect(() => resolveConfig({ ...options, events: {} })).toThrow(/event/)

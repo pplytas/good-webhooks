@@ -43,6 +43,7 @@ const config: ResolvedConfig = {
   maxResponseBytes: 1024,
   retentionMs: 86_400_000,
   allowLocalhost: false,
+  respectRetryAfter: true,
   endpointHealth: null,
   hooks: {},
 }
