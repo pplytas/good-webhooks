@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.1.0-beta.6 (2026-10-16)
+
+Better Auth 1.8 support. Runtime behavior, public APIs, and database schema are unchanged from `0.1.0-beta.5`. No migration is required.
 
 - The optional Better Auth peer range is now `>=1.7.7 <1.8.0 || >=1.8.0-beta.0 <1.9.0-0`, so npm installs with Better Auth 1.8 and its 1.8.0 betas no longer fail with a peer conflict. The 1.8.0-beta.0 breaking changes cover device authorization, OAuth provider, and sign-up flows, none of which the plugin uses.
 - CI runs the Better Auth type check, integration tests, adapter matrix, and packed-consumer check on 1.7.7 and on the newest 1.7 and 1.8 releases, with the matching `auth` CLI generating Drizzle and Prisma schemas. CI also runs every Monday so new Better Auth releases are tested without a change here.
