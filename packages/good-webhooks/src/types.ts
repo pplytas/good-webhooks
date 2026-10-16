@@ -1,5 +1,9 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
-import type { EndpointManagement, EndpointSource } from './management/types.js'
+import type {
+  AutomaticPauseReason,
+  EndpointManagement,
+  EndpointSource,
+} from './management/types.js'
 
 export type JsonValue =
   null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue }
@@ -52,6 +56,43 @@ export interface DeliveryOptions<E extends EventDefinitions> {
   retentionMs?: number
   /** Development only: permits HTTP and loopback addresses. Other private addresses remain forbidden. */
   allowLocalhost?: boolean
+  /**
+   * Automatically pause endpoints that keep failing or answer HTTP 410. On by default; false turns it off.
+   * Running a worker requires an endpoint source with pause(), which the built-in providers have.
+   */
+  endpointHealth?: false | EndpointHealthOptions
+  /** Best-effort callbacks the worker awaits after recording each outcome. Queue slow work instead. */
+  hooks?: DeliveryHooks
+}
+export interface EndpointHealthOptions {
+  /** Pause after every attempt has failed for this long. Defaults to five days. */
+  pauseAfterMs?: number
+  /** Pause as soon as an endpoint answers HTTP 410 Gone. Defaults to true. */
+  pauseOnGone?: boolean
+}
+export interface AttemptEvent {
+  scope: Scope | null
+  endpointId: string
+  deliveryId: string
+  eventId: string
+  eventType: string
+  /** Attempt number within the delivery, starting at 1. */
+  attempt: number
+  outcome: Exclude<Attempt['outcome'], 'started'>
+  responseStatus: number | null
+  error: string | null
+  durationMs: number
+}
+export interface EndpointPausedEvent {
+  scope: Scope | null
+  endpointId: string
+  reason: AutomaticPauseReason
+}
+export interface DeliveryHooks {
+  /** Called after each attempt's outcome is recorded. */
+  onAttempt?: (event: AttemptEvent) => void | Promise<void>
+  /** Called after the worker pauses an endpoint. Manual pauses do not call it. */
+  onEndpointPaused?: (event: EndpointPausedEvent) => void | Promise<void>
 }
 export interface WebhookOptions<E extends EventDefinitions> extends Omit<
   DeliveryOptions<E>,
@@ -74,6 +115,8 @@ export interface ResolvedConfig {
   maxResponseBytes: number
   retentionMs: number
   allowLocalhost: boolean
+  endpointHealth: Required<EndpointHealthOptions> | null
+  hooks: DeliveryHooks
 }
 
 export type EndpointStatus = 'active' | 'paused' | 'deleted'
@@ -159,10 +202,13 @@ export interface ClaimedDelivery {
   scopeKey: string
   endpointId: string
   eventId: string
+  eventType: string
   token: string
   body: string
   url: string
   secrets: readonly string[]
+  /** Endpoint revision the attempt was prepared with, when the source reports one. */
+  revision?: string
   attemptCount: number
   createdAt: Date
   eventCreatedAt: Date

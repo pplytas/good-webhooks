@@ -283,15 +283,15 @@ describe('worker delivery durability', () => {
     } = await storage.claim()
     await expire(old!)
     const success = { status: 200, responseBody: 'ok', error: null, retryable: false }
-    expect(await storage.complete(old!, success)).toBe('stale')
+    expect((await storage.complete(old!, success)).completion).toBe('stale')
     await storage.recoverExpired()
     await due()
     const {
       claims: [fresh],
     } = await storage.claim()
     expect(fresh!.token).not.toBe(old!.token)
-    expect(await storage.complete(old!, success)).toBe('stale')
-    expect(await storage.complete(fresh!, success)).toBe('succeeded')
+    expect((await storage.complete(old!, success)).completion).toBe('stale')
+    expect((await storage.complete(fresh!, success)).completion).toBe('succeeded')
     expect((await state(old!.id)).attempts.map((a) => a.outcome)).toEqual([
       'abandoned',
       'succeeded',
@@ -476,7 +476,11 @@ describe('worker delivery durability', () => {
         }),
       ),
     )
-    expect(outcomes).toEqual(['succeeded', 'succeeded', 'succeeded'])
+    expect(outcomes.map((outcome) => outcome.completion)).toEqual([
+      'succeeded',
+      'succeeded',
+      'succeeded',
+    ])
   })
 
   it('expires old pending and abandoned deliveries without additional requests', async () => {
@@ -664,7 +668,7 @@ describe('worker delivery durability', () => {
         error: null,
         retryable: false,
       }),
-    ).toBe('stale')
+    ).toMatchObject({ completion: 'stale' })
   })
 
   it('prunes expired events in bounded batches and defers active claims', async () => {

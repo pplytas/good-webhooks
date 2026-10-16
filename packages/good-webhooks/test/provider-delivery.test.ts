@@ -54,6 +54,8 @@ function config(source: EndpointSource, options: Partial<ResolvedConfig> = {}): 
     maxResponseBytes: 1024,
     retentionMs: 86_400_000,
     allowLocalhost: true,
+    endpointHealth: null,
+    hooks: {},
     ...options,
   }
 }
@@ -65,6 +67,8 @@ function engine(source: EndpointSource, leaseMs = 2000) {
     delivery: { timeoutMs: 100, leaseMs, concurrency: 4 },
     retry: { delaysMs: [10, 20], maxAgeMs: 60_000 },
     allowLocalhost: true,
+    // These test sources have no pause().
+    endpointHealth: false,
   })
 }
 const event = { type: 'order.created', data: { id: 1 } } as const
@@ -375,7 +379,7 @@ describe('delivery with an independent management provider', () => {
         error: 'Receiver returned HTTP 503',
         retryable: true,
       }),
-    ).toBe('retried')
+    ).toMatchObject({ completion: 'retried' })
     source.resolveEndpoint = async () => ({ status: 'paused' })
     await due()
     expect(await app.worker.runOnce()).toMatchObject({ claimed: 0 })
@@ -476,7 +480,7 @@ describe('delivery with an independent management provider', () => {
         error: null,
         retryable: false,
       }),
-    ).toBe('succeeded')
+    ).toMatchObject({ completion: 'succeeded' })
   })
 
   it('cancels unresolved siblings even when one captured active configuration before deletion', async () => {

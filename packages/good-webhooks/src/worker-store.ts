@@ -2,7 +2,7 @@ import { randomInt, randomUUID } from 'node:crypto'
 import { signWebhook } from './crypto.js'
 import { scopeFromKey } from './scope.js'
 import { postgresTables } from './postgres-schema.js'
-import type { EndpointResolution } from './management/types.js'
+import type { AutomaticPauseReason, EndpointResolution } from './management/types.js'
 import type { ClaimedDelivery, DatabaseClient, ResolvedConfig } from './types.js'
 
 export interface DeliveryOutcome {
@@ -13,6 +13,13 @@ export interface DeliveryOutcome {
   abandoned?: boolean
 }
 export type Completion = 'succeeded' | 'retried' | 'failed' | 'stale'
+export interface CompletionResult {
+  completion: Completion
+  /** Recorded attempt outcome; null when the claim was stale and nothing was recorded. */
+  outcome: 'succeeded' | 'retry' | 'failed' | 'abandoned' | null
+  /** Set when this failure makes the endpoint due for an automatic pause. */
+  pause: AutomaticPauseReason | null
+}
 
 type DeliveryRow = {
   id: string
@@ -21,6 +28,7 @@ type DeliveryRow = {
   event_id: string
   attempt_count: number
   created_at: Date
+  event_type: string
   body: string
   event_created_at: Date
 }
@@ -143,7 +151,7 @@ export function createWorkerStore(config: ResolvedConfig) {
         if (capacity <= 0) continue
         const deliveries = await client.query<DeliveryRow & { now: Date }>(
           `SELECT d.id::text,d.scope_key,d.endpoint_id,d.event_id,d.attempt_count,d.created_at,
-            e.body,e.created_at AS event_created_at,clock_timestamp() AS now
+            e.type AS event_type,e.body,e.created_at AS event_created_at,clock_timestamp() AS now
           FROM ${tables.deliveries} d JOIN ${tables.events} e ON e.id=d.event_id
           WHERE d.scope_key=$1 AND d.endpoint_id=$2 AND d.status='pending' AND d.next_attempt_at <= now()
           ORDER BY d.next_attempt_at,d.id LIMIT $3 FOR UPDATE OF d SKIP LOCKED`,
@@ -199,9 +207,16 @@ export function createWorkerStore(config: ResolvedConfig) {
           throw new Error('Endpoint source returned an invalid endpoint URL.')
         // Validate provider signing material before consuming a receiver attempt.
         signWebhook({ id: reservation.event_id, timestamp: 0, body: '', secrets: endpoint.secrets })
+        if (endpoint.revision !== undefined && typeof endpoint.revision !== 'string')
+          throw new Error('Endpoint source returned an invalid endpoint revision.')
         return {
           reservation,
-          endpoint: { status: 'active', url: endpoint.url, secrets: [...endpoint.secrets] },
+          endpoint: {
+            status: 'active',
+            url: endpoint.url,
+            secrets: [...endpoint.secrets],
+            ...(endpoint.revision === undefined ? {} : { revision: endpoint.revision }),
+          },
         }
       }
       return { reservation, endpoint }
@@ -279,6 +294,7 @@ export function createWorkerStore(config: ResolvedConfig) {
           scopeKey: reservation.scope_key,
           endpointId: reservation.endpoint_id,
           eventId: reservation.event_id,
+          eventType: reservation.event_type,
           token: reservation.token,
           body: reservation.body,
           url: resolution.endpoint.url,
@@ -286,6 +302,9 @@ export function createWorkerStore(config: ResolvedConfig) {
           attemptCount: reservation.attempt_count + 1,
           createdAt: reservation.created_at,
           eventCreatedAt: reservation.event_created_at,
+          ...(resolution.endpoint.revision === undefined
+            ? {}
+            : { revision: resolution.endpoint.revision }),
         })
       }
       // A stop request can arrive while a database read above is in progress.
@@ -323,10 +342,17 @@ export function createWorkerStore(config: ResolvedConfig) {
     return { claims, errors: resolutions.flatMap((row) => (row.endpoint ? [] : [row.error])) }
   }
 
-  async function complete(claim: ClaimedDelivery, outcome: DeliveryOutcome): Promise<Completion> {
+  async function complete(
+    claim: ClaimedDelivery,
+    outcome: DeliveryOutcome,
+  ): Promise<CompletionResult> {
     return transaction(async (client) => {
-      await client.query(
-        `SELECT endpoint_id FROM ${tables.endpointState} WHERE scope_key=$1 AND endpoint_id=$2 FOR NO KEY UPDATE`,
+      const state = await client.query<{
+        failing_since: Date | null
+        failing_revision: string | null
+      }>(
+        `SELECT failing_since,failing_revision FROM ${tables.endpointState}
+        WHERE scope_key=$1 AND endpoint_id=$2 FOR NO KEY UPDATE`,
         [claim.scopeKey, claim.endpointId],
       )
       const current = await client.query<{ now: Date }>(
@@ -335,7 +361,7 @@ export function createWorkerStore(config: ResolvedConfig) {
         FOR UPDATE`,
         [claim.id, claim.token],
       )
-      if (!current.rows[0]) return 'stale'
+      if (!current.rows[0]) return { completion: 'stale', outcome: null, pause: null }
       const succeeded =
         !outcome.abandoned &&
         outcome.error === null &&
@@ -378,8 +404,57 @@ export function createWorkerStore(config: ResolvedConfig) {
           outcome.error,
         ],
       )
-      return completion
+      const pause = outcome.abandoned
+        ? null
+        : await recordHealth(
+            client,
+            claim,
+            succeeded,
+            outcome.status,
+            current.rows[0].now,
+            state.rows[0],
+          )
+      return { completion, outcome: attemptOutcome, pause }
     })
+  }
+
+  /**
+   * Track how long every attempt to an endpoint has failed. Any change to the endpoint gives it
+   * a new revision, which starts a new window. Abandoned attempts say nothing about the receiver.
+   */
+  async function recordHealth(
+    client: DatabaseClient,
+    claim: ClaimedDelivery,
+    succeeded: boolean,
+    status: number | null,
+    now: Date,
+    state: { failing_since: Date | null; failing_revision: string | null } | undefined,
+  ): Promise<AutomaticPauseReason | null> {
+    const health = config.endpointHealth
+    if (!health || !state) return null
+    const key = [claim.scopeKey, claim.endpointId]
+    if (succeeded) {
+      if (state.failing_since)
+        await client.query(
+          `UPDATE ${tables.endpointState} SET failing_since=NULL,failing_revision=NULL
+          WHERE scope_key=$1 AND endpoint_id=$2`,
+          key,
+        )
+      return null
+    }
+    const revision = claim.revision ?? null
+    let due = false
+    if (!state.failing_since || state.failing_revision !== revision) {
+      await client.query(
+        `UPDATE ${tables.endpointState} SET failing_since=$3,failing_revision=$4
+        WHERE scope_key=$1 AND endpoint_id=$2`,
+        [...key, now, revision],
+      )
+    } else {
+      due = now.getTime() - state.failing_since.getTime() >= health.pauseAfterMs
+    }
+    if (health.pauseOnGone && status === 410) return 'gone'
+    return due ? 'failing' : null
   }
 
   /** Delete at most 100 expired events. Unexpired leases defer deletion to a later invocation. */

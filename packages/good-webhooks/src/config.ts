@@ -78,6 +78,24 @@ export function resolveConfig<E extends EventDefinitions>(
       'INVALID_CONFIG',
       'delivery.leaseMs must be at least twice delivery.timeoutMs.',
     )
+  const health = options.endpointHealth ?? {}
+  if (health !== false && (typeof health !== 'object' || health === null))
+    throw new WebhookError('INVALID_CONFIG', 'endpointHealth must be false or an object.')
+  if (
+    health !== false &&
+    health.pauseOnGone !== undefined &&
+    typeof health.pauseOnGone !== 'boolean'
+  )
+    throw new WebhookError('INVALID_CONFIG', 'endpointHealth.pauseOnGone must be a boolean.')
+  const hooks = options.hooks ?? {}
+  if (
+    typeof hooks !== 'object' ||
+    hooks === null ||
+    (['onAttempt', 'onEndpointPaused'] as const).some(
+      (name) => hooks[name] !== undefined && typeof hooks[name] !== 'function',
+    )
+  )
+    throw new WebhookError('INVALID_CONFIG', 'hooks must be an object of optional functions.')
   const maxAgeMs = integer('retry.maxAgeMs', options.retry?.maxAgeMs, 86400000, 100, 2592000000)
   const retentionMs = integer('retentionMs', options.retentionMs, 604800000, 1000, 31536000000)
   if (retentionMs < maxAgeMs)
@@ -100,5 +118,19 @@ export function resolveConfig<E extends EventDefinitions>(
       65536,
     ),
     allowLocalhost: options.allowLocalhost ?? false,
+    endpointHealth:
+      health === false
+        ? null
+        : Object.freeze({
+            pauseAfterMs: integer(
+              'endpointHealth.pauseAfterMs',
+              health.pauseAfterMs,
+              432_000_000,
+              60_000,
+              2_592_000_000,
+            ),
+            pauseOnGone: health.pauseOnGone ?? true,
+          }),
+    hooks: Object.freeze({ ...hooks }),
   })
 }

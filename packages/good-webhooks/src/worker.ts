@@ -1,7 +1,8 @@
 import { signWebhook } from './crypto.js'
 import { WebhookError } from './errors.js'
 import { sendWebhook } from './transport.js'
-import { createWorkerStore } from './worker-store.js'
+import { scopeFromKey } from './scope.js'
+import { createWorkerStore, type Completion, type CompletionResult } from './worker-store.js'
 import type { ClaimedDelivery, ResolvedConfig, WorkerResult } from './types.js'
 
 function emptyResult(): WorkerResult {
@@ -50,18 +51,80 @@ function shutdown(options: { signal?: AbortSignal; shutdownGraceMs?: number }) {
 /** Owns neither the caller's database pool nor process signal handlers. Nothing starts until called. */
 export function createWorker(config: ResolvedConfig) {
   const store = createWorkerStore(config)
+
+  // Publication-only engines may use a narrower source; only a running worker needs pause().
+  function requirePause(): void {
+    if (config.endpointHealth && typeof config.source.pause !== 'function')
+      throw new WebhookError(
+        'INVALID_CONFIG',
+        'endpointHealth needs an endpoint source with pause(). Set endpointHealth: false to deliver without automatic pauses.',
+      )
+  }
   let processing = false
   let running = false
 
-  async function deliver(claim: ClaimedDelivery, signal?: AbortSignal) {
+  /** Run hooks and automatic pauses after the outcome is committed. Failures join the batch errors. */
+  async function after(
+    claim: ClaimedDelivery,
+    result: CompletionResult,
+    response: { status: number | null; error: string | null },
+    durationMs: number,
+    errors: unknown[],
+  ): Promise<void> {
+    if (!result.outcome) return
+    const { onAttempt, onEndpointPaused } = config.hooks
+    const pause = config.source.pause
+    if (!onAttempt && !(result.pause && pause)) return
+    const scope = scopeFromKey(claim.scopeKey)
+    try {
+      await onAttempt?.({
+        scope,
+        endpointId: claim.endpointId,
+        deliveryId: claim.id,
+        eventId: claim.eventId,
+        eventType: claim.eventType,
+        attempt: claim.attemptCount,
+        outcome: result.outcome,
+        responseStatus: response.status,
+        error: response.error,
+        durationMs,
+      })
+    } catch (error) {
+      errors.push(error)
+    }
+    if (!result.pause || !pause) return
+    try {
+      const paused = await pause(scope, claim.endpointId, {
+        reason: result.pause,
+        ...(claim.revision === undefined ? {} : { revision: claim.revision }),
+      })
+      if (paused)
+        await onEndpointPaused?.({
+          scope,
+          endpointId: claim.endpointId,
+          reason: result.pause,
+        })
+    } catch (error) {
+      errors.push(error)
+    }
+  }
+
+  async function deliver(
+    claim: ClaimedDelivery,
+    errors: unknown[],
+    signal?: AbortSignal,
+  ): Promise<Completion> {
     if (signal?.aborted) {
-      return store.complete(claim, {
+      const outcome = {
         status: null,
         responseBody: '',
         error: 'Worker stopped; receiver outcome is unknown',
         retryable: true,
         abandoned: true,
-      })
+      }
+      const result = await store.complete(claim, outcome)
+      await after(claim, result, outcome, 0, errors)
+      return result.completion
     }
     const headers = signWebhook({
       id: claim.eventId,
@@ -69,6 +132,7 @@ export function createWorker(config: ResolvedConfig) {
       body: claim.body,
       secrets: claim.secrets,
     })
+    const started = performance.now()
     const response = await sendWebhook({
       url: claim.url,
       body: claim.body,
@@ -78,13 +142,17 @@ export function createWorker(config: ResolvedConfig) {
       allowLocalhost: config.allowLocalhost,
       ...(signal ? { signal } : {}),
     })
+    const durationMs = Math.round(performance.now() - started)
     if (signal?.aborted) {
-      return store.complete(claim, {
+      const outcome = {
         ...response,
         error: 'Worker stopped; receiver outcome is unknown',
         retryable: true,
         abandoned: true,
-      })
+      }
+      const result = await store.complete(claim, outcome)
+      await after(claim, result, outcome, durationMs, errors)
+      return result.completion
     }
     const retryable =
       response.error !== 'unsafe_url' &&
@@ -95,7 +163,7 @@ export function createWorker(config: ResolvedConfig) {
         response.status === 425 ||
         response.status === 429 ||
         (response.status >= 500 && response.status < 600))
-    return store.complete(claim, {
+    const outcome = {
       ...response,
       retryable,
       error:
@@ -103,7 +171,10 @@ export function createWorker(config: ResolvedConfig) {
         (response.status !== null && (response.status < 200 || response.status >= 300)
           ? `Receiver returned HTTP ${response.status}`
           : null),
-    })
+    }
+    const result = await store.complete(claim, outcome)
+    await after(claim, result, outcome, durationMs, errors)
+    return result.completion
   }
 
   async function performBatch(
@@ -119,7 +190,9 @@ export function createWorker(config: ResolvedConfig) {
       const { claims, errors } = await store.claim(stopSignal)
       const result = { ...emptyResult(), claimed: claims.length }
       // Wait for every sibling even if an unexpected internal failure occurs.
-      const outcomes = await Promise.allSettled(claims.map((claim) => deliver(claim, sendSignal)))
+      const outcomes = await Promise.allSettled(
+        claims.map((claim) => deliver(claim, errors, sendSignal)),
+      )
       for (const outcome of outcomes) {
         if (outcome.status === 'fulfilled') result[outcome.value]++
         else errors.push(outcome.reason)
@@ -140,6 +213,7 @@ export function createWorker(config: ResolvedConfig) {
   }): Promise<void> {
     if (running || processing)
       throw new WebhookError('INVALID_STATE', 'This worker is already running.')
+    requirePause()
     const pollIntervalMs = options.pollIntervalMs ?? 1000
     if (!Number.isSafeInteger(pollIntervalMs) || pollIntervalMs < 10 || pollIntervalMs > 60_000) {
       throw new WebhookError(
@@ -174,6 +248,7 @@ export function createWorker(config: ResolvedConfig) {
         'INVALID_STATE',
         'This worker is running. Stop it before calling runOnce.',
       )
+    requirePause()
     const lifecycle = shutdown(options)
     try {
       return await performBatch(options.signal, lifecycle.signal)

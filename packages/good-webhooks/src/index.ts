@@ -17,13 +17,17 @@ export type { WebhookErrorCode } from './errors.js'
 export { generateEncryptionKey, verifyWebhook } from './crypto.js'
 export type {
   Attempt,
+  AttemptEvent,
   Database,
   DatabaseClient,
   Delivery,
   DeliveryDetail,
+  DeliveryHooks,
   DeliveryQuery,
   DeliveryStatus,
   Endpoint,
+  EndpointHealthOptions,
+  EndpointPausedEvent,
   EndpointStatus,
   EndpointWithSecret,
   EventDefinitions,

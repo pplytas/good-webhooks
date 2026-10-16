@@ -37,6 +37,40 @@ describe('configuration', () => {
   })
 })
 
+describe('automatic pause and hooks configuration', () => {
+  it('turns automatic pauses on by default and validates their options', () => {
+    expect(resolveConfig(options).endpointHealth).toEqual({
+      pauseAfterMs: 432_000_000,
+      pauseOnGone: true,
+    })
+    expect(resolveConfig({ ...options, endpointHealth: false }).endpointHealth).toBeNull()
+    expect(
+      resolveConfig({ ...options, endpointHealth: { pauseAfterMs: 3_600_000, pauseOnGone: false } })
+        .endpointHealth,
+    ).toEqual({ pauseAfterMs: 3_600_000, pauseOnGone: false })
+    for (const endpointHealth of [
+      { pauseAfterMs: 59_999 },
+      { pauseAfterMs: 2_592_000_001 },
+      { pauseAfterMs: 1.5 },
+      { pauseOnGone: 'yes' },
+      true,
+    ])
+      expect(() => resolveConfig({ ...options, endpointHealth: endpointHealth as false })).toThrow(
+        expect.objectContaining({ code: 'INVALID_CONFIG' }),
+      )
+  })
+
+  it('accepts optional hook functions only', () => {
+    const onAttempt = vi.fn()
+    expect(resolveConfig({ ...options, hooks: { onAttempt } }).hooks).toEqual({ onAttempt })
+    expect(resolveConfig(options).hooks).toEqual({})
+    for (const hooks of [{ onAttempt: 'log' }, 'hooks'])
+      expect(() => resolveConfig({ ...options, hooks: hooks as {} })).toThrow(
+        expect.objectContaining({ code: 'INVALID_CONFIG' }),
+      )
+  })
+})
+
 describe('JSON payloads', () => {
   it('canonicalizes property order and preserves __proto__ as data', () => {
     const data = JSON.parse('{"b":1,"__proto__":{"x":2},"a":3}')

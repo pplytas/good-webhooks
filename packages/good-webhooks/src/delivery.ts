@@ -13,7 +13,13 @@ import type {
   Scope,
 } from './types.js'
 
-export type { DeliveryOptions } from './types.js'
+export type {
+  AttemptEvent,
+  DeliveryHooks,
+  DeliveryOptions,
+  EndpointHealthOptions,
+  EndpointPausedEvent,
+} from './types.js'
 export type {
   AutomaticPauseInput,
   AutomaticPauseReason,

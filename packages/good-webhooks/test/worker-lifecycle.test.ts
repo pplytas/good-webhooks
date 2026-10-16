@@ -1,8 +1,9 @@
 import { getEventListeners } from 'node:events'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { generateSecret } from '../src/crypto.js'
+import { scopeKey } from '../src/scope.js'
 import { sendWebhook } from '../src/transport.js'
-import { createWorkerStore, type Completion } from '../src/worker-store.js'
+import { createWorkerStore, type Completion, type CompletionResult } from '../src/worker-store.js'
 import { createWorker } from '../src/worker.js'
 import type { ClaimedDelivery, ResolvedConfig } from '../src/types.js'
 
@@ -21,6 +22,7 @@ const claim: ClaimedDelivery = {
   scopeKey: 'scope',
   endpointId: 'endpoint',
   eventId: 'event',
+  eventType: 'order.created',
   token: 'token',
   body: '{}',
   url: 'https://example.com/hook',
@@ -41,6 +43,8 @@ const config: ResolvedConfig = {
   maxResponseBytes: 1024,
   retentionMs: 86_400_000,
   allowLocalhost: false,
+  endpointHealth: null,
+  hooks: {},
 }
 const store = {
   recoverExpired: vi.fn(async () => {}),
@@ -49,13 +53,18 @@ const store = {
   prune: vi.fn(async () => 0),
 }
 const success = { status: 200, responseBody: 'ok', error: null }
+const completed = (completion: Completion): CompletionResult => ({
+  completion,
+  outcome: completion === 'stale' ? null : completion === 'retried' ? 'retry' : completion,
+  pause: null,
+})
 
 beforeEach(() => {
   vi.resetAllMocks()
   vi.useFakeTimers()
   vi.mocked(createWorkerStore).mockReturnValue(store)
   store.claim.mockResolvedValue({ claims: [], errors: [] })
-  store.complete.mockResolvedValue('succeeded')
+  store.complete.mockResolvedValue(completed('succeeded'))
   vi.mocked(sendWebhook).mockResolvedValue(success)
 })
 afterEach(() => vi.useRealTimers())
@@ -136,7 +145,7 @@ describe('worker shutdown deadlines', () => {
   )
 
   it('awaits completion writes beyond the grace period and preserves a known response', async () => {
-    const completion = deferred<Completion>()
+    const completion = deferred<CompletionResult>()
     store.complete.mockReturnValue(completion.promise)
     const controller = new AbortController()
     const { worker, pending } = start('runOnce', controller, 10)
@@ -151,7 +160,7 @@ describe('worker shutdown deadlines', () => {
     expect(settled).toBe(false)
     await expect(worker.runOnce()).rejects.toMatchObject({ code: 'INVALID_STATE' })
     expect(store.complete.mock.calls[0]![1].abandoned).toBeUndefined()
-    completion.resolve('succeeded')
+    completion.resolve(completed('succeeded'))
     await expect(pending).resolves.toMatchObject({ succeeded: 1 })
   })
 
@@ -173,7 +182,7 @@ describe('continuous worker cadence', () => {
   it.each(['succeeded', 'retried', 'failed'] as const)(
     'immediately checks for more work after %s, then waits when idle',
     async (outcome) => {
-      store.complete.mockResolvedValue(outcome)
+      store.complete.mockResolvedValue(completed(outcome))
       const controller = new AbortController()
       const { pending } = start('run', controller)
       await vi.advanceTimersByTimeAsync(0)
@@ -189,7 +198,7 @@ describe('continuous worker cadence', () => {
   )
 
   it('waits after a batch where all claims became stale', async () => {
-    store.complete.mockResolvedValue('stale')
+    store.complete.mockResolvedValue(completed('stale'))
     const controller = new AbortController()
     const { pending } = start('run', controller)
     await vi.advanceTimersByTimeAsync(999)
@@ -229,4 +238,70 @@ describe('continuous worker cadence', () => {
     expect(store.claim).toHaveBeenCalledTimes(1)
     expect(store.prune).not.toHaveBeenCalled()
   })
+})
+
+describe('hooks and automatic pauses', () => {
+  const scopedClaim = { ...claim, scopeKey: scopeKey({ type: 'user', id: 'u1' }), revision: '3' }
+
+  it('reports hook errors through the batch without losing recorded outcomes', async () => {
+    const hookError = new Error('metrics backend down')
+    const pause = vi.fn(async () => true)
+    const onEndpointPaused = vi.fn()
+    store.claim.mockResolvedValueOnce({ claims: [scopedClaim], errors: [] })
+    store.complete.mockResolvedValueOnce({
+      completion: 'retried',
+      outcome: 'retry',
+      pause: 'failing',
+    })
+    const worker = createWorker({
+      ...config,
+      source: { ...config.source, pause },
+      endpointHealth: { pauseAfterMs: 432_000_000, pauseOnGone: true },
+      hooks: {
+        onAttempt: () => {
+          throw hookError
+        },
+        onEndpointPaused,
+      },
+    })
+    await expect(worker.runOnce()).rejects.toMatchObject({ errors: [hookError] })
+    expect(store.complete).toHaveBeenCalledTimes(1)
+    expect(pause).toHaveBeenCalledWith({ type: 'user', id: 'u1' }, 'endpoint', {
+      reason: 'failing',
+      revision: '3',
+    })
+    expect(onEndpointPaused).toHaveBeenCalledWith({
+      scope: { type: 'user', id: 'u1' },
+      endpointId: 'endpoint',
+      reason: 'failing',
+    })
+  })
+
+  it('reports a pause only when the source applied it', async () => {
+    const onEndpointPaused = vi.fn()
+    store.claim.mockResolvedValueOnce({ claims: [scopedClaim], errors: [] })
+    store.complete.mockResolvedValueOnce({ completion: 'failed', outcome: 'failed', pause: 'gone' })
+    const worker = createWorker({
+      ...config,
+      source: { ...config.source, pause: async () => false },
+      endpointHealth: { pauseAfterMs: 432_000_000, pauseOnGone: true },
+      hooks: { onEndpointPaused },
+    })
+    expect(await worker.runOnce()).toMatchObject({ failed: 1 })
+    expect(onEndpointPaused).not.toHaveBeenCalled()
+  })
+
+  it.each(['run', 'runOnce'] as const)(
+    '%s refuses to start without pause() while automatic pauses are on',
+    async (method) => {
+      const worker = createWorker({
+        ...config,
+        endpointHealth: { pauseAfterMs: 432_000_000, pauseOnGone: true },
+      })
+      await expect(worker[method]({ signal: new AbortController().signal })).rejects.toMatchObject({
+        code: 'INVALID_CONFIG',
+      })
+      expect(store.claim).not.toHaveBeenCalled()
+    },
+  )
 })

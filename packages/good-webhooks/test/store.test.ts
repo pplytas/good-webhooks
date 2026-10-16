@@ -503,7 +503,7 @@ describe('history, deletion and replay', () => {
         error: null,
         retryable: false,
       }),
-    ).toBe('succeeded')
+    ).toMatchObject({ completion: 'succeeded' })
     const observed = await worker.claim()
     expect(observed.claims).toEqual([])
     expect(observed.errors).toEqual([])
