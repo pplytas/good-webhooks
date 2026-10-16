@@ -33,8 +33,12 @@ The registration and maintenance of webhook destinations, their ownership, and t
 _Avoid_: Publication, delivery
 
 **Paused endpoint**:
-An endpoint temporarily ineligible for new sending attempts. Its subscriptions remain in effect.
+An endpoint temporarily ineligible for new sending attempts, paused by its owner or by an automatic pause. Its subscriptions remain in effect.
 _Avoid_: Disabled endpoint, deleted endpoint
+
+**Automatic pause**:
+A pause the worker applies to an endpoint that has failed every attempt for a sustained period or answered that it is gone. Resuming it is the same as resuming any paused endpoint.
+_Avoid_: Auto-disable, circuit breaker, delivery hold
 
 **Deleted endpoint**:
 An endpoint permanently ineligible for new sending attempts.
