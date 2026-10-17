@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.1 (2026-10-17)
+
+Public APIs, dependencies, and database schema (version `5`) are unchanged from `0.2.0`. No migration is required.
+
+- The shipped worker (`examples/operations/worker.ts`) logs both hooks as JSON lines: `webhooks.attempt` for each attempt and `webhooks.endpoint.paused` for each automatic pause. The lines carry IDs and outcomes, never payloads or secrets.
+- A new [hooks guide](apps/docs/content/docs/guides/hooks.mdx) shows how to tell owners about automatic pauses and record attempt metrics.
+- The npm README describes endpoint health in plainer words.
+
 ## 0.2.0 (2026-10-16)
 
 The worker now pauses endpoints that keep failing, reports what it does through hooks, and honors `Retry-After`. `0.1.1` announced these changes, and this release follows the [0.x minor rules](apps/docs/content/docs/operations/compatibility.mdx#releases). The new behaviors are on by default, and storage moves to schema version `5`. [Issue #58](https://github.com/pplytas/good-webhooks/issues/58) tracked the work, and [ADR 0012](docs/adr/0012-automatic-pause-through-management.md) records the design.
