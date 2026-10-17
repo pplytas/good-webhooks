@@ -49,7 +49,7 @@ export const delivery = createDelivery({
 await delivery.check()
 ```
 
-The provider uses Better Auth's adapter and encryption keys. It needs no session and no HTTP listener.
+The provider uses Better Auth's adapter and encryption keys. It needs no session and no HTTP listener. To email owners when the worker pauses their endpoint, add an [`onEndpointPaused` hook](/docs/guides/hooks#tell-owners-about-automatic-pauses).
 
 </Step>
 <Step>

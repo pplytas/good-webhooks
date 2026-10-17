@@ -35,7 +35,7 @@ Change it with `retry: { delaysMs, maxAgeMs }` on `createWebhooks()` or `createD
 
 ### Automatic pauses
 
-The worker pauses an endpoint when all its attempts have failed for five days, or when it answers `410 Gone`. Its queued deliveries wait as for any pause, and its `pauseReason` says why. Resuming it, editing it, or one successful attempt restarts the five-day period. Hook `onEndpointPaused` to tell the owner, and see [automatic pauses](/docs/reference/delivery#automatic-pauses) for the options.
+The worker pauses an endpoint when all its attempts have failed for five days, or when it answers `410 Gone`. Its queued deliveries wait as for any pause, and its `pauseReason` says why. Resuming it, editing it, or one successful attempt restarts the five-day period. Use the [`onEndpointPaused` hook](/docs/guides/hooks#tell-owners-about-automatic-pauses) to tell the owner, and see [automatic pauses](/docs/reference/delivery#automatic-pauses) for the options.
 
 ## Publication
 

@@ -91,22 +91,7 @@ The worker pauses an endpoint when every attempt to it has failed for five days,
 | `'gone'`      | The receiver answered `410 Gone`              |
 | `null`        | Not paused, or paused before schema version 5 |
 
-Tell the owner when it happens, for example by email, with the `onEndpointPaused` hook:
-
-```ts title="webhooks.ts"
-export const webhooks = createWebhooks({
-  database,
-  encryptionKey: process.env.WEBHOOK_ENCRYPTION_KEY!,
-  events,
-  hooks: {
-    // Queue the email; the worker awaits this hook before its next batch.
-    onEndpointPaused: ({ scope, endpointId, reason }) =>
-      jobs.enqueue('endpoint-paused', { scope, endpointId, reason }),
-  },
-})
-```
-
-Hooks are best-effort, so an endpoint list that shows `pauseReason` is the reliable record. Set `endpointHealth: { pauseAfterMs }` to change the period, or `endpointHealth: false` to turn automatic pauses off. The [delivery reference](/docs/reference/delivery#automatic-pauses) has every option.
+To tell the owner when it happens, use the [`onEndpointPaused` hook](/docs/guides/hooks#tell-owners-about-automatic-pauses). Hooks are best-effort, so an endpoint list that shows `pauseReason` is the reliable record. Set `endpointHealth: { pauseAfterMs }` to change the period, or `endpointHealth: false` to turn automatic pauses off. The [delivery reference](/docs/reference/delivery#automatic-pauses) has every option.
 
 ## Limits
 

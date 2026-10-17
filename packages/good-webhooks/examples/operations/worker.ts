@@ -29,7 +29,17 @@ try {
   const clientError = (error: Error) => fail(error, 'database')
   pool.on('acquire', (client) => client.on('error', clientError))
   pool.on('release', (_error, client) => client.off('error', clientError))
-  const webhooks = createWebhooks({ database: pool, ...config.webhooks })
+  const webhooks = createWebhooks({
+    database: pool,
+    ...config.webhooks,
+    // Hook events carry IDs and outcomes, never payloads or secrets.
+    hooks: {
+      onAttempt: (attempt) =>
+        console.log(JSON.stringify({ event: 'webhooks.attempt', ...attempt })),
+      onEndpointPaused: (pause) =>
+        console.log(JSON.stringify({ event: 'webhooks.endpoint.paused', ...pause })),
+    },
+  })
   phase = 'startup'
   await webhooks.check()
   if (!stop.signal.aborted) {

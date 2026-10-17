@@ -29,7 +29,7 @@ Work through this list once before launch.
 - [ ] At least one worker runs as its own supervised process, restarted with backoff on failure. [Run workers](/docs/operations/workers)
 - [ ] `SIGTERM` aborts the worker's signal, and the supervisor's kill deadline is longer than `shutdownGraceMs`.
 - [ ] Worker failures are logged and alerted on: either `run()` rejects and the process exits, or your `onError` logs and you watch that deliveries keep moving. You know what a crash, a dropped connection, and a hard kill do to in-flight work. [What failures do](/docs/operations/workers#what-failures-do)
-- [ ] Endpoint owners hear about [automatic pauses](/docs/guides/endpoints#automatic-pauses) through an `onEndpointPaused` hook, and your endpoint UI shows `pauseReason`.
+- [ ] Endpoint owners hear about [automatic pauses](/docs/guides/endpoints#automatic-pauses) through an [`onEndpointPaused` hook](/docs/guides/hooks#tell-owners-about-automatic-pauses), and your endpoint UI shows `pauseReason`.
 - [ ] You have compared your receiver latency and volume against the measured profile and sized `concurrency` and `maxInFlight` accordingly. [Performance](/docs/operations/performance)
 
 ## History

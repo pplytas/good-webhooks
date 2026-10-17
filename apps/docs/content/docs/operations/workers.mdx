@@ -48,7 +48,7 @@ Configure it through the environment:
 | `WEBHOOK_DB_STATEMENT_TIMEOUT_MS` |          | Default 10000. The client query timeout is one second longer |
 | `WEBHOOK_ALLOW_LOCALHOST`         |          | `true` permits loopback HTTP receivers. Development only     |
 
-Run it from a checkout with `node packages/good-webhooks/examples/operations/worker.ts`, or copy it and replace the event map with yours. It logs JSON lines (`webhooks.worker.started`, `webhooks.worker.failed`, `webhooks.worker.stopped`) without payloads or secrets; the library itself writes no logs. For Better Auth management, see [add delivery to Better Auth](/docs/better-auth/delivery#run-a-separate-worker).
+Run it from a checkout with `node packages/good-webhooks/examples/operations/worker.ts`, or copy it and replace the event map with yours. It logs JSON lines without payloads or secrets: `webhooks.worker.started`, `webhooks.worker.failed`, and `webhooks.worker.stopped`, plus `webhooks.attempt` and `webhooks.endpoint.paused` from its [hooks](/docs/guides/hooks). The library itself writes no logs. For Better Auth management, see [add delivery to Better Auth](/docs/better-auth/delivery#run-a-separate-worker).
 
 <Callout type="warn">
   Never generate a fresh encryption key on startup. A wrong but well-formed key fails when the
@@ -73,9 +73,9 @@ Budget pool connections across producers, workers, and cleanup jobs. A client-si
 
 ## What failures do
 
-Without `onError`, an internal failure rejects `run()` and the process exits; let your supervisor restart it with backoff. If you pass `onError` to log and continue, watch that deliveries keep moving. Receiver failures are not internal failures; they follow the [retry policy](/docs/concepts/delivery-guarantees#retries), and an endpoint that keeps failing is [paused automatically](/docs/guides/endpoints#automatic-pauses). The worker reports errors thrown by [hooks](/docs/reference/delivery#hooks) like internal failures, after it records the outcome.
+Without `onError`, an internal failure rejects `run()` and the process exits; let your supervisor restart it with backoff. If you pass `onError` to log and continue, watch that deliveries keep moving. Receiver failures are not internal failures; they follow the [retry policy](/docs/concepts/delivery-guarantees#retries), and an endpoint that keeps failing is [paused automatically](/docs/guides/endpoints#automatic-pauses). The worker reports errors thrown by [hooks](/docs/guides/hooks) like internal failures, after it records the outcome.
 
-For metrics and logs per attempt, pass an `onAttempt` [hook](/docs/reference/delivery#hooks) to the engine. It receives the outcome, status, error, and duration of every attempt.
+For metrics and logs per attempt, pass an [`onAttempt` hook](/docs/guides/hooks#record-attempt-metrics) to the engine. It receives the outcome, status, error, and duration of every attempt.
 
 Every failure below ends with the delivery retried under the same event ID, or the process exiting for a supervisor to restart. Each row is [checked by a test](https://github.com/pplytas/good-webhooks/blob/main/docs/operations.md#where-each-failure-claim-is-checked).
 

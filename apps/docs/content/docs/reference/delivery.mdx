@@ -315,7 +315,7 @@ export const delivery = createDelivery({
 | `onAttempt`        | `AttemptEvent`: `scope`, `endpointId`, `deliveryId`, `eventId`, `eventType`, `attempt`, `outcome`, `responseStatus`, `error`, and `durationMs`. Once per recorded attempt. |
 | `onEndpointPaused` | `EndpointPausedEvent`: `scope`, `endpointId`, and `reason` (`'failing'` or `'gone'`). Once per automatic pause. Manual pauses don't call it.                               |
 
-The worker awaits each hook after it commits the outcome, so keep hooks fast and queue slow work such as email. A hook can't change the outcome. Like other batch failures, hook errors go to `onError` in `run`, or into the `AggregateError` from `runOnce`. Hooks are best-effort. A crash between the commit and the call skips them, so read `pauseReason` when you need the record.
+The worker awaits each hook after it commits the outcome. Hook errors join the batch errors, and a crash between the commit and the call skips the hook. The [hooks guide](/docs/guides/hooks) shows both hooks in use and explains [how they run](/docs/guides/hooks#how-hooks-run).
 
 ### prune
 

@@ -392,6 +392,14 @@ describe('worker process lifecycle', () => {
         ])
       ).rows,
     ).toEqual([{ outcome: 'succeeded' }])
+    expect(records(running.stdout)).toContainEqual(
+      expect.objectContaining({
+        event: 'webhooks.attempt',
+        deliveryId: delivery.id,
+        outcome: 'succeeded',
+        responseStatus: 200,
+      }),
+    )
     await assertClosed('worker')
   })
 })

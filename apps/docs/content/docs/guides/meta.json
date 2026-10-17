@@ -1,4 +1,4 @@
 {
   "title": "Guides",
-  "pages": ["publish", "endpoints", "receive", "custom-senders", "recipient-selection"]
+  "pages": ["publish", "endpoints", "hooks", "receive", "custom-senders", "recipient-selection"]
 }

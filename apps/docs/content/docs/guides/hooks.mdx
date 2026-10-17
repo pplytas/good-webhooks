@@ -1,0 +1,52 @@
+---
+title: Hooks
+description: Run your own code after each delivery attempt and when the worker pauses an endpoint.
+---
+
+Hooks are functions the worker calls after it records an outcome. Use them to tell endpoint owners about automatic pauses and to record metrics. Pass them as `hooks` to `createWebhooks()` or `createDelivery()`.
+
+## Tell owners about automatic pauses
+
+The worker [pauses an endpoint](/docs/guides/endpoints#automatic-pauses) when every attempt to it has failed for five days, or when it answers `410 Gone`. `onEndpointPaused` runs once for each automatic pause, so you can tell the owner, for example by email:
+
+```ts title="webhooks.ts"
+export const webhooks = createWebhooks({
+  database,
+  encryptionKey: process.env.WEBHOOK_ENCRYPTION_KEY!,
+  events,
+  hooks: {
+    // Queue the email instead of sending it here. The worker waits for the hook.
+    onEndpointPaused: ({ scope, endpointId, reason }) =>
+      jobs.enqueue('endpoint-paused', { scope, endpointId, reason }),
+  },
+})
+```
+
+`reason` is `'failing'` or `'gone'`. `scope` is the endpoint's [scope](/docs/concepts/scopes), or `null` without one. With the [Better Auth plugin](/docs/better-auth), it is the user or organization that owns the endpoint, so use `scope.type` and `scope.id` to find who to email. Pausing with `pause()` doesn't call the hook.
+
+## Record attempt metrics
+
+`onAttempt` runs once for each attempt the worker records:
+
+```ts title="webhooks.ts"
+export const webhooks = createWebhooks({
+  database,
+  encryptionKey: process.env.WEBHOOK_ENCRYPTION_KEY!,
+  events,
+  hooks: {
+    onAttempt: ({ eventType, outcome, responseStatus, durationMs }) =>
+      metrics.record('webhook.attempt', durationMs, { eventType, outcome, status: responseStatus }),
+  },
+})
+```
+
+`outcome` is one of the [attempt outcomes](/docs/reference/delivery#attempt-outcomes): `'succeeded'`, `'retry'`, `'failed'`, or `'abandoned'`. `responseStatus` is `null` when no response arrived, and `error` then says why, for example `network_error`. The [supervised worker](/docs/operations/workers#a-supervised-worker-process) logs both hooks as JSON lines.
+
+## How hooks run
+
+- The worker calls a hook after it commits the outcome. A hook can't change the outcome.
+- The worker waits for each hook, so keep hooks fast and queue slow work such as email.
+- A hook that throws is reported like an internal failure: to `onError` in `run()`, or in the `AggregateError` that `run()` and `runOnce()` throw. The outcome stays recorded.
+- Hooks are best-effort. A crash between the commit and the call skips them, so read `pauseReason` when you need the record.
+
+The [delivery reference](/docs/reference/delivery#hooks) lists every field.
