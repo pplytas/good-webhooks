@@ -15,14 +15,14 @@ export const webhooks = createWebhooks({
   encryptionKey: process.env.WEBHOOK_ENCRYPTION_KEY!,
   events,
   hooks: {
-    // Queue the email instead of sending it here. The worker waits for the hook.
+    // jobs stands for your own queue. Queue the email instead of sending it: the worker waits for the hook.
     onEndpointPaused: ({ scope, endpointId, reason }) =>
       jobs.enqueue('endpoint-paused', { scope, endpointId, reason }),
   },
 })
 ```
 
-`reason` is `'failing'` or `'gone'`. `scope` is the endpoint's [scope](/docs/concepts/scopes), or `null` without one. With the [Better Auth plugin](/docs/better-auth), it is the user or organization that owns the endpoint, so use `scope.type` and `scope.id` to find who to email. Pausing with `pause()` doesn't call the hook.
+`reason` is `'failing'` or `'gone'`. `scope` is the endpoint's [scope](/docs/concepts/scopes), or `null` without one. With the [Better Auth plugin](/docs/better-auth), a `'user'` or `'organization'` scope names the owner, so use `scope.id` to find who to email. [Application and custom scopes](/docs/better-auth/permissions#application-and-custom-scopes) need your own lookup. Pausing with `pause()` doesn't call the hook.
 
 ## Record attempt metrics
 
@@ -34,6 +34,7 @@ export const webhooks = createWebhooks({
   encryptionKey: process.env.WEBHOOK_ENCRYPTION_KEY!,
   events,
   hooks: {
+    // metrics stands for your own metrics client.
     onAttempt: ({ eventType, outcome, responseStatus, durationMs }) =>
       metrics.record('webhook.attempt', durationMs, { eventType, outcome, status: responseStatus }),
   },
