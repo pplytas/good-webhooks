@@ -8,7 +8,7 @@ license: MIT
 
 `good-webhooks` stores published events in the app's PostgreSQL database, delivers signed Standard Webhooks requests from a worker the app runs, retries failures, and keeps attempt history. Receivers verify with `parseWebhook()`.
 
-This skill ships inside the npm package, so it matches the installed version. Full docs as Markdown: https://good-webhooks.dev/llms.txt (append `.md` to any docs URL). The docs include checked examples, with source at https://github.com/pplytas/good-webhooks/tree/main/packages/good-webhooks/examples.
+This skill ships inside the npm package, so it matches the installed version. Full docs as Markdown: https://good-webhooks.dev/llms.txt (append `.md` to any docs URL). The docs include checked examples. Their source is at https://github.com/pplytas/good-webhooks/tree/main/packages/good-webhooks/examples, on `main`, which can be newer than the installed version.
 
 ## Rules
 
