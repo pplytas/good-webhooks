@@ -58,7 +58,7 @@ Two interactive examples show the full path from a business action to a verified
 - [Order fulfillment](examples/order-fulfillment): place a shop order, send it to a warehouse, simulate an outage, and replay a delivery without creating a second shipment.
 - [Better Auth billing](examples/better-auth-billing): sign in, manage personal endpoints, publish invoice events, and inspect delivery attempts within the signed-in user's scope.
 
-Each example has its own npm lockfile, PostgreSQL setup, browser UI, receiver, and separate worker process. Both install `good-webhooks@0.2.0` from npm and can run together. Follow the [examples guide](examples/README.md) to get started.
+Each example has its own npm lockfile, PostgreSQL setup, browser UI, receiver, and separate worker process. Both install `good-webhooks@0.2.1` from npm and can run together. Follow the [examples guide](examples/README.md) to get started.
 
 ## Work on the repository
 
