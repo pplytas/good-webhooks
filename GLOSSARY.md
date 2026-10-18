@@ -48,6 +48,10 @@ _Avoid_: Paused endpoint
 An endpoint's selection of event types to receive.
 _Avoid_: Endpoint, filter
 
+**Test event**:
+A signed sample message that endpoint management sends once to one endpoint on request, so its owner can check that the receiver accepts webhooks. It is not an event and creates no delivery.
+_Avoid_: Ping, test delivery, example event
+
 **Signing secret**:
 A secret shared by a sender and receiver to authenticate webhook messages.
 _Avoid_: API key, encryption key
