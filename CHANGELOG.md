@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.4.0 (unreleased)
+## 0.4.0 (2026-10-18)
 
 Retries now cover about 28 hours by default, and a full scope reports its own error code. `0.3.0` announced both changes, and this release follows the [0.x minor rules](apps/docs/content/docs/operations/compatibility.mdx#releases). The database schema stays at version `5`, so no SQL is needed. [ADR 0013](docs/adr/0013-retry-every-unsuccessful-response.md) records the schedule.
 
