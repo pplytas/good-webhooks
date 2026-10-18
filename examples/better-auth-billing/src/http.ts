@@ -28,7 +28,12 @@ export const errorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
     const status =
       error.code === 'NOT_FOUND'
         ? 404
-        : ['INVALID_STATE', 'REPLAY_IN_PROGRESS', 'IDEMPOTENCY_CONFLICT'].includes(error.code)
+        : [
+              'INVALID_STATE',
+              'ENDPOINT_LIMIT',
+              'REPLAY_IN_PROGRESS',
+              'IDEMPOTENCY_CONFLICT',
+            ].includes(error.code)
           ? 409
           : error.code === 'INVALID_INPUT'
             ? 400

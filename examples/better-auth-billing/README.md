@@ -1,6 +1,6 @@
 # Better Auth billing example
 
-A local billing app that manages personal invoice webhooks through Better Auth. It uses `good-webhooks@0.3.0` from npm, with its own lockfile and no workspace imports.
+A local billing app that manages personal invoice webhooks through Better Auth. It uses `good-webhooks@0.4.0` from npm, with its own lockfile and no workspace imports.
 
 ## Run
 

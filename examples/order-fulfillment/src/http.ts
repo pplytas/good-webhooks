@@ -47,7 +47,12 @@ export const errorHandler: ErrorRequestHandler = (error, _request, response, _ne
     const status =
       error.code === 'NOT_FOUND'
         ? 404
-        : ['INVALID_STATE', 'REPLAY_IN_PROGRESS', 'IDEMPOTENCY_CONFLICT'].includes(error.code)
+        : [
+              'INVALID_STATE',
+              'ENDPOINT_LIMIT',
+              'REPLAY_IN_PROGRESS',
+              'IDEMPOTENCY_CONFLICT',
+            ].includes(error.code)
           ? 409
           : 400
     response.status(status).json({ error: error.message, code: error.code })
