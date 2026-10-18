@@ -126,7 +126,7 @@ describe('Better Auth management repository with real SQLite adapter and generat
     expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(3)
     for (const result of results)
       if (result.status === 'rejected')
-        expect(result.reason).toMatchObject({ code: 'INVALID_STATE' })
+        expect(result.reason).toMatchObject({ code: 'ENDPOINT_LIMIT' })
 
     // An endpoint created under the default limit can hold any slot and still counts.
     const other = await fixture()
@@ -140,7 +140,7 @@ describe('Better Auth management repository with real SQLite adapter and generat
     expect(concurrent.filter((result) => result.status === 'fulfilled')).toHaveLength(2)
     expect(await other.repository.list(scope)).toHaveLength(3)
     await expect(other.repository.create(scope, data(), 3)).rejects.toMatchObject({
-      code: 'INVALID_STATE',
+      code: 'ENDPOINT_LIMIT',
     })
     await expect(other.repository.create(scope, data(), 1001)).rejects.toMatchObject({
       code: 'INVALID_INPUT',

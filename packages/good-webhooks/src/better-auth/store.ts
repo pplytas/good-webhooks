@@ -277,8 +277,8 @@ export function createBetterAuthRepository(
         }
       }
       throw new WebhookError(
-        'INVALID_STATE',
-        `A scope may have at most ${limit} nondeleted endpoints.`,
+        'ENDPOINT_LIMIT',
+        `This scope already has its limit of ${limit} endpoints.`,
       )
     },
     async update(scope, id, revision, patch: StoredEndpointPatch) {

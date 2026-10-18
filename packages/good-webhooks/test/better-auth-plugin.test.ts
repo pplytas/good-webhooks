@@ -154,8 +154,12 @@ describe('Better Auth endpoint management plugin', () => {
       maxEndpoints: (scope) => (scope === null ? 10 : 2),
     })
     const alice = await user()
-    for (const status of [200, 200, 409])
+    for (const status of [200, 200])
       expect((await call('create', input, alice.headers)).status).toBe(status)
+    const full = await call('create', input, alice.headers)
+    expect(full.status).toBe(409)
+    // A stable code lets the app show its own message.
+    expect(await full.json()).toMatchObject({ code: 'ENDPOINT_LIMIT' })
     for (let index = 0; index < 3; index++) await management.create(null, input)
     expect(await management.list(null)).toHaveLength(3)
   })

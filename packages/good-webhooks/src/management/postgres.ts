@@ -81,8 +81,8 @@ export function createPostgresManagementRepository(
           (count.rows[0]?.count ?? 0) >= limit
         )
           throw new WebhookError(
-            'INVALID_STATE',
-            `A scope may have at most ${limit} nondeleted endpoints.`,
+            'ENDPOINT_LIMIT',
+            `This scope already has its limit of ${limit} endpoints.`,
           )
         const result = await client.query<StoredEndpoint & Record<string, unknown>>(
           `INSERT INTO ${table}(id,scope_key,url,description,event_types,status,pause_reason,secret,previous_secret,previous_secret_expires_at,revision,created_at,updated_at)

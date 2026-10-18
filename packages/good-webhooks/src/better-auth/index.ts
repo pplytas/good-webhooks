@@ -55,7 +55,7 @@ function mapError(error: unknown): never {
   const status =
     error.code === 'NOT_FOUND'
       ? 'NOT_FOUND'
-      : error.code === 'INVALID_STATE'
+      : error.code === 'INVALID_STATE' || error.code === 'ENDPOINT_LIMIT'
         ? 'CONFLICT'
         : error.code === 'INVALID_INPUT' || error.code === 'UNSAFE_URL'
           ? 'BAD_REQUEST'
