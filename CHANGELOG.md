@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.3.0 (unreleased)
+## 0.3.0 (2026-10-18)
 
 Endpoint owners can now send a test event, the worker retries every unsuccessful response except `410`, and scopes can have a lower endpoint limit. `0.2.1` announced these changes, and this release follows the [0.x minor rules](apps/docs/content/docs/operations/compatibility.mdx#releases). The database schema stays at version `5`, so no SQL is needed. [Issue #75](https://github.com/pplytas/good-webhooks/issues/75) tracked the work, and [ADR 0013](docs/adr/0013-retry-every-unsuccessful-response.md) and [ADR 0014](docs/adr/0014-test-event-outside-delivery.md) record the design.
 
