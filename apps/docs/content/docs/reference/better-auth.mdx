@@ -41,13 +41,13 @@ export const auth = betterAuth({
 Returns the `good-webhooks` Better Auth server plugin. It adds one management model and nine authenticated POST routes. It does not publish events, create delivery storage, or start a worker.
 
 | Option             | Contract                                                                                                |
-| ------------------ | ------------------------------------------------------------------------------------------------------- |
+| ------------------ | ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
 | `eventTypes`       | Required configured event names. A literal tuple preserves names in server and client types.            |
 | `allowLocalhost`   | Optional boolean, default `false`. Permits development HTTP loopback destinations.                      |
 | `schema.modelName` | Optional physical model name, default `webhookEndpoint`. This is not a PostgreSQL namespace.            |
 | `schema.fields`    | Optional mapping from logical fields to physical field names.                                           |
 | `authorizeScope`   | Optional policy required for application and custom scopes. Cannot override user or organization rules. |
-| `maxEndpoints`     | Optional `(scope) => number` from 0 to 1,000. The most endpoints a scope may have. Default 1,000.       |
+| `maxEndpoints`     | Optional `(scope) => number                                                                             | Promise<number>` from 0 to 1,000. The most endpoints a scope may have. Default 1,000. |
 
 ### Storage model
 

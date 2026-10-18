@@ -17,12 +17,12 @@ Receivers handle rules 2 and 3 by [processing each `event.id` once](/docs/guides
 
 A delivery is `pending` until a worker sends it (`in_flight`), then ends `succeeded`, `failed`, or `cancelled` (the endpoint was deleted). Each attempt's response decides what happens next:
 
-| Response                                    | Result                                                                    |
-| ------------------------------------------- | ------------------------------------------------------------------------- |
-| `2xx`                                       | `succeeded`                                                               |
-| `410`                                       | `failed`, no retry, and the endpoint is [paused](#automatic-pauses)       |
-| Any other status, including `3xx` and `4xx` | Back to `pending` until the next retry time. Redirects are never followed |
-| Network, DNS, or timeout error              | Back to `pending` until the next retry time                               |
+| Response                                    | Result                                                                          |
+| ------------------------------------------- | ------------------------------------------------------------------------------- |
+| `2xx`                                       | `succeeded`                                                                     |
+| `410`                                       | `failed`, no retry. By default the endpoint is also [paused](#automatic-pauses) |
+| Any other status, including `3xx` and `4xx` | Back to `pending` until the next retry time. Redirects are never followed       |
+| Network, DNS, or timeout error              | Back to `pending` until the next retry time                                     |
 
 By default a delivery gets up to seven attempts within 24 hours:
 

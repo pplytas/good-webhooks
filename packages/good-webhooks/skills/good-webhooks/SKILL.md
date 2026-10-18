@@ -19,7 +19,7 @@ Follow these. They are the mistakes agents make most often with this library.
 3. Never apply migrations at runtime. Write `getPostgresMigration()` output to a migration file and apply it with the project's migration tool. Call `check()` at startup. When `check()` reports `SCHEMA_MISMATCH` after a package upgrade, write `getPostgresUpgrade({ from })` output to a new migration file; the message names the call.
 4. Receivers pass the raw body (string or `Uint8Array`) to `parseWebhook()`, never parsed JSON. In Express use `express.raw({ type: 'application/json', limit: '512kb' })` on the route.
 5. Delivery is at least once with no ordering. Receivers insert `event.id` into a table with a unique key in the same transaction as their change, and respond `2xx` for repeats.
-6. Receivers respond `400` only for `WebhookError` codes `SIGNATURE_INVALID`, `SIGNATURE_EXPIRED`, `PAYLOAD_INVALID`. Everything else is `500`. The sender retries both; only `410` stops it, and that pauses the endpoint.
+6. Receivers respond `400` only for `WebhookError` codes `SIGNATURE_INVALID`, `SIGNATURE_EXPIRED`, `PAYLOAD_INVALID`. Everything else is `500`. The sender retries both; only `410` stops it, and by default that pauses the endpoint.
 7. `forScope(scope)` does not authorize. Check that the caller may act for that customer first. Never take a scope ID from a request body unchecked.
 8. When the business write uses the same database, publish inside it: `publish(input, { transaction: client })` with a checked-out client, not the pool.
 9. Give every `publish()` that can repeat an `idempotencyKey` derived from the business fact, such as `invoice.paid:${invoiceId}`.
