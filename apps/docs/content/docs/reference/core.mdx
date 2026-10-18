@@ -49,11 +49,11 @@ export const webhooks = createWebhooks({
 
 `WebhookOptions<E>` accepts every [delivery option](/docs/reference/delivery#createdelivery) except `source`, plus these fields:
 
-| Field           | Type                   | Meaning                                                                                              |
-| --------------- | ---------------------- | ---------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| `encryptionKey` | `string \| Uint8Array` | Required for the default PostgreSQL management provider. Base64-encoded 32 bytes or a 32-byte array. |
-| `management`    | `EndpointManagement`   | Optional existing provider. Its source supplies recipients and current endpoint state.               |
-| `maxEndpoints`  | `EndpointLimit`        | Optional `(scope) => number                                                                          | Promise<number>` from 0 to 1,000 for the default provider. Default 1,000 per scope. |
+| Field           | Type                   | Meaning                                                                                                            |
+| --------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `encryptionKey` | `string \| Uint8Array` | Required for the default PostgreSQL management provider. Base64-encoded 32 bytes or a 32-byte array.               |
+| `management`    | `EndpointManagement`   | Optional existing provider. Its source supplies recipients and current endpoint state.                             |
+| `maxEndpoints`  | `EndpointLimit`        | Optional `(scope) => number \| Promise<number>` from 0 to 1,000 for the default provider. Default 1,000 per scope. |
 
 - **Without `management`**, the constructor creates standalone PostgreSQL management from `database`, `schema`, the configured event names, `encryptionKey`, and `allowLocalhost`. `schema` then applies to both the management and delivery tables.
 - **With `management`**, that provider keeps its own database, schema, encryption, URL-validation, and endpoint-limit configuration. Core options do not reconfigure it, `encryptionKey` is unused, and `maxEndpoints` throws `INVALID_CONFIG`.
