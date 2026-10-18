@@ -39,6 +39,11 @@ export function createReceiver(pool: Pool) {
       res.status(400).send('Invalid webhook signature or envelope')
       return
     }
+    // An endpoint owner's test event: acknowledge it without recording a receipt.
+    if (event.type === 'good-webhooks.test') {
+      res.status(204).end()
+      return
+    }
     if (receiver.mode === 'reject') {
       await pool.query(
         "INSERT INTO billing_receiver_requests (endpoint_id, event_id, outcome) VALUES ($1,$2,'rejected')",

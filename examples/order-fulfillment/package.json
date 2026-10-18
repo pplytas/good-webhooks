@@ -18,7 +18,7 @@
   },
   "dependencies": {
     "express": "5.2.1",
-    "good-webhooks": "0.2.1",
+    "good-webhooks": "0.3.0",
     "pg": "8.23.1",
     "zod": "4.6.5"
   },

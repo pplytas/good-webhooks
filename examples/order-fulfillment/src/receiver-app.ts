@@ -29,6 +29,11 @@ export function createReceiver(runtime: Runtime) {
       if (error instanceof WebhookError) throw new HttpError(400, error.code, error.message)
       throw error
     }
+    // An endpoint owner's test event: acknowledge it without shipping anything.
+    if (event.type === 'good-webhooks.test') {
+      response.status(204).end()
+      return
+    }
     if (setting.mode === 'reject')
       throw new HttpError(503, 'WAREHOUSE_UNAVAILABLE', 'Warehouse is temporarily unavailable.')
     const client = await pool.connect()
