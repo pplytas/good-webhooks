@@ -325,22 +325,28 @@ describe('worker delivery durability', () => {
     expect(current.delivery.last_status).toBe(503)
   })
 
-  it.each([408, 425, 429, 500, 503])('retries HTTP %i', async (status) => {
-    const url = await receiver((_request, response) => {
-      response.statusCode = status
-      response.end()
-    })
-    await fixture(url)
-    expect((await createWorker(testConfig()).runOnce()).retried).toBe(1)
-  })
+  it.each([301, 400, 401, 403, 404, 408, 422, 425, 429, 500, 503, 600])(
+    'retries HTTP %i',
+    async (status) => {
+      const url = await receiver((_request, response) => {
+        response.statusCode = status
+        response.end()
+      })
+      await fixture(url)
+      expect((await createWorker(testConfig()).runOnce()).retried).toBe(1)
+    },
+  )
 
-  it.each([301, 400, 401, 404, 422, 600])('fails permanently on HTTP %i', async (status) => {
+  it('fails permanently on HTTP 410, even without automatic pauses', async () => {
     const url = await receiver((_request, response) => {
-      response.statusCode = status
+      response.statusCode = 410
       response.end()
     })
-    await fixture(url)
+    const {
+      deliveries: [delivery],
+    } = await fixture(url)
     expect((await createWorker(testConfig()).runOnce()).failed).toBe(1)
+    expect((await state(delivery!.id)).delivery.last_error).toBe('Receiver returned HTTP 410')
   })
 
   it('fails unsafe destinations permanently without opening a socket', async () => {
