@@ -99,7 +99,10 @@ describe('public server API', () => {
     await scope.publish(event)
     const first = await scope.deliveries.list({ eventId: published.eventId, limit: 1 })
     expect(first.items).toHaveLength(1)
-    expect(first.items[0]!.eventId).toBe(published.eventId)
+    expect(first.items[0]).toMatchObject({
+      eventId: published.eventId,
+      eventType: 'order.created',
+    })
     const second = await scope.deliveries.list({
       eventId: published.eventId,
       before: first.nextCursor!,

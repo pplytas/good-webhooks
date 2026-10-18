@@ -19,14 +19,17 @@ import type {
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const MAX_BIGINT = 9223372036854775807n
 const DELIVERY_STATUSES = new Set(['pending', 'in_flight', 'succeeded', 'failed', 'cancelled'])
-const DELIVERY_FIELDS =
-  'id::text, scope_key, endpoint_id, event_id, status, attempt_count, next_attempt_at, created_at, replay_of::text, last_error, last_status'
+/** Delivery columns for a query that aliases the deliveries table as `d`. */
+function deliveryFields(events: string): string {
+  return `d.id::text, d.scope_key, d.endpoint_id, d.event_id, d.status, d.attempt_count, d.next_attempt_at, d.created_at, d.replay_of::text, d.last_error, d.last_status, (SELECT e.type FROM ${events} e WHERE e.scope_key=d.scope_key AND e.id=d.event_id) AS event_type`
+}
 
 interface DeliveryRow extends Record<string, unknown> {
   id: string
   scope_key: string
   endpoint_id: string
   event_id: string
+  event_type: string
   status: Delivery['status']
   attempt_count: number
   next_attempt_at: Date
@@ -50,6 +53,7 @@ function delivery(row: DeliveryRow): Delivery {
     id: row.id,
     endpointId: row.endpoint_id,
     eventId: row.event_id,
+    eventType: row.event_type,
     status: row.status,
     attemptCount: row.attempt_count,
     nextAttemptAt: row.next_attempt_at,
@@ -105,6 +109,7 @@ async function lockScope(client: SqlClient, schema: string, scopeKey: string): P
 export function createStore(config: ResolvedConfig) {
   const schema = resolvePostgresSchema(config.schema)
   const tables = postgresTables(schema)
+  const DELIVERY_FIELDS = deliveryFields(tables.events)
   async function transaction<T>(
     run: (client: SqlClient) => Promise<T>,
     supplied?: SqlClient,
@@ -280,7 +285,7 @@ export function createStore(config: ResolvedConfig) {
     deliveryId(id)
     const { rows } = await config.database.query<DeliveryHistoryRow>(
       `WITH delivery AS (
-        SELECT ${DELIVERY_FIELDS} FROM ${tables.deliveries} WHERE scope_key=$1 AND id=$2
+        SELECT ${DELIVERY_FIELDS} FROM ${tables.deliveries} AS d WHERE scope_key=$1 AND id=$2
       )
       SELECT d.*,a.number,a.started_at,a.finished_at,a.outcome,a.response_status,a.response_body,a.error
       FROM delivery d LEFT JOIN ${tables.attempts} a ON a.delivery_id=d.id::bigint ORDER BY a.number`,
@@ -328,7 +333,7 @@ export function createStore(config: ResolvedConfig) {
         [scopeKey, found.rows[0]!.endpoint_id],
       )
       const original = await client.query<DeliveryRow>(
-        `SELECT ${DELIVERY_FIELDS} FROM ${tables.deliveries} WHERE scope_key=$1 AND id=$2 FOR UPDATE`,
+        `SELECT ${DELIVERY_FIELDS} FROM ${tables.deliveries} AS d WHERE scope_key=$1 AND id=$2 FOR UPDATE`,
         [scopeKey, id],
       )
       const row = original.rows[0]
@@ -354,7 +359,7 @@ export function createStore(config: ResolvedConfig) {
           'This delivery already has a pending or in-flight replay.',
         )
       const inserted = await client.query<DeliveryRow>(
-        `INSERT INTO ${tables.deliveries}(scope_key,endpoint_id,event_id,replay_of) VALUES ($1,$2,$3,$4) RETURNING ${DELIVERY_FIELDS}`,
+        `INSERT INTO ${tables.deliveries} AS d (scope_key,endpoint_id,event_id,replay_of) VALUES ($1,$2,$3,$4) RETURNING ${DELIVERY_FIELDS}`,
         [scopeKey, row.endpoint_id, row.event_id, id],
       )
       return delivery(inserted.rows[0]!)

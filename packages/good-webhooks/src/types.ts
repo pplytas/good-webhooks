@@ -158,6 +158,7 @@ export interface Delivery {
   id: string
   endpointId: string
   eventId: string
+  eventType: string
   status: DeliveryStatus
   attemptCount: number
   nextAttemptAt: Date

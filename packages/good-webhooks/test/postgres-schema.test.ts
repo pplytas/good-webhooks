@@ -162,8 +162,12 @@ describe('PostgreSQL schema configuration', () => {
         expect((await user.publish(input)).duplicate).toBe(true)
         expect((await app.worker.runOnce()).succeeded).toBe(1)
         const [delivery] = (await user.deliveries.list()).items
-        expect((await user.deliveries.get(delivery!.id)).attempts).toHaveLength(1)
-        await user.deliveries.replay(delivery!.id)
+        expect(delivery!.eventType).toBe('invoice.paid')
+        expect(await user.deliveries.get(delivery!.id)).toMatchObject({
+          eventType: 'invoice.paid',
+          attempts: [expect.anything()],
+        })
+        expect((await user.deliveries.replay(delivery!.id)).eventType).toBe('invoice.paid')
         expect((await app.worker.runOnce()).succeeded).toBe(1)
         expect(received).toBe(2)
         await user.endpoints.remove(endpoint.id)
