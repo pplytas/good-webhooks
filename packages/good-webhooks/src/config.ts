@@ -61,7 +61,10 @@ export function resolveConfig<E extends EventDefinitions>(
   if (options.allowLocalhost !== undefined && typeof options.allowLocalhost !== 'boolean') {
     throw new WebhookError('INVALID_CONFIG', 'allowLocalhost must be a boolean.')
   }
-  const delays = options.retry?.delaysMs ?? [1000, 5000, 30000, 120000, 600000, 1800000]
+  // About 28 hours of retries, so receivers can recover from an outage or a fix they deploy late.
+  const delays = options.retry?.delaysMs ?? [
+    5_000, 300_000, 1_800_000, 7_200_000, 18_000_000, 36_000_000, 36_000_000,
+  ]
   if (
     !Array.isArray(delays) ||
     delays.length > 20 ||
@@ -109,7 +112,7 @@ export function resolveConfig<E extends EventDefinitions>(
     )
   )
     throw new WebhookError('INVALID_CONFIG', 'hooks must be an object of optional functions.')
-  const maxAgeMs = integer('retry.maxAgeMs', options.retry?.maxAgeMs, 86400000, 100, 2592000000)
+  const maxAgeMs = integer('retry.maxAgeMs', options.retry?.maxAgeMs, 172_800_000, 100, 2592000000)
   const retentionMs = integer('retentionMs', options.retentionMs, 604800000, 1000, 31536000000)
   if (retentionMs < maxAgeMs)
     throw new WebhookError('INVALID_CONFIG', 'retentionMs must be at least retry.maxAgeMs.')

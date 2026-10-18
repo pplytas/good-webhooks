@@ -32,6 +32,16 @@ describe('configuration', () => {
       resolveConfig({ ...options, events: { 'good-webhooks.test': z.object({}) } }),
     ).toThrow(/reserved/)
   })
+  it('retries for about 28 hours by default, within the default age limit', () => {
+    const { retryDelaysMs, maxAgeMs } = resolveConfig(options)
+    expect(retryDelaysMs).toEqual([
+      5_000, 300_000, 1_800_000, 7_200_000, 18_000_000, 36_000_000, 36_000_000,
+    ])
+    expect(maxAgeMs).toBe(172_800_000)
+    // Even with the full 20% jitter on every delay, the last retry fits in the window.
+    const total = retryDelaysMs.reduce((sum, delay) => sum + delay, 0)
+    expect(total * 1.2).toBeLessThan(maxAgeMs)
+  })
   it('rejects invalid concurrency, retry values, and leases', () => {
     expect(() => resolveConfig({ ...options, delivery: { concurrency: 0 } })).toThrow(/concurrency/)
     expect(() => resolveConfig({ ...options, retry: { delaysMs: [-1] } })).toThrow(/delaysMs/)
