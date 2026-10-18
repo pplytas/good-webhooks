@@ -117,6 +117,10 @@ async function receiverTypes(request: IncomingMessage) {
     const invalid: string = event.data.amount
     void amount
     void invalid
+  } else if (event.type === 'good-webhooks.test') {
+    // Test events need no event map entry and carry only the endpoint ID.
+    const endpointId: string = event.data.endpointId
+    void endpointId
   } else {
     const decoded: Date = event.data
     // @ts-expect-error decoded data uses the validator output, not its string input

@@ -47,6 +47,19 @@ describe('typed receiver parsing', () => {
     }
   })
 
+  it('accepts test events without an event map entry and checks their shape', async () => {
+    const test = { ...envelope, type: 'good-webhooks.test', data: { endpointId: 'ep_1' } }
+    await expect(parseWebhook(signed(JSON.stringify(test)))).resolves.toEqual(test)
+    for (const data of [{}, { endpointId: 1 }, { endpointId: 'ep_1', extra: true }, ['ep_1']])
+      await expect(parseWebhook(signed(JSON.stringify({ ...test, data })))).rejects.toMatchObject(
+        invalid,
+      )
+    // Other reserved names are not events this receiver knows.
+    await expect(
+      parseWebhook(signed(JSON.stringify({ ...test, type: 'good-webhooks.later' }))),
+    ).rejects.toMatchObject(invalid)
+  })
+
   it('supports overlapping receiver and sender secrets', async () => {
     const next = generateSecret()
     const body = JSON.stringify(envelope)
@@ -68,6 +81,7 @@ describe('typed receiver parsing', () => {
       ...request(),
       events: { 'invoice.paid': schema },
     })
+    if (event.type === 'good-webhooks.test') throw new Error('Expected the application event')
     expect(event.data).toEqual({ invoiceId: 'inv_1', amount: 42, date: now })
     expect(event.data.date).toBeInstanceOf(Date)
     expect(validate).toHaveBeenCalledTimes(1)

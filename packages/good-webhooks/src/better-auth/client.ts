@@ -17,6 +17,7 @@ export function goodWebhooksClient<
       '/good-webhooks/resume': 'POST',
       '/good-webhooks/remove': 'POST',
       '/good-webhooks/rotate-secret': 'POST',
+      '/good-webhooks/send-test-event': 'POST',
     },
     fetchPlugins: [
       {

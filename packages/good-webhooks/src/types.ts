@@ -156,6 +156,18 @@ export interface EndpointWithSecret {
   endpoint: Endpoint
   secret: string
 }
+/** The receiver's answer to one test event. Receiver failures are results, not errors. */
+export interface TestEventResult {
+  eventId: string
+  /** A 2xx response with no transport error. */
+  ok: boolean
+  responseStatus: number | null
+  /** The first 4 KiB of the response body. */
+  responseBody: string
+  durationMs: number
+  /** Same values as `Attempt.error`, for example `timeout` or `Receiver returned HTTP 404`. */
+  error: string | null
+}
 export type DeliveryStatus = 'pending' | 'in_flight' | 'succeeded' | 'failed' | 'cancelled'
 export interface Delivery {
   id: string

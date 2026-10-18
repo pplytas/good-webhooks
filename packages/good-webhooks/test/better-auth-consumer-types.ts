@@ -19,6 +19,11 @@ async function betterAuthConsumerTypes(headers: Headers) {
   const clientDate: string | undefined = browserResult.data?.endpoint.createdAt
   await auth.api.updateWebhookEndpoint({ headers, body: { id: 'endpoint', description: null } })
   await client.goodWebhooks.rotateSecret({ id: 'endpoint', graceMs: 0 })
+  const tested = await client.goodWebhooks.sendTestEvent({ id: 'endpoint' })
+  const testStatus: number | null | undefined = tested.data?.responseStatus
+  const testOk: boolean = (
+    await auth.api.sendWebhookEndpointTestEvent({ headers, body: { id: 'endpoint' } })
+  ).ok
   await auth.api.createWebhookEndpoint({
     headers,
     // @ts-expect-error Subscription names are inferred from the server's configured event names.
@@ -37,6 +42,6 @@ async function betterAuthConsumerTypes(headers: Headers) {
     { type: 'user', id: 'trusted-user-id' },
     'invoice.created',
   )
-  void [date, event, clientDate, secret]
+  void [date, event, clientDate, secret, testStatus, testOk]
 }
 void betterAuthConsumerTypes

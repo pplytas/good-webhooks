@@ -2,6 +2,7 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
 import { verifySignature, type VerifyWebhookInput } from './crypto.js'
 import { WebhookError } from './errors.js'
+import { isEventName, TEST_EVENT_TYPE } from './event-names.js'
 import { toJson } from './json.js'
 import type { EventDefinitions } from './types.js'
 
@@ -9,15 +10,25 @@ export { verifyWebhook } from './crypto.js'
 export { WebhookError } from './errors.js'
 export type { WebhookErrorCode } from './errors.js'
 
-/** A discriminated union of the event map's decoded output types. */
-export type ParsedWebhook<E extends EventDefinitions> = {
-  [K in Extract<keyof E, string>]: {
-    id: string
-    type: K
-    occurredAt: string
-    data: StandardSchemaV1.InferOutput<E[K]>
-  }
-}[Extract<keyof E, string>]
+/** A test event an endpoint owner sent from endpoint management. Answer it with 2xx. */
+export interface ParsedTestEvent {
+  id: string
+  type: typeof TEST_EVENT_TYPE
+  occurredAt: string
+  data: { endpointId: string }
+}
+
+/** A discriminated union of the event map's decoded output types, plus the test event. */
+export type ParsedWebhook<E extends EventDefinitions> =
+  | {
+      [K in Extract<keyof E, string>]: {
+        id: string
+        type: K
+        occurredAt: string
+        data: StandardSchemaV1.InferOutput<E[K]>
+      }
+    }[Extract<keyof E, string>]
+  | ParsedTestEvent
 
 function payloadError(): WebhookError {
   return new WebhookError(
@@ -71,8 +82,7 @@ export async function parseWebhook<const E extends EventDefinitions>(
     envelope = parsed as Record<string, unknown>
     if (
       envelope.id !== verified.id ||
-      typeof envelope.type !== 'string' ||
-      !/^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,119}$/.test(envelope.type) ||
+      !isEventName(envelope.type) ||
       !isPublicationTime(envelope.occurredAt)
     )
       throw payloadError()
@@ -85,6 +95,19 @@ export async function parseWebhook<const E extends EventDefinitions>(
     throw new WebhookError('INVALID_CONFIG', 'Supply an event map of Standard Schema validators.')
   }
   const type = envelope.type as string
+  // Every receiver accepts test events without listing them in its event map.
+  if (type === TEST_EVENT_TYPE) {
+    const endpointId = (data as { endpointId?: unknown } | null)?.endpointId
+    if (
+      !data ||
+      typeof data !== 'object' ||
+      Array.isArray(data) ||
+      Object.keys(data).length !== 1 ||
+      typeof endpointId !== 'string'
+    )
+      throw payloadError()
+    return { id: verified.id, type, occurredAt: envelope.occurredAt, data: { endpointId } }
+  }
   if (!Object.hasOwn(events, type)) throw payloadError()
   const schema = events[type]?.['~standard']
   if (typeof schema?.validate !== 'function') {

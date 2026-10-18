@@ -43,6 +43,11 @@ async function receive(request: IncomingMessage, response: ServerResponse): Prom
     respondToRequestError(error, response)
     return
   }
+  // An endpoint owner's test event: acknowledge it without processing.
+  if (event.type === 'good-webhooks.test') {
+    response.writeHead(204).end()
+    return
+  }
   assert.equal(event.data.invoiceId, invoiceId)
   assert.equal(event.data.amount, 4200)
   receivedIds.push(event.id)

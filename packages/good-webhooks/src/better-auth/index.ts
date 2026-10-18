@@ -66,6 +66,8 @@ function mapError(error: unknown): never {
   })
 }
 
+const TEST_EVENT_PATH = '/good-webhooks/send-test-event'
+
 /** Authenticated endpoint management. Does not publish events or start delivery workers. */
 export function goodWebhooks<const EventTypes extends readonly string[]>(
   options: GoodWebhooksOptions<EventTypes>,
@@ -244,6 +246,14 @@ export function goodWebhooks<const EventTypes extends readonly string[]>(
           return { endpoint: toDTO<EventType>(result.endpoint), secret: result.secret }
         },
       ),
+      sendWebhookEndpointTestEvent: route(
+        TEST_EVENT_PATH,
+        target,
+        'update',
+        async (management, scope, body) => management.sendTestEvent(scope, body.id),
+      ),
     },
+    // Each test makes the server send a request. Better Auth enforces this in production only.
+    rateLimit: [{ pathMatcher: (path) => path === TEST_EVENT_PATH, window: 60, max: 10 }],
   } satisfies BetterAuthPlugin
 }

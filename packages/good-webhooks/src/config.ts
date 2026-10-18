@@ -1,4 +1,5 @@
 import { WebhookError } from './errors.js'
+import { isApplicationEventName, RESERVED_EVENT_PREFIX } from './event-names.js'
 import { resolvePostgresSchema } from './postgres-schema.js'
 import type { EventDefinitions, ResolvedConfig, DeliveryOptions } from './types.js'
 
@@ -42,11 +43,11 @@ export function resolveConfig<E extends EventDefinitions>(
     )
   }
   for (const [name, schema] of Object.entries(options.events)) {
-    if (
-      !/^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,119}$/.test(name) ||
-      typeof schema?.['~standard']?.validate !== 'function'
-    ) {
-      throw new WebhookError('INVALID_CONFIG', `Invalid event definition: ${name}.`)
+    if (!isApplicationEventName(name) || typeof schema?.['~standard']?.validate !== 'function') {
+      throw new WebhookError(
+        'INVALID_CONFIG',
+        `Invalid event definition: ${name}. Names starting with ${RESERVED_EVENT_PREFIX} are reserved.`,
+      )
     }
   }
   if (

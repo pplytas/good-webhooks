@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createManagement } from '../src/management/index.js'
+import { parseWebhook } from '../src/verify.js'
+import { closeReceivers, startReceiver } from './receiver.js'
 import type {
   ManagementOptions,
   ManagementRepository,
@@ -367,5 +369,108 @@ describe('portable endpoint management', () => {
     await expect(
       management.create(null, { ...input, url: 'http://10.0.0.1/' }),
     ).rejects.toMatchObject({ code: 'UNSAFE_URL' })
+  })
+})
+
+describe('test events', () => {
+  afterEach(closeReceivers)
+
+  /** A receiver that verifies with `secret` and answers with `status`. */
+  async function testReceiver() {
+    const state = { secret: '', status: 204, received: [] as unknown[] }
+    const { url } = await startReceiver(async (request, response) => {
+      const chunks: Buffer[] = []
+      for await (const chunk of request) chunks.push(chunk as Buffer)
+      try {
+        const event = await parseWebhook({
+          body: Buffer.concat(chunks),
+          headers: request.headers,
+          secret: state.secret,
+          events: {},
+        })
+        state.received.push(event)
+        response.statusCode = state.status
+        response.end(state.status === 204 ? '' : 'not today')
+      } catch {
+        response.statusCode = 400
+        response.end('invalid')
+      }
+    })
+    return { url, state }
+  }
+
+  it('signs one test event for active and paused endpoints, and changes nothing', async () => {
+    const { url, state } = await testReceiver()
+    const { management } = setup({ allowLocalhost: true })
+    const created = await management.create(null, { url, eventTypes: ['order.created'] })
+    const { endpoint } = created
+    state.secret = created.secret
+
+    const result = await management.sendTestEvent(null, endpoint.id)
+    expect(result).toEqual({
+      eventId: expect.any(String),
+      ok: true,
+      responseStatus: 204,
+      responseBody: '',
+      durationMs: expect.any(Number),
+      error: null,
+    })
+    expect(state.received).toEqual([
+      {
+        id: result.eventId,
+        type: 'good-webhooks.test',
+        occurredAt: expect.any(String),
+        data: { endpointId: endpoint.id },
+      },
+    ])
+
+    const paused = await management.pause(null, endpoint.id)
+    state.status = 500
+    expect(await management.sendTestEvent(null, endpoint.id)).toMatchObject({
+      ok: false,
+      responseStatus: 500,
+      responseBody: 'not today',
+      error: 'Receiver returned HTTP 500',
+    })
+    expect(await management.get(null, endpoint.id)).toEqual(paused)
+
+    // During a rotation overlap the request carries both signatures, like a delivery.
+    await management.rotateSecret(null, endpoint.id)
+    state.status = 204
+    expect((await management.sendTestEvent(null, endpoint.id)).ok).toBe(true)
+    expect(new Set(state.received.map((event) => (event as { id: string }).id)).size).toBe(3)
+  })
+
+  it('rejects deleted and unknown endpoints and reports unsafe destinations', async () => {
+    const { url } = await testReceiver()
+    const { management, repository } = setup({ allowLocalhost: true })
+    const { endpoint } = await management.create(null, { url, eventTypes: ['order.created'] })
+    const strict = createManagement({
+      repository,
+      eventTypes: ['order.created'],
+      cipher: {
+        encrypt: async (value) => `encrypted:${value}`,
+        decrypt: async (value) => value.slice('encrypted:'.length),
+      },
+    })
+    expect(await strict.sendTestEvent(null, endpoint.id)).toMatchObject({
+      ok: false,
+      responseStatus: null,
+      error: 'unsafe_url',
+    })
+    await expect(management.sendTestEvent(null, 'missing')).rejects.toMatchObject({
+      code: 'NOT_FOUND',
+    })
+    await management.remove(null, endpoint.id)
+    await expect(management.sendTestEvent(null, endpoint.id)).rejects.toMatchObject({
+      code: 'INVALID_STATE',
+    })
+  })
+
+  it('reserves event names under good-webhooks.', () => {
+    for (const name of ['good-webhooks.test', 'good-webhooks.later'])
+      expect(() => setup({ eventTypes: [name] })).toThrow(
+        expect.objectContaining({ code: 'INVALID_CONFIG' }),
+      )
   })
 })

@@ -18,6 +18,24 @@ beforeEach(resetDatabase)
 afterAll(closeDatabase)
 
 describe('public server API', () => {
+  it('sends test events through scoped endpoint clients without recording deliveries', async () => {
+    const app = createWebhooks(options)
+    const scope = app.forScope({ type: 'account', id: 'scope-a' })
+    const { endpoint } = await scope.endpoints.create({
+      url: 'http://127.0.0.1:9/unreachable',
+      eventTypes: ['order.created'],
+    })
+    expect(await scope.endpoints.sendTestEvent(endpoint.id)).toMatchObject({
+      ok: false,
+      responseStatus: null,
+      error: 'network_error',
+    })
+    await expect(app.endpoints.sendTestEvent(endpoint.id)).rejects.toMatchObject({
+      code: 'NOT_FOUND',
+    })
+    expect((await scope.deliveries.list()).items).toEqual([])
+  })
+
   it('limits endpoints per scope for built-in management only', async () => {
     const app = createWebhooks({ ...options, maxEndpoints: () => 1 })
     const input = { url: 'http://127.0.0.1:12345', eventTypes: ['order.created'] as const }

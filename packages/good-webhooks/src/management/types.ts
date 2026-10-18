@@ -5,6 +5,7 @@ import type {
   CreateEndpointInput,
   UpdateEndpointInput,
   EndpointWithSecret,
+  TestEventResult,
 } from '../types.js'
 
 /** null identifies application scope, distinct from every named scope. */
@@ -56,6 +57,8 @@ export interface EndpointManagement {
     id: string,
     options?: { graceMs?: number },
   ): Promise<ManagedEndpointWithSecret>
+  /** Sign and send one test event to an active or paused endpoint. Records nothing. */
+  sendTestEvent(scope: ManagementScope, id: string): Promise<TestEventResult>
   removeScope(scope: ManagementScope): Promise<void>
   /** Re-encrypt live endpoint secrets with the current storage key, preserving signing values. */
   reencrypt(scope: ManagementScope): Promise<number>

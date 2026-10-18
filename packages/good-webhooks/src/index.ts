@@ -40,6 +40,7 @@ export type {
   PublishResult,
   SqlClient,
   Scope,
+  TestEventResult,
   WebhookOptions,
   WorkerResult,
 } from './types.js'
@@ -96,6 +97,7 @@ export function createWebhooks<const E extends EventDefinitions>(options: Webhoo
       remove: (id: string) => management.remove(scope, id),
       rotateSecret: (id: string, options?: { graceMs?: number }) =>
         management.rotateSecret(scope, id, options),
+      sendTestEvent: (id: string) => management.sendTestEvent(scope, id),
     }
   }
   return {

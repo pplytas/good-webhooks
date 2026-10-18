@@ -13,6 +13,7 @@ import {
 } from '../src/better-auth/index.js'
 import { goodWebhooksClient } from '../src/better-auth/client.js'
 import { createBetterAuthRepository } from '../src/better-auth/store.js'
+import { closeReceivers, startReceiver } from './receiver.js'
 
 const eventTypes = ['invoice.created', 'invoice.paid'] as const
 const origin = 'http://localhost:3000'
@@ -21,7 +22,8 @@ const input = {
   eventTypes: ['invoice.created'] as ['invoice.created'],
 }
 const databases: DatabaseSync[] = []
-afterEach(() => {
+afterEach(async () => {
+  await closeReceivers()
   vi.restoreAllMocks()
   for (const db of databases.splice(0)) db.close()
 })
@@ -123,6 +125,28 @@ describe('Better Auth endpoint management plugin', () => {
     expect(
       (await call('list', { scope: { type: 'user', id: alice.id } }, bob.headers)).status,
     ).toBe(403)
+  })
+
+  it('sends a test event for the endpoint owner and rate limits the route', async () => {
+    const { url } = await startReceiver((_request, response) => response.writeHead(204).end())
+    const { user, call } = await setup({ allowLocalhost: true })
+    const alice = await user()
+    const bob = await user('Bob')
+    const created = await (await call('create', { ...input, url }, alice.headers)).json()
+    const id = created.endpoint.id
+    const response = await call('send-test-event', { id }, alice.headers)
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({ ok: true, responseStatus: 204, error: null })
+    expect((await call('send-test-event', { id }, bob.headers)).status).toBe(404)
+    expect(
+      (await call('send-test-event', { id, scope: { type: 'user', id: alice.id } }, bob.headers))
+        .status,
+    ).toBe(403)
+    expect(goodWebhooksClient().pathMethods['/good-webhooks/send-test-event']).toBe('POST')
+    const [rule] = goodWebhooks({ eventTypes }).rateLimit
+    expect(rule).toMatchObject({ window: 60, max: 10 })
+    expect(rule!.pathMatcher('/good-webhooks/send-test-event')).toBe(true)
+    expect(rule!.pathMatcher('/good-webhooks/create')).toBe(false)
   })
 
   it('applies a per-scope endpoint limit and reports it as a conflict', async () => {

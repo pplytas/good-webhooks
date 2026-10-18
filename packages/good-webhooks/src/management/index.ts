@@ -1,5 +1,7 @@
 import { WebhookError } from '../errors.js'
 import { scopeKey } from '../scope.js'
+import { isApplicationEventName } from '../event-names.js'
+import { sendTestEvent } from './test-event.js'
 import { parseEndpointUrl } from './url.js'
 import type {
   EndpointManagement,
@@ -70,9 +72,7 @@ export function createManagement(options: ManagementOptions): EndpointManagement
     !options ||
     !Array.isArray(options.eventTypes) ||
     options.eventTypes.length === 0 ||
-    options.eventTypes.some(
-      (name) => typeof name !== 'string' || !/^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,119}$/.test(name),
-    ) ||
+    !options.eventTypes.every(isApplicationEventName) ||
     typeof options.repository?.list !== 'function' ||
     typeof options.repository.get !== 'function' ||
     typeof options.repository.create !== 'function' ||
@@ -86,7 +86,7 @@ export function createManagement(options: ManagementOptions): EndpointManagement
   )
     throw new WebhookError(
       'INVALID_CONFIG',
-      'Supply event names, a management repository, and a secret cipher.',
+      'Supply event names (not starting with good-webhooks.), a management repository, and a secret cipher.',
     )
   const { repository, cipher, scopeExists, maxEndpoints } = options
   const validateUrl = options.validateUrl
@@ -133,6 +133,18 @@ export function createManagement(options: ManagementOptions): EndpointManagement
     const current = await repository.get(scope, id)
     if (!current) throw new WebhookError('NOT_FOUND', 'Endpoint not found in this scope.')
     return current
+  }
+
+  /** The current secret, plus the previous one while its rotation overlap lasts. */
+  async function liveSecrets(row: StoredEndpoint): Promise<string[]> {
+    const secrets = [await cipher.decrypt(row.encryptedSecret)]
+    if (
+      row.previousEncryptedSecret &&
+      row.previousSecretExpiresAt &&
+      row.previousSecretExpiresAt.getTime() > Date.now()
+    )
+      secrets.push(await cipher.decrypt(row.previousEncryptedSecret))
+    return secrets
   }
 
   async function edit(
@@ -195,13 +207,7 @@ export function createManagement(options: ManagementOptions): EndpointManagement
         const row = await repository.get(scope, id)
         if (!row || row.status === 'deleted') return { status: 'deleted' }
         if (row.status === 'paused') return { status: 'paused' }
-        const secrets = [await cipher.decrypt(row.encryptedSecret)]
-        if (
-          row.previousEncryptedSecret &&
-          row.previousSecretExpiresAt &&
-          row.previousSecretExpiresAt.getTime() > Date.now()
-        )
-          secrets.push(await cipher.decrypt(row.previousEncryptedSecret))
+        const secrets = await liveSecrets(row)
         return { status: 'active', url: row.url, secrets, revision: String(row.revision) }
       },
       async pause(inputScope, id, input) {
@@ -339,6 +345,21 @@ export function createManagement(options: ManagementOptions): EndpointManagement
         }
       })
       return { endpoint: dto(row), secret }
+    },
+    async sendTestEvent(inputScope, id) {
+      const scope = snapshotScope(inputScope)
+      endpointId(id)
+      await requireOwner(scope)
+      const row = await read(scope, id)
+      // Paused endpoints can be tested, so an owner can check a fixed receiver before resuming.
+      if (row.status === 'deleted')
+        throw new WebhookError('INVALID_STATE', 'Deleted endpoints cannot be tested.')
+      return sendTestEvent({
+        endpointId: row.id,
+        url: row.url,
+        secrets: await liveSecrets(row),
+        allowLocalhost,
+      })
     },
     async removeScope(inputScope) {
       const scope = snapshotScope(inputScope)

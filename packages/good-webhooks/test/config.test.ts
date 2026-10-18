@@ -27,6 +27,11 @@ describe('configuration', () => {
     expect(source.resolveEndpoint).not.toHaveBeenCalled()
     expect(database.connect).not.toHaveBeenCalled()
   })
+  it('reserves event names under good-webhooks.', () => {
+    expect(() =>
+      resolveConfig({ ...options, events: { 'good-webhooks.test': z.object({}) } }),
+    ).toThrow(/reserved/)
+  })
   it('rejects invalid concurrency, retry values, and leases', () => {
     expect(() => resolveConfig({ ...options, delivery: { concurrency: 0 } })).toThrow(/concurrency/)
     expect(() => resolveConfig({ ...options, retry: { delaysMs: [-1] } })).toThrow(/delaysMs/)
