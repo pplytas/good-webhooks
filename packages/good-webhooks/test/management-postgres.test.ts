@@ -111,6 +111,11 @@ describe('standalone PostgreSQL management', () => {
     )
     const repository = createPostgresManagementRepository(pool)
     const stored = (await repository.get(null, first.endpoint.id))!
+    // An invalid limit is an input error, not a full scope.
+    for (const limit of [-1, 1001, Number.NaN])
+      await expect(repository.create(null, stored, limit)).rejects.toMatchObject({
+        code: 'INVALID_INPUT',
+      })
     // An insert failure must roll back cleanly and leave the final slot available.
     await expect(
       repository.create(null, { ...stored, eventTypes: [] }, 1000),
