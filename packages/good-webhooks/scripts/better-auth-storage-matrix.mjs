@@ -70,7 +70,7 @@ async function exercise(name, database, generateId, migrate = true) {
     })
   }
   const results = await Promise.allSettled(
-    Array.from({ length: 20 }, () => repository.create(scope, data())),
+    Array.from({ length: 20 }, () => repository.create(scope, data(), 1000)),
   )
   const successes = results.filter((result) => result.status === 'fulfilled')
   const failures = results.filter((result) => result.status === 'rejected')
@@ -99,7 +99,7 @@ async function exercise(name, database, generateId, migrate = true) {
   assert.equal(changed.previousSecretExpiresAt.toISOString(), '2026-10-08T00:00:00.000Z')
   const deleted = await repository.update(scope, changed.id, 1, { status: 'deleted' })
   assert.equal(deleted.status, 'deleted')
-  assert.notEqual((await repository.create(scope, data())).id, deleted.id)
+  assert.notEqual((await repository.create(scope, data(), 1000)).id, deleted.id)
   assert.equal((await repository.list(scope)).length, 1000)
   assert.equal((await repository.get(scope, deleted.id)).status, 'deleted')
   const eventTypes = Array.from(
@@ -121,13 +121,20 @@ async function exercise(name, database, generateId, migrate = true) {
     url: fillUnicode('https://example.com/διαδρομή🙂', 2048),
     description: fillUnicode('Περιγραφή 🙂', 2000),
   }
-  const unicodeRow = await repository.create(unicodeScope, unicode)
+  const unicodeRow = await repository.create(unicodeScope, unicode, 1000)
   assert.equal(unicodeRow.url, unicode.url)
   assert.equal(unicodeRow.description, unicode.description)
   assert.equal((await repository.list(unicodeScope))[0].id, unicodeRow.id)
   assert.equal((await repository.get(unicodeScope, unicodeRow.id)).description, unicode.description)
-  assert.equal((await repository.create(null, data())).eventTypes[0], 'invoice.paid')
+  assert.equal((await repository.create(null, data(), 1000)).eventTypes[0], 'invoice.paid')
   assert.equal((await repository.list(null)).length, 1)
+  // A lower limit holds under concurrent creates too.
+  const capped = { type: 'capped', id: 'owner' }
+  const cappedResults = await Promise.allSettled(
+    Array.from({ length: 10 }, () => repository.create(capped, data(), 3)),
+  )
+  assert.equal(cappedResults.filter((result) => result.status === 'fulfilled').length, 3)
+  assert.equal((await repository.list(capped)).length, 3)
   console.log(JSON.stringify({ profile: name, ids: generateId ?? 'default', result: 'passed' }))
 }
 
