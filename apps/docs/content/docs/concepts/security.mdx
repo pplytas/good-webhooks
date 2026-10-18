@@ -28,7 +28,7 @@ The signature is HMAC-SHA256 over `{id}.{timestamp}.{body}`. Each request is a `
 
 ## Destination checks
 
-Registration requires HTTPS and rejects credentials in the URL and unsafe IP literals. Standalone PostgreSQL management also resolves DNS at registration. Because DNS can change later, the worker resolves the hostname again before every connection, rejects private and otherwise unsafe addresses, connects to the address it checked, and never follows redirects.
+Registration requires HTTPS and rejects credentials in the URL and unsafe IP literals. Standalone PostgreSQL management also resolves DNS at registration. Because DNS can change later, every send (a delivery attempt or a [test event](/docs/guides/endpoints#send-a-test-event)) resolves the hostname again before connecting, rejects private and otherwise unsafe addresses, connects to the address it checked, and never follows redirects. A custom `validateUrl` policy on [`createManagement`](/docs/reference/management#createmanagement) runs only when a URL is registered, changed, or resumed, not on each send. To stop sending to a destination your policy now rejects, change the endpoint's URL or remove it; a paused endpoint can still receive test events.
 
 `allowLocalhost: true` permits plain-HTTP loopback destinations for local development and opens no other private ranges. [Custom senders](/docs/guides/custom-senders) must implement the same protection themselves.
 
