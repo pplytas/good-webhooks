@@ -138,15 +138,13 @@ export function createWorker(config: ResolvedConfig) {
     })
     const { status, responseBody } = response
     if (signal?.aborted) return { status, responseBody, ...stopped }
+    const succeeded = response.error === null && status !== null && status >= 200 && status < 300
+    // Retry every unsuccessful response except 410 Gone and destinations we refuse (ADR 0013).
     const retryable =
+      !succeeded &&
       response.error !== 'unsafe_url' &&
       response.error !== 'invalid_request' &&
-      (response.error !== null ||
-        status === null ||
-        status === 408 ||
-        status === 425 ||
-        status === 429 ||
-        (status >= 500 && status < 600))
+      status !== 410
     return {
       status,
       responseBody,
