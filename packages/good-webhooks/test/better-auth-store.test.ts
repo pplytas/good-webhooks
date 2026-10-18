@@ -134,8 +134,12 @@ describe('Better Auth management repository with real SQLite adapter and generat
       model: 'webhookEndpoint',
       data: { ...data(), scopeKey: scopeKey(scope), allocationKey: key(900), creationToken: 'old' },
     })
-    await other.repository.create(scope, data(), 2)
-    await expect(other.repository.create(scope, data(), 2)).rejects.toMatchObject({
+    const concurrent = await Promise.allSettled(
+      Array.from({ length: 10 }, () => other.repository.create(scope, data(), 3)),
+    )
+    expect(concurrent.filter((result) => result.status === 'fulfilled')).toHaveLength(2)
+    expect(await other.repository.list(scope)).toHaveLength(3)
+    await expect(other.repository.create(scope, data(), 3)).rejects.toMatchObject({
       code: 'INVALID_STATE',
     })
     await expect(other.repository.create(scope, data(), 1001)).rejects.toMatchObject({

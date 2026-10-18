@@ -227,9 +227,16 @@ export function createBetterAuthRepository(
       const keys = allocationKeys(key)
       const occupied = new Set((await readScope(key)).map((row) => row.allocationKey))
       const creationToken = randomUUID()
-      // New endpoints use only the first `limit` slots, so concurrent creates cannot exceed it.
-      // Endpoints created under a higher limit may hold any slot, so they are counted first.
-      const slots = occupied.size < limit ? limit : 0
+      // New endpoints use only slots below `slots`, so concurrent creates cannot pass the limit.
+      // Endpoints created under a higher limit may hold any slot. Leave room for those at or
+      // above the bound: the bound plus their count never exceeds the limit.
+      const held = keys.map((slotKey) => occupied.has(slotKey))
+      let slots = limit
+      let above = held.slice(limit).filter(Boolean).length
+      while (slots > 0 && slots + above > limit) {
+        slots--
+        if (held[slots]) above++
+      }
       const start = slots > 0 ? randomInt(slots) : 0
       for (let offset = 0; offset < slots; offset++) {
         const allocationKey = keys[(start + offset) % slots]!
