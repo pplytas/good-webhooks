@@ -70,7 +70,7 @@ npm view good-webhooks dist-tags --json
 
 Keep documentation explicit about pre-release status and use the channel tag (`@beta`) or an exact version in installation commands. Moving from `alpha` to `beta` started with `0.1.0-beta.1`; once it is published, move `latest` to it so default installs leave the alpha series. Moving a tag does not change the published archive or its README. Package README changes require a new release.
 
-Create a GitHub prerelease named `v<version>` targeting the verified commit, with its changelog entry and installation command. Install commands in the docs name the channel tag; publish promptly after merging a channel change so the deployed docs do not point at a tag that has no versions yet. Link the release's compatibility and migration notes. Retain old versions so existing lockfiles continue to work; use npm deprecation messages for superseded or broken versions when needed.
+Create a GitHub prerelease named `v<version>` targeting the verified commit, with its changelog entry and installation command. Install commands in the docs name the channel tag; publish promptly after merging a channel change so the deployed docs do not point at a tag that has no versions yet. Link the release's compatibility and migration notes. For an urgent fix, say so in the notes: pnpm 12 holds back versions newer than its `minimumReleaseAge` unless a project excludes them, which delayed the Playground's upgrade to `0.2.1` by a day ([#74](https://github.com/pplytas/good-webhooks/issues/74)). Retain old versions so existing lockfiles continue to work; use npm deprecation messages for superseded or broken versions when needed.
 
 ## Promote to a stable version
 

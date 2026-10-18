@@ -51,6 +51,40 @@ await delivery.check()
 
 The provider uses Better Auth's adapter and encryption keys. It needs no session and no HTTP listener. To email owners when the worker pauses their endpoint, add an [`onEndpointPaused` hook](/docs/guides/hooks#tell-owners-about-automatic-pauses).
 
+<Accordions>
+<Accordion title="Next.js: build the engine on first use">
+
+Top-level `await` runs when Next.js imports the module, which includes `next build` and prerendering, where runtime secrets may be missing. In an App Router app, build auth and the engine lazily and keep one promise per process:
+
+```ts title="delivery.ts"
+import { createBetterAuthManagement } from 'good-webhooks/better-auth'
+import { createDelivery } from 'good-webhooks/delivery'
+import { getAuth } from './auth' // also lazy: returns one betterAuth() instance
+import { getPool } from './db'
+import { events } from './events'
+
+async function build() {
+  const management = await createBetterAuthManagement(getAuth())
+  return createDelivery({ database: getPool(), source: management.source, events })
+}
+
+let instance: ReturnType<typeof build> | undefined
+
+export function getDelivery() {
+  // Retry on the next call if construction fails, for example during a database outage.
+  instance ??= build().catch((error: unknown) => {
+    instance = undefined
+    throw error
+  })
+  return instance
+}
+```
+
+Call `await getDelivery()` inside route handlers and server actions, never at module scope. Run `check()` from your deploy step or worker rather than on every request.
+
+</Accordion>
+</Accordions>
+
 </Step>
 <Step>
 ### Publish in the owner's scope

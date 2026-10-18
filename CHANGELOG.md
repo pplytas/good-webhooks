@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.3.0 (unreleased)
+
+Endpoint owners can now send a test event, the worker retries every unsuccessful response except `410`, and scopes can have a lower endpoint limit. `0.2.1` announced these changes, and this release follows the [0.x minor rules](apps/docs/content/docs/operations/compatibility.mdx#releases). The database schema stays at version `5`, so no SQL is needed. [Issue #75](https://github.com/pplytas/good-webhooks/issues/75) tracked the work, and [ADR 0013](docs/adr/0013-retry-every-unsuccessful-response.md) and [ADR 0014](docs/adr/0014-test-event-outside-delivery.md) record the design.
+
+### Upgrade
+
+1. Restart producers and workers on `0.3.0`. No migration is required, and `0.2.x` processes can keep running alongside.
+2. Receivers that read `event.data` without checking `event.type` stop compiling: check `event.type` first, and answer `good-webhooks.test` with `2xx`.
+3. Rename any event type that starts with `good-webhooks.`. Configuration now rejects it.
+4. A custom `EndpointManagement` needs `sendTestEvent`. A custom `ManagementRepository` receives a third `limit` argument in `create` and must enforce it.
+
+### Breaking
+
+- **Every non-2xx response is retried.** `3xx` and `4xx` responses now get retries within `retry.delaysMs` and `retry.maxAgeMs`, like `5xx`. Only `410` still ends a delivery at once, also with `pauseOnGone: false`. A transient `404` during a domain cutover no longer loses the event ([#74](https://github.com/pplytas/good-webhooks/issues/74)).
+- **`parseWebhook()` returns test events.** `ParsedWebhook<E>` includes `ParsedTestEvent` (`type: 'good-webhooks.test'`, `data: { endpointId }`), accepted without an event map entry.
+- **Reserved event names.** `createDelivery()`, `createWebhooks()`, `createManagement()`, and the Better Auth plugin reject event types that start with `good-webhooks.`.
+- **Interfaces hosts implement.** `EndpointManagement` gains `sendTestEvent`, and `ManagementRepository.create(scope, endpoint, limit)` gains `limit`.
+
+### Added
+
+- **Test events.** `endpoints.sendTestEvent(id)` on `createWebhooks()` clients, `EndpointManagement.sendTestEvent(scope, id)`, the Better Auth route `POST /good-webhooks/send-test-event` (`update` permission, 10 requests per minute), and `authClient.goodWebhooks.sendTestEvent()`. It signs one test event like a delivery, sends it to an active or paused endpoint, and returns `TestEventResult`: `ok`, `responseStatus`, the first 4 KiB of `responseBody`, `durationMs`, and `error`. It records nothing, never retries, and doesn't count toward automatic pauses.
+- **`maxEndpoints(scope)`** on `createWebhooks()`, `createPostgresManagement()`, `createManagement()`, and the Better Auth plugin lowers the endpoint limit per scope (0 to 1,000). Both built-in providers enforce it under concurrent creates. Type: `EndpointLimit`.
+- **`eventType` on `Delivery`** and `DeliveryDetail`, from `deliveries.list()`, `get()`, and `replay()`.
+- Docs: a Next.js section in [Add delivery to Better Auth](apps/docs/content/docs/better-auth/delivery.mdx) that builds the engine on first use, so `next build` doesn't need runtime secrets.
+
 ## 0.2.1 (2026-10-17)
 
 Public APIs, dependencies, and database schema (version `5`) are unchanged from `0.2.0`. No migration is required.

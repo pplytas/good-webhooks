@@ -176,6 +176,7 @@ if (detail.replayOf === null) await delivery.deliveries.replay(detail.id)
 | Delivery field                | Type or meaning                                                          |
 | ----------------------------- | ------------------------------------------------------------------------ |
 | `id`, `endpointId`, `eventId` | String identifiers.                                                      |
+| `eventType`                   | The event's type, such as `'invoice.paid'`.                              |
 | `status`                      | `'pending'`, `'in_flight'`, `'succeeded'`, `'failed'`, or `'cancelled'`. |
 | `attemptCount`                | Number of recorded attempts.                                             |
 | `nextAttemptAt`, `createdAt`  | `Date` values.                                                           |
@@ -271,13 +272,14 @@ All worker methods cover every scope in the configured delivery database and sch
 
 ### Attempt outcomes
 
-| Response                                                   | Attempt outcome                                     |
-| ---------------------------------------------------------- | --------------------------------------------------- |
-| `2xx`                                                      | `succeeded`                                         |
-| Network, DNS, or timeout error, `408`, `425`, `429`, `5xx` | `retry` while retries remain, otherwise `failed`    |
-| Any other status, including `3xx`                          | `failed`. Redirects are never followed              |
-| URL resolves to an unsafe address at send time             | `failed`, no retry                                  |
-| Worker stopped or lease expired mid-request                | `abandoned`. The delivery retries if budget remains |
+| Response                                       | Attempt outcome                                                                |
+| ---------------------------------------------- | ------------------------------------------------------------------------------ |
+| `2xx`                                          | `succeeded`                                                                    |
+| `410`                                          | `failed`, no retry                                                             |
+| Any other status, including `3xx` and `4xx`    | `retry` while retries remain, otherwise `failed`. Redirects are never followed |
+| Network, DNS, or timeout error                 | `retry` while retries remain, otherwise `failed`                               |
+| URL resolves to an unsafe address at send time | `failed`, no retry                                                             |
+| Worker stopped or lease expired mid-request    | `abandoned`. The delivery retries if budget remains                            |
 
 Each retry waits its configured delay plus up to 20% random jitter. When a `429` or `503` response carries a `Retry-After` header (seconds or an HTTP date) that asks for longer, the retry waits at least that long, plus the same jitter, unless `retry.respectRetryAfter` is `false`. The worker doesn't schedule a retry that would land after `retry.maxAgeMs`, so the delivery fails.
 

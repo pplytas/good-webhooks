@@ -53,9 +53,10 @@ export const webhooks = createWebhooks({
 | --------------- | ---------------------- | ---------------------------------------------------------------------------------------------------- |
 | `encryptionKey` | `string \| Uint8Array` | Required for the default PostgreSQL management provider. Base64-encoded 32 bytes or a 32-byte array. |
 | `management`    | `EndpointManagement`   | Optional existing provider. Its source supplies recipients and current endpoint state.               |
+| `maxEndpoints`  | `EndpointLimit`        | Optional `(scope) => number` from 0 to 1,000 for the default provider. Default 1,000 per scope.      |
 
 - **Without `management`**, the constructor creates standalone PostgreSQL management from `database`, `schema`, the configured event names, `encryptionKey`, and `allowLocalhost`. `schema` then applies to both the management and delivery tables.
-- **With `management`**, that provider keeps its own database, schema, encryption, and URL-validation configuration. Core options do not reconfigure it, and `encryptionKey` is unused.
+- **With `management`**, that provider keeps its own database, schema, encryption, URL-validation, and endpoint-limit configuration. Core options do not reconfigure it, `encryptionKey` is unused, and `maxEndpoints` throws `INVALID_CONFIG`.
 
 Invalid options throw `INVALID_CONFIG`: a missing event map, a malformed key, a database without `query()` and `connect()`, or any [delivery option](/docs/reference/delivery#createdelivery) out of range. To pass old keys during [key rotation](/docs/operations/key-rotation), build the provider with [`createPostgresManagement`](/docs/reference/postgres) and pass it as `management`.
 
@@ -73,6 +74,7 @@ The client exposes `publish`, `deliveries`, `deliverySettings`, and `worker` fro
 | `endpoints.resume(id)`                     | Records active state after URL validation, including after an automatic pause.                   |
 | `endpoints.remove(id)`                     | Records permanent deletion and clears stored signing secrets.                                    |
 | `endpoints.rotateSecret(id, { graceMs? })` | Returns a new signing secret and the endpoint.                                                   |
+| `endpoints.sendTestEvent(id)`              | Sends one signed test event and returns the receiver's answer. Records nothing.                  |
 | `check()`                                  | Checks the default management provider, if constructed here, then delivery schema compatibility. |
 | `forScope(scope)`                          | Returns the same publication, history, settings, and endpoint methods bound to one named scope.  |
 

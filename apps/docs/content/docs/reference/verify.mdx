@@ -7,7 +7,7 @@ description: Authenticate raw request bytes and decode a typed webhook event.
 
 ```ts
 import { verifyWebhook, parseWebhook, WebhookError } from 'good-webhooks/verify'
-import type { ParsedWebhook, WebhookErrorCode } from 'good-webhooks/verify'
+import type { ParsedTestEvent, ParsedWebhook, WebhookErrorCode } from 'good-webhooks/verify'
 ```
 
 This entry point does not load database or worker code. It remains a Node.js API. The [receiving guide](/docs/guides/receive) shows complete handlers for Next.js, Hono, Express, and `node:http`.
@@ -42,7 +42,7 @@ export async function POST(request: Request) {
 
 Verifies the signature, validates the Good Webhooks JSON envelope, and decodes its payload with the selected Standard Schema validator. It accepts every [`verifyWebhook` input](#verifywebhook) plus `events`, which maps accepted event names to receiver validators.
 
-`ParsedWebhook<E>` is a discriminated union by event `type`. Each member contains `id: string`, its event-name literal, `occurredAt: string`, and `data` with that validator's output type.
+`ParsedWebhook<E>` is a discriminated union by event `type`. Each member contains `id: string`, its event-name literal, `occurredAt: string`, and `data` with that validator's output type. The union also contains `ParsedTestEvent`, with `type: 'good-webhooks.test'` and `data: { endpointId: string }`. `parseWebhook` accepts that [test event](/docs/guides/receive#answer-test-events) without an entry in `events`.
 
 | Rule         | Contract                                                                                                                                |
 | ------------ | --------------------------------------------------------------------------------------------------------------------------------------- |

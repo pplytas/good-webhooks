@@ -47,6 +47,7 @@ Returns the complete [EndpointManagement interface](/docs/reference/management#e
 | `decryptionKeys` | `[]`       | Older keys accepted when reading existing ciphertext.                                     |
 | `schema`         | `'public'` | PostgreSQL schema containing `webhook_endpoints`.                                         |
 | `allowLocalhost` | `false`    | Permits HTTP loopback destinations for development.                                       |
+| `maxEndpoints`   | 1,000      | `(scope) => number` from 0 to 1,000. The most nondeleted endpoints the scope may have.    |
 
 Invalid options, including a malformed key, throw `INVALID_CONFIG`. The host owns the pool and closes it on shutdown.
 
@@ -113,4 +114,4 @@ const management = createManagement({
 
 Creates the storage implementation without the lifecycle API or cipher, as an extension point for [`createManagement`](/docs/reference/management#createmanagement). Most applications use `createPostgresManagement`. `schema` defaults to `'public'` and follows the [identifier rules](/docs/reference/migrations#schema-names); invalid database or schema configuration produces `INVALID_CONFIG`.
 
-The repository scopes every query and uses revision-guarded updates. Creation uses a transaction and an advisory lock to enforce the 1,000 nondeleted endpoint limit; a full scope produces `INVALID_STATE`. Enumeration rejects with `INVALID_STATE` if storage exceeds that limit rather than returning a partial recipient set.
+The repository scopes every query and uses revision-guarded updates. Creation uses a transaction and an advisory lock to enforce the limit it receives (at most 1,000 nondeleted endpoints); a full scope produces `INVALID_STATE`. Enumeration rejects with `INVALID_STATE` if storage exceeds that limit rather than returning a partial recipient set.

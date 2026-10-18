@@ -14,6 +14,7 @@ import type {
   ManagementScope,
   ManagementOptions,
   ManagementRepository,
+  EndpointLimit,
   SecretCipher,
   StoredEndpoint,
   StoredEndpointPatch,
@@ -43,6 +44,7 @@ interface EndpointManagement {
     id: string,
     options?: { graceMs?: number },
   ): Promise<ManagedEndpointWithSecret>
+  sendTestEvent(scope: ManagementScope, id: string): Promise<TestEventResult>
   removeScope(scope: ManagementScope): Promise<void>
   reencrypt(scope: ManagementScope): Promise<number>
 }
@@ -68,19 +70,37 @@ await management.pause(scope, endpoint.id)
 
 All direct calls are trusted server operations. They do not authorize the caller. The first argument is `ManagementScope`: `null` for application scope or `{ type, id }` for a named scope. See [scopes](/docs/concepts/scopes).
 
-| Method                              | Result and behavior                                                                                                                           |
-| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `create(scope, input)`              | `Promise<ManagedEndpointWithSecret>`. Creates an active endpoint and returns `{ endpoint, secret }`.                                          |
-| `list(scope)`                       | `Promise<ManagedEndpoint[]>`. Returns every nondeleted endpoint in the scope.                                                                 |
-| `get(scope, id)`                    | `Promise<ManagedEndpoint>`. Returns an endpoint, including its deleted state.                                                                 |
-| `update(scope, id, patch)`          | `Promise<ManagedEndpoint>`. Changes the supplied mutable fields.                                                                              |
-| `pause(scope, id)`                  | `Promise<ManagedEndpoint>`. Changes the status to `'paused'` with `pauseReason: 'owner'`.                                                     |
-| `resume(scope, id)`                 | `Promise<ManagedEndpoint>`. Validates the current URL, changes status to `'active'`, and clears `pauseReason`. Also resumes automatic pauses. |
-| `remove(scope, id)`                 | `Promise<ManagedEndpoint>`. Sets status to `'deleted'` and clears signing secrets. Removing an already deleted record is idempotent.          |
-| `rotateSecret(scope, id, options?)` | `Promise<ManagedEndpointWithSecret>`. Changes the signing secret. `options.graceMs` defaults to 86,400,000 and accepts 0 through 86,400,000.  |
-| `removeScope(scope)`                | `Promise<void>`. Deletes the scope's currently registered endpoints.                                                                          |
-| `reencrypt(scope)`                  | `Promise<number>`. Rewrites live signing-secret ciphertext using the current storage encryption key and returns the count.                    |
-| `source`                            | Trusted sender reads. See [EndpointSource](#endpointsource).                                                                                  |
+| Method                              | Result and behavior                                                                                                                                  |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `create(scope, input)`              | `Promise<ManagedEndpointWithSecret>`. Creates an active endpoint and returns `{ endpoint, secret }`.                                                 |
+| `list(scope)`                       | `Promise<ManagedEndpoint[]>`. Returns every nondeleted endpoint in the scope.                                                                        |
+| `get(scope, id)`                    | `Promise<ManagedEndpoint>`. Returns an endpoint, including its deleted state.                                                                        |
+| `update(scope, id, patch)`          | `Promise<ManagedEndpoint>`. Changes the supplied mutable fields.                                                                                     |
+| `pause(scope, id)`                  | `Promise<ManagedEndpoint>`. Changes the status to `'paused'` with `pauseReason: 'owner'`.                                                            |
+| `resume(scope, id)`                 | `Promise<ManagedEndpoint>`. Validates the current URL, changes status to `'active'`, and clears `pauseReason`. Also resumes automatic pauses.        |
+| `remove(scope, id)`                 | `Promise<ManagedEndpoint>`. Sets status to `'deleted'` and clears signing secrets. Removing an already deleted record is idempotent.                 |
+| `rotateSecret(scope, id, options?)` | `Promise<ManagedEndpointWithSecret>`. Changes the signing secret. `options.graceMs` defaults to 86,400,000 and accepts 0 through 86,400,000.         |
+| `sendTestEvent(scope, id)`          | `Promise<TestEventResult>`. Signs and sends one [test event](#test-events) to an active or paused endpoint. Deleted endpoints throw `INVALID_STATE`. |
+| `removeScope(scope)`                | `Promise<void>`. Deletes the scope's currently registered endpoints.                                                                                 |
+| `reencrypt(scope)`                  | `Promise<number>`. Rewrites live signing-secret ciphertext using the current storage encryption key and returns the count.                           |
+| `source`                            | Trusted sender reads. See [EndpointSource](#endpointsource).                                                                                         |
+
+### Test events
+
+`sendTestEvent` sends `{ id, type: 'good-webhooks.test', occurredAt, data: { endpointId } }` with a new `id` each time, signed like a delivery: with the current secret, plus the previous one during a rotation overlap. The destination is checked the same way, and redirects are not followed. It waits at most 10 seconds and keeps the first 4 KiB of the response. It writes nothing, retries nothing, and leaves automatic pauses alone. The request leaves from the calling process.
+
+```ts
+interface TestEventResult {
+  eventId: string
+  ok: boolean // a 2xx response with no transport error
+  responseStatus: number | null
+  responseBody: string
+  durationMs: number
+  error: string | null // same values as Attempt.error
+}
+```
+
+A receiver failure is a result with `ok: false`, never a thrown error. An unsafe destination at send time is `error: 'unsafe_url'`.
 
 ### Inputs and limits
 
@@ -94,7 +114,7 @@ All direct calls are trusted server operations. They do not authorize the caller
 | URL          | At most 2,048 characters. Must pass the configured destination validation, otherwise `UNSAFE_URL`. |
 | Description  | At most 2,000 characters, no null bytes.                                                           |
 | `eventTypes` | 1 through 100 configured event names. Duplicates are collapsed.                                    |
-| Endpoints    | At most 1,000 nondeleted endpoints per scope.                                                      |
+| Endpoints    | At most 1,000 nondeleted endpoints per scope, or fewer with `maxEndpoints`.                        |
 | `graceMs`    | Integer from 0 through 86,400,000. Default 86,400,000.                                             |
 
 ### Results
@@ -213,14 +233,15 @@ export const management = createManagement({
 
 Creates the shared endpoint lifecycle over custom persistence and encryption.
 
-| Option               | Contract                                                                                                             |
-| -------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `repository`         | Required `ManagementRepository`.                                                                                     |
-| `cipher`             | Required `SecretCipher`.                                                                                             |
-| `eventTypes`         | Required nonempty array of names matching `^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,119}$`. No payload validators are required. |
-| `allowLocalhost`     | Optional boolean, default `false`. Allows development HTTP loopback URLs.                                            |
-| `validateUrl(url)`   | Optional async host check after portable URL validation.                                                             |
-| `scopeExists(scope)` | Optional async ownership check. Returns `false` for a missing owner and rejects on lookup failure.                   |
+| Option                | Contract                                                                                                                                                     |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `repository`          | Required `ManagementRepository`.                                                                                                                             |
+| `cipher`              | Required `SecretCipher`.                                                                                                                                     |
+| `eventTypes`          | Required nonempty array of names matching `^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,119}$` and not starting with `good-webhooks.`. No payload validators are required.  |
+| `allowLocalhost`      | Optional boolean, default `false`. Allows development HTTP loopback URLs.                                                                                    |
+| `validateUrl(url)`    | Optional async host check after portable URL validation.                                                                                                     |
+| `scopeExists(scope)`  | Optional async ownership check. Returns `false` for a missing owner and rejects on lookup failure.                                                           |
+| `maxEndpoints(scope)` | Optional `EndpointLimit`: returns, or resolves to, the scope's endpoint limit from 0 to 1,000. Default 1,000. Other values throw `INVALID_CONFIG` on create. |
 
 Invalid options throw `INVALID_CONFIG`. Portable URL validation requires HTTPS and rejects credentials, fragments, and private or reserved IP literals. Loopback hosts, including `localhost`, need `allowLocalhost`, which also permits HTTP for them.
 
@@ -238,7 +259,11 @@ With `scopeExists`, ordinary reads and writes reject missing owners with `NOT_FO
 interface ManagementRepository {
   list(scope: ManagementScope): Promise<StoredEndpoint[]>
   get(scope: ManagementScope, id: string): Promise<StoredEndpoint | null>
-  create(scope: ManagementScope, endpoint: Omit<StoredEndpoint, 'id'>): Promise<StoredEndpoint>
+  create(
+    scope: ManagementScope,
+    endpoint: Omit<StoredEndpoint, 'id'>,
+    limit: number,
+  ): Promise<StoredEndpoint>
   update(
     scope: ManagementScope,
     id: string,
@@ -248,12 +273,12 @@ interface ManagementRepository {
 }
 ```
 
-| Method   | Contract                                                                                                                          |
-| -------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `list`   | Returns every live record in the scope without truncation.                                                                        |
-| `get`    | Returns the record, including a deleted one, or `null`.                                                                           |
-| `create` | Atomically inserts the record and enforces the strict 1,000-record scope limit.                                                   |
-| `update` | Atomically guards on scope, ID, and revision, increments the revision, and applies the patch. A revision conflict returns `null`. |
+| Method   | Contract                                                                                                                               |
+| -------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `list`   | Returns every live record in the scope without truncation.                                                                             |
+| `get`    | Returns the record, including a deleted one, or `null`.                                                                                |
+| `create` | Atomically inserts the record unless the scope already has `limit` nondeleted records (0 to 1,000), then rejects with `INVALID_STATE`. |
+| `update` | Atomically guards on scope, ID, and revision, increments the revision, and applies the patch. A revision conflict returns `null`.      |
 
 Repository errors propagate. [`createPostgresManagementRepository`](/docs/reference/postgres#createpostgresmanagementrepository) is the built-in implementation.
 

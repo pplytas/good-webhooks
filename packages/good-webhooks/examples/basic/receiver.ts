@@ -19,7 +19,7 @@ export async function readBody(request: IncomingMessage): Promise<Buffer> {
   return Buffer.concat(chunks, size)
 }
 
-/** Expected request failures are terminal. Unexpected server failures must remain retryable. */
+/** Request failures answer 4xx and server failures 5xx. The sender retries both; only 410 stops it. */
 export function respondToRequestError(error: unknown, response: ServerResponse): void {
   if (error instanceof BodyTooLargeError) {
     response.writeHead(413, { Connection: 'close' }).end('Webhook body is too large')

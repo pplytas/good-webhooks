@@ -81,7 +81,8 @@ const receiver = createServer(async (request, response) => {
       secret,
       events,
     })
-    console.log(`✓ Receiver verified ${event.type} for ${event.data.invoiceId}`)
+    if (event.type === 'invoice.paid')
+      console.log(`✓ Receiver verified ${event.type} for ${event.data.invoiceId}`)
     response.writeHead(200).end()
   } catch (error) {
     console.error('✗ Receiver rejected the request:', error)

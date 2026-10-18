@@ -19,13 +19,14 @@ Follow these. They are the mistakes agents make most often with this library.
 3. Never apply migrations at runtime. Write `getPostgresMigration()` output to a migration file and apply it with the project's migration tool. Call `check()` at startup. When `check()` reports `SCHEMA_MISMATCH` after a package upgrade, write `getPostgresUpgrade({ from })` output to a new migration file; the message names the call.
 4. Receivers pass the raw body (string or `Uint8Array`) to `parseWebhook()`, never parsed JSON. In Express use `express.raw({ type: 'application/json', limit: '512kb' })` on the route.
 5. Delivery is at least once with no ordering. Receivers insert `event.id` into a table with a unique key in the same transaction as their change, and respond `2xx` for repeats.
-6. Receivers respond `400` only for `WebhookError` codes `SIGNATURE_INVALID`, `SIGNATURE_EXPIRED`, `PAYLOAD_INVALID`. Everything else is `500`, so the sender retries.
+6. Receivers respond `400` only for `WebhookError` codes `SIGNATURE_INVALID`, `SIGNATURE_EXPIRED`, `PAYLOAD_INVALID`. Everything else is `500`. The sender retries both; only `410` stops it, and that pauses the endpoint.
 7. `forScope(scope)` does not authorize. Check that the caller may act for that customer first. Never take a scope ID from a request body unchecked.
 8. When the business write uses the same database, publish inside it: `publish(input, { transaction: client })` with a checked-out client, not the pool.
 9. Give every `publish()` that can repeat an `idempotencyKey` derived from the business fact, such as `invoice.paid:${invoiceId}`.
 10. `allowLocalhost: true` is for local development only.
 11. Signing secrets (`whsec_…`) are returned once by `create()` and `rotateSecret()`. Never log them.
 12. The worker pauses an endpoint whose attempts have all failed for five days, or that answers `410`. Show `endpoint.pauseReason` (`'owner'`, `'failing'`, `'gone'`) in endpoint UIs, tell owners through `hooks: { onEndpointPaused }` on `createWebhooks()`, and reactivate with `resume(id)`. A custom `EndpointSource` without `pause()` needs `endpointHealth: false` to run a worker.
+13. `parseWebhook()` also returns test events (`type: 'good-webhooks.test'`, sent by `endpoints.sendTestEvent(id)`) without an event map entry. Receivers answer them `2xx` and skip processing, so check `event.type` before reading `event.data`. Event names starting with `good-webhooks.` are reserved.
 
 ## Setup (standalone PostgreSQL)
 
@@ -110,6 +111,7 @@ const { endpoint, secret } = await customer.endpoints.create({
   eventTypes: ['invoice.paid'],
 })
 // update(id, patch) · pause(id) · resume(id) · rotateSecret(id, { graceMs }) · remove(id)
+// sendTestEvent(id): one signed test request, returns { ok, responseStatus, responseBody, error }
 // endpoint.pauseReason: 'owner' after pause(), 'failing' or 'gone' after an automatic pause
 ```
 
@@ -130,6 +132,7 @@ export async function POST(request: Request) {
       secret: process.env.WEBHOOK_SECRET!, // an array during a rotation
       events,
     })
+    if (event.type === 'good-webhooks.test') return new Response(null, { status: 204 })
     // In one transaction: INSERT event.id into a receipts table (ON CONFLICT DO NOTHING),
     // and apply the change only if the insert added a row.
     return new Response(null, { status: 204 })

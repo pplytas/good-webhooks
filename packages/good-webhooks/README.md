@@ -40,6 +40,7 @@ You publish typed events. Good Webhooks stores them in your PostgreSQL database,
 - **Transactional publish.** Pass your open PostgreSQL client. If your write rolls back, the event never existed.
 - **Retries and replay.** A bounded retry schedule that honors `Retry-After`, every attempt recorded, and replay without changing the event ID.
 - **Endpoint health.** The worker pauses endpoints that fail for days or answer `410 Gone`, never deletes them, and calls a hook so you can tell their owners.
+- **Test events.** An endpoint owner sends one signed test request and sees the receiver's answer. Nothing is recorded or retried.
 - **Better Auth plugin.** Signed-in users manage their own endpoints through authenticated routes.
 - **Nothing implicit.** No connections, migrations, or workers start on their own. You own the pool and the process.
 

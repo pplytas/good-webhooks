@@ -70,7 +70,7 @@ The Better Auth routes are the exception: they check the session, organization m
 
 - `type` is 1 to 64 characters and `id` is 1 to 200. Neither may be blank or contain null bytes.
 - The same `id` under two `type` values is two different scopes.
-- A scope holds at most 1,000 live endpoints.
+- A scope holds at most 1,000 live endpoints. `maxEndpoints` can lower that per scope.
 - Idempotency keys are unique per scope, not globally.
 
 ## When an owner goes away

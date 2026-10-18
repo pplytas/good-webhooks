@@ -108,7 +108,7 @@ export async function POST(request: Request) {
       secret: process.env.WEBHOOK_SECRET!,
       events,
     })
-    // event.type is 'invoice.paid'; event.data is typed.
+    // Check event.type; then event.data is typed.
     return new Response(null, { status: 204 })
   } catch (error) {
     if (error instanceof WebhookError) {
@@ -134,7 +134,7 @@ app.post('/webhooks', limit, async (c) => {
       secret: process.env.WEBHOOK_SECRET!,
       events,
     })
-    // event.type is 'invoice.paid'; event.data is typed.
+    // Check event.type; then event.data is typed.
     return c.body(null, 204)
   } catch (error) {
     if (error instanceof WebhookError) {
@@ -166,7 +166,7 @@ app.post('/webhooks', raw, async (req, res) => {
       secret: process.env.WEBHOOK_SECRET!,
       events,
     })
-    // event.type is 'invoice.paid'; event.data is typed.
+    // Check event.type; then event.data is typed.
     res.sendStatus(204)
   } catch (error) {
     if (error instanceof WebhookError) {

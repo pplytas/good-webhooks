@@ -95,7 +95,8 @@ Docs: https://good-webhooks.dev/llms.txt (fetch the linked .md pages for details
 
 - Receivers must pass the raw request body (string or bytes) to `parseWebhook()`. Never parsed JSON.
 - Receivers must record `event.id` in the same transaction as their change. Delivery is at least once.
-- Respond 400 only for SIGNATURE_INVALID, SIGNATURE_EXPIRED, PAYLOAD_INVALID. Other errors are 500 so the sender retries.
+- Respond 400 only for SIGNATURE_INVALID, SIGNATURE_EXPIRED, PAYLOAD_INVALID. Other errors are 500. The sender retries both; only 410 stops it.
+- Answer `good-webhooks.test` events with 2xx and skip processing. Check `event.type` before reading `event.data`.
 - `publish()` only stores the event. Nothing is sent unless a worker runs `worker.run()` or `worker.runOnce()`.
 - Load `WEBHOOK_ENCRYPTION_KEY` from secrets. Never call `generateEncryptionKey()` at startup.
 - Apply SQL from `getPostgresMigration()` with the migration tool. The library never runs migrations.

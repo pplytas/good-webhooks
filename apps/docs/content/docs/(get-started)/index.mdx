@@ -70,7 +70,7 @@ const event = await parseWebhook({
   secret: process.env.WEBHOOK_SECRET!,
   events,
 })
-event.data.amount // number
+if (event.type === 'invoice.paid') event.data.amount // number
 ```
 
 </Tab>

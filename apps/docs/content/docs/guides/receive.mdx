@@ -173,7 +173,7 @@ if (event.type === 'invoice.paid') {
 }
 ```
 
-An event type that is not in your map is rejected as `PAYLOAD_INVALID`. There is no "ignore unknown events" mode.
+An event type that is not in your map is rejected as `PAYLOAD_INVALID`. There is no "ignore unknown events" mode. The one exception is the [test event](#answer-test-events), which every receiver accepts.
 
 <Accordions>
 <Accordion title="My sender's schema transforms values">
@@ -190,7 +190,7 @@ Zod 4's Standard Schema implementation tries synchronously first, then retries a
 
 ## Respond with the right status
 
-The sender retries `5xx` and network errors, and gives up on most `4xx`. Return `400` only when the request itself is bad:
+The sender retries every response except `2xx` and `410`, so a `400` doesn't stop retries. It tells the endpoint's owner that the request was at fault, not your code, so return `400` only when the request itself is bad:
 
 | Error code          | Meaning                                                             | Respond |
 | ------------------- | ------------------------------------------------------------------- | ------- |
@@ -202,6 +202,16 @@ The sender retries `5xx` and network errors, and gives up on most `4xx`. Return 
 | Anything else       | Your database, your business logic, a thrown validator              | `500`   |
 
 Error messages carry no payload values. Unexpected errors keep a `cause` for your logs; don't send it back.
+
+## Answer test events
+
+An endpoint owner can [send a test event](/docs/guides/endpoints#send-a-test-event) to check your receiver. `parseWebhook()` accepts it without an entry in your event map and returns `type: 'good-webhooks.test'` with `data: { endpointId }`. Answer `2xx` and skip processing:
+
+```ts
+if (event.type === 'good-webhooks.test') return new Response(null, { status: 204 })
+```
+
+Because the test event is part of the union, check `event.type` before reading `event.data`, even with a single event in your map. Event names starting with `good-webhooks.` are reserved, so your map can't define them.
 
 ## Process each event once
 
@@ -215,6 +225,7 @@ CREATE TABLE webhook_receipts (
 ```
 
 ```ts
+if (event.type === 'good-webhooks.test') return // Answer 2xx; nothing to process.
 await client.query('BEGIN')
 const receipt = await client.query(
   'INSERT INTO webhook_receipts (event_id) VALUES ($1) ON CONFLICT DO NOTHING RETURNING event_id',

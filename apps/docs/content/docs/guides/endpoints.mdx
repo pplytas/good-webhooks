@@ -80,6 +80,19 @@ await organization.endpoints.remove(id)
 
 These calls return as soon as the record changes. A request already being sent can still arrive after a pause or remove. See [endpoint changes while work is queued](/docs/concepts/delivery-guarantees#endpoint-changes-while-work-is-queued).
 
+## Send a test event
+
+Let an owner check their receiver before real events arrive, or before resuming a paused endpoint:
+
+```ts
+const result = await organization.endpoints.sendTestEvent(id)
+if (!result.ok) console.log(result.responseStatus, result.error, result.responseBody)
+```
+
+The call signs a `good-webhooks.test` event with the endpoint's signing secrets, sends it once, and returns what the receiver answered: `ok`, `responseStatus`, the first 4 KiB of `responseBody`, `durationMs`, and `error`. It waits at most 10 seconds. A test creates no delivery, is never retried, and doesn't count toward automatic pauses. Paused endpoints can be tested; deleted ones can't. The request leaves from the process that calls `sendTestEvent`, not from the worker.
+
+Receivers built with `parseWebhook()` accept test events without listing them. See [answer test events](/docs/guides/receive#answer-test-events).
+
 ## Automatic pauses
 
 The worker pauses an endpoint when every attempt to it has failed for five days, or when it answers `410 Gone`. Nothing is deleted. Subscriptions and queued deliveries stay, and `resume` works as usual once the receiver works again. `pauseReason` tells the two kinds of pause apart:
@@ -95,7 +108,13 @@ To tell the owner when it happens, use the [`onEndpointPaused` hook](/docs/guide
 
 ## Limits
 
-A scope holds at most 1,000 live endpoints, and each endpoint subscribes to 1 to 100 of your configured event names. URLs must use HTTPS, carry no credentials, and be at most 2,048 characters. The [management reference](/docs/reference/management#inputs-and-limits) lists every limit.
+A scope holds at most 1,000 live endpoints, and each endpoint subscribes to 1 to 100 of your configured event names. To allow fewer, pass `maxEndpoints` to `createWebhooks`, `createPostgresManagement`, or the Better Auth plugin. It receives the scope (`null` for application scope) and returns a limit from 0 to 1,000:
+
+```ts
+maxEndpoints: (scope) => (scope === null ? 1000 : 3)
+```
+
+At the limit, `create` throws `INVALID_STATE`. Lowering a limit never removes endpoints; it only blocks new ones. URLs must use HTTPS, carry no credentials, and be at most 2,048 characters. The [management reference](/docs/reference/management#inputs-and-limits) lists every limit.
 
 ## When a scope owner leaves
 

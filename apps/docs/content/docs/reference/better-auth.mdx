@@ -38,7 +38,7 @@ export const auth = betterAuth({
 })
 ```
 
-Returns the `good-webhooks` Better Auth server plugin. It adds one management model and eight authenticated POST routes. It does not publish events, create delivery storage, or start a worker.
+Returns the `good-webhooks` Better Auth server plugin. It adds one management model and nine authenticated POST routes. It does not publish events, create delivery storage, or start a worker.
 
 | Option             | Contract                                                                                                |
 | ------------------ | ------------------------------------------------------------------------------------------------------- |
@@ -47,6 +47,7 @@ Returns the `good-webhooks` Better Auth server plugin. It adds one management mo
 | `schema.modelName` | Optional physical model name, default `webhookEndpoint`. This is not a PostgreSQL namespace.            |
 | `schema.fields`    | Optional mapping from logical fields to physical field names.                                           |
 | `authorizeScope`   | Optional policy required for application and custom scopes. Cannot override user or organization rules. |
+| `maxEndpoints`     | Optional `(scope) => number` from 0 to 1,000. The most endpoints a scope may have. Default 1,000.       |
 
 ### Storage model
 
@@ -71,18 +72,21 @@ export async function createEndpoint(request: Request) {
 
 Each route lives under Better Auth's configured base path. Every route uses sensitive session middleware and disables response storage. Server calls use `auth.api.<method>({ body, headers })` with the caller's session headers. Browsers use the [client plugin](#client-plugin).
 
-| Server method                 | POST path                      | Body besides `scope?`                       | Result                 | Action   |
-| ----------------------------- | ------------------------------ | ------------------------------------------- | ---------------------- | -------- |
-| `createWebhookEndpoint`       | `/good-webhooks/create`        | `url`, `eventTypes`, `description?`         | `{ endpoint, secret }` | `create` |
-| `listWebhookEndpoints`        | `/good-webhooks/list`          | None                                        | `WebhookEndpointDTO[]` | `read`   |
-| `getWebhookEndpoint`          | `/good-webhooks/get`           | `id`                                        | `WebhookEndpointDTO`   | `read`   |
-| `updateWebhookEndpoint`       | `/good-webhooks/update`        | `id`, `url?`, `description?`, `eventTypes?` | `WebhookEndpointDTO`   | `update` |
-| `pauseWebhookEndpoint`        | `/good-webhooks/pause`         | `id`                                        | `WebhookEndpointDTO`   | `update` |
-| `resumeWebhookEndpoint`       | `/good-webhooks/resume`        | `id`                                        | `WebhookEndpointDTO`   | `update` |
-| `removeWebhookEndpoint`       | `/good-webhooks/remove`        | `id`                                        | `WebhookEndpointDTO`   | `delete` |
-| `rotateWebhookEndpointSecret` | `/good-webhooks/rotate-secret` | `id`, `graceMs?`                            | `{ endpoint, secret }` | `update` |
+| Server method                  | POST path                        | Body besides `scope?`                       | Result                 | Action   |
+| ------------------------------ | -------------------------------- | ------------------------------------------- | ---------------------- | -------- |
+| `createWebhookEndpoint`        | `/good-webhooks/create`          | `url`, `eventTypes`, `description?`         | `{ endpoint, secret }` | `create` |
+| `listWebhookEndpoints`         | `/good-webhooks/list`            | None                                        | `WebhookEndpointDTO[]` | `read`   |
+| `getWebhookEndpoint`           | `/good-webhooks/get`             | `id`                                        | `WebhookEndpointDTO`   | `read`   |
+| `updateWebhookEndpoint`        | `/good-webhooks/update`          | `id`, `url?`, `description?`, `eventTypes?` | `WebhookEndpointDTO`   | `update` |
+| `pauseWebhookEndpoint`         | `/good-webhooks/pause`           | `id`                                        | `WebhookEndpointDTO`   | `update` |
+| `resumeWebhookEndpoint`        | `/good-webhooks/resume`          | `id`                                        | `WebhookEndpointDTO`   | `update` |
+| `removeWebhookEndpoint`        | `/good-webhooks/remove`          | `id`                                        | `WebhookEndpointDTO`   | `delete` |
+| `rotateWebhookEndpointSecret`  | `/good-webhooks/rotate-secret`   | `id`, `graceMs?`                            | `{ endpoint, secret }` | `update` |
+| `sendWebhookEndpointTestEvent` | `/good-webhooks/send-test-event` | `id`                                        | `TestEventResult`      | `update` |
 
 `scope` accepts `{ type, id }`, `null`, or omission. Bodies reject unknown fields. Creation and updates use the [management input limits](/docs/reference/management#inputs-and-limits). An update accepts `description: null` to clear the value. Rotation accepts an integer `graceMs` from 0 through 86,400,000, defaulting to 86,400,000.
+
+The test event route returns the receiver's answer with status 200 even when the receiver fails; see [test events](/docs/reference/management#test-events). Each call makes your server send a request, so the plugin rate-limits the route to 10 requests per 60 seconds. Better Auth applies plugin rate limits only when its rate limiter is on, which by default means production.
 
 `WebhookEndpointDTO<EventType>` contains `id`, `url`, nullable `description`, `eventTypes`, `status`, `createdAt`, and `updatedAt`. Its timestamps are ISO strings, unlike trusted provider results, which contain `Date` values. Ordinary route results contain no signing material. Creation and rotation return the new secret separately.
 
@@ -191,16 +195,17 @@ console.log(data.secret) // Show once. No later response contains it.
 
 All methods return Better Auth's client result containing `data` and `error`. Request bodies and data shapes match the [server routes](#authenticated-routes).
 
-| Client method                                 | Server method                 | `data`                 |
-| --------------------------------------------- | ----------------------------- | ---------------------- |
-| `authClient.goodWebhooks.create(input)`       | `createWebhookEndpoint`       | `{ endpoint, secret }` |
-| `authClient.goodWebhooks.list(input)`         | `listWebhookEndpoints`        | `WebhookEndpointDTO[]` |
-| `authClient.goodWebhooks.get(input)`          | `getWebhookEndpoint`          | `WebhookEndpointDTO`   |
-| `authClient.goodWebhooks.update(input)`       | `updateWebhookEndpoint`       | `WebhookEndpointDTO`   |
-| `authClient.goodWebhooks.pause(input)`        | `pauseWebhookEndpoint`        | `WebhookEndpointDTO`   |
-| `authClient.goodWebhooks.resume(input)`       | `resumeWebhookEndpoint`       | `WebhookEndpointDTO`   |
-| `authClient.goodWebhooks.remove(input)`       | `removeWebhookEndpoint`       | `WebhookEndpointDTO`   |
-| `authClient.goodWebhooks.rotateSecret(input)` | `rotateWebhookEndpointSecret` | `{ endpoint, secret }` |
+| Client method                                  | Server method                  | `data`                 |
+| ---------------------------------------------- | ------------------------------ | ---------------------- |
+| `authClient.goodWebhooks.create(input)`        | `createWebhookEndpoint`        | `{ endpoint, secret }` |
+| `authClient.goodWebhooks.list(input)`          | `listWebhookEndpoints`         | `WebhookEndpointDTO[]` |
+| `authClient.goodWebhooks.get(input)`           | `getWebhookEndpoint`           | `WebhookEndpointDTO`   |
+| `authClient.goodWebhooks.update(input)`        | `updateWebhookEndpoint`        | `WebhookEndpointDTO`   |
+| `authClient.goodWebhooks.pause(input)`         | `pauseWebhookEndpoint`         | `WebhookEndpointDTO`   |
+| `authClient.goodWebhooks.resume(input)`        | `resumeWebhookEndpoint`        | `WebhookEndpointDTO`   |
+| `authClient.goodWebhooks.remove(input)`        | `removeWebhookEndpoint`        | `WebhookEndpointDTO`   |
+| `authClient.goodWebhooks.rotateSecret(input)`  | `rotateWebhookEndpointSecret`  | `{ endpoint, secret }` |
+| `authClient.goodWebhooks.sendTestEvent(input)` | `sendWebhookEndpointTestEvent` | `TestEventResult`      |
 
 Each input accepts optional `scope`. Omission selects the signed-in user's personal scope. `scope: null` requests application scope and requires server policy. The client does not weaken server authorization. See [scope authorization](#scope-authorization).
 
