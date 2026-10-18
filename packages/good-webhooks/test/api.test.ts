@@ -40,7 +40,7 @@ describe('public server API', () => {
     const app = createWebhooks({ ...options, maxEndpoints: () => 1 })
     const input = { url: 'http://127.0.0.1:12345', eventTypes: ['order.created'] as const }
     await app.endpoints.create(input)
-    await expect(app.endpoints.create(input)).rejects.toMatchObject({ code: 'INVALID_STATE' })
+    await expect(app.endpoints.create(input)).rejects.toMatchObject({ code: 'ENDPOINT_LIMIT' })
     expect(() =>
       createWebhooks({
         ...options,

@@ -224,7 +224,7 @@ describe('schema setup and endpoint management', () => {
     )
     expect((await store.listEndpoints('scope-a')).length).toBe(1000)
     await expect(store.createEndpoint('scope-a', input)).rejects.toMatchObject({
-      code: 'INVALID_STATE',
+      code: 'ENDPOINT_LIMIT',
     })
     await store.removeEndpoint('scope-a', endpoint.id)
     await store.createEndpoint('scope-a', input)

@@ -4,6 +4,7 @@ export type WebhookErrorCode =
   | 'UNSAFE_URL'
   | 'NOT_FOUND'
   | 'INVALID_STATE'
+  | 'ENDPOINT_LIMIT'
   | 'IDEMPOTENCY_CONFLICT'
   | 'REPLAY_IN_PROGRESS'
   | 'SCHEMA_MISMATCH'

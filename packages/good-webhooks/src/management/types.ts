@@ -79,7 +79,7 @@ export interface ManagementRepository {
   get(scope: ManagementScope, id: string): Promise<StoredEndpoint | null>
   /**
    * Atomically insert a complete record unless the scope already has `limit` nondeleted
-   * endpoints. `limit` is an integer from 0 to 1000. Reject with INVALID_STATE at the limit.
+   * endpoints. `limit` is an integer from 0 to 1000. Reject with ENDPOINT_LIMIT at the limit.
    */
   create(
     scope: ManagementScope,

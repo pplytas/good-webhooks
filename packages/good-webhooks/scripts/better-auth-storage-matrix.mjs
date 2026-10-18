@@ -79,7 +79,7 @@ async function exercise(name, database, generateId, migrate = true) {
     5,
     JSON.stringify(failures.map(({ reason }) => ({ message: reason.message, code: reason.code }))),
   )
-  assert.ok(failures.every(({ reason }) => reason.code === 'INVALID_STATE'))
+  assert.ok(failures.every(({ reason }) => reason.code === 'ENDPOINT_LIMIT'))
   const rows = await repository.list(scope)
   assert.equal(rows.length, 1000)
   assert.ok(rows.every((row) => typeof row.id === 'string' && row.eventTypes[0] === 'invoice.paid'))

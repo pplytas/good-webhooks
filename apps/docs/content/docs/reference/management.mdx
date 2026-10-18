@@ -239,7 +239,7 @@ Creates the shared endpoint lifecycle over custom persistence and encryption.
 | `cipher`              | Required `SecretCipher`.                                                                                                                                     |
 | `eventTypes`          | Required nonempty array of names matching `^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,119}$` and not starting with `good-webhooks.`. No payload validators are required.  |
 | `allowLocalhost`      | Optional boolean, default `false`. Allows development HTTP loopback URLs.                                                                                    |
-| `validateUrl(url)`    | Optional async host check after portable URL validation.                                                                                                     |
+| `validateUrl(url)`    | Optional async host check after portable URL validation. Runs on create, URL update, and resume, not on each send.                                           |
 | `scopeExists(scope)`  | Optional async ownership check. Returns `false` for a missing owner and rejects on lookup failure.                                                           |
 | `maxEndpoints(scope)` | Optional `EndpointLimit`: returns, or resolves to, the scope's endpoint limit from 0 to 1,000. Default 1,000. Other values throw `INVALID_CONFIG` on create. |
 

@@ -86,7 +86,7 @@ Each route lives under Better Auth's configured base path. Every route uses sens
 
 `scope` accepts `{ type, id }`, `null`, or omission. Bodies reject unknown fields. Creation and updates use the [management input limits](/docs/reference/management#inputs-and-limits). An update accepts `description: null` to clear the value. Rotation accepts an integer `graceMs` from 0 through 86,400,000, defaulting to 86,400,000.
 
-The test event route returns the receiver's answer with status 200 even when the receiver fails; see [test events](/docs/reference/management#test-events). Each call makes your server send a request, so the plugin rate-limits the route to 10 requests per 60 seconds. Better Auth applies plugin rate limits only when its rate limiter is on, which by default means production.
+The test event route returns the receiver's answer with status 200 even when the receiver fails; see [test events](/docs/reference/management#test-events). Each call makes your server send a request, so the plugin rate-limits the route to 10 requests per 60 seconds. Better Auth applies plugin rate limits only when its rate limiter is on, which by default means production. Your own `rateLimit.customRules` replace plugin rules for the paths they match, and the first matching key wins, so a wildcard such as `'/good-webhooks/*'` also replaces this limit. List `'/good-webhooks/send-test-event'` before it to keep one.
 
 `WebhookEndpointDTO<EventType>` contains `id`, `url`, nullable `description`, `eventTypes`, `status`, `createdAt`, and `updatedAt`. Its timestamps are ISO strings, unlike trusted provider results, which contain `Date` values. Ordinary route results contain no signing material. Creation and rotation return the new secret separately.
 

@@ -82,8 +82,8 @@ describe('standalone PostgreSQL management', () => {
     for (const result of attempts)
       if (result.status === 'rejected')
         expect(result.reason).toMatchObject({
-          code: 'INVALID_STATE',
-          message: 'A scope may have at most 2 nondeleted endpoints.',
+          code: 'ENDPOINT_LIMIT',
+          message: 'This scope already has its limit of 2 endpoints.',
         })
     await Promise.all(Array.from({ length: 5 }, () => management.create(null, input)))
     const [first] = await management.list(user)
@@ -111,6 +111,11 @@ describe('standalone PostgreSQL management', () => {
     )
     const repository = createPostgresManagementRepository(pool)
     const stored = (await repository.get(null, first.endpoint.id))!
+    // An invalid limit is an input error, not a full scope.
+    for (const limit of [-1, 1001, Number.NaN])
+      await expect(repository.create(null, stored, limit)).rejects.toMatchObject({
+        code: 'INVALID_INPUT',
+      })
     // An insert failure must roll back cleanly and leave the final slot available.
     await expect(
       repository.create(null, { ...stored, eventTypes: [] }, 1000),
@@ -123,7 +128,7 @@ describe('standalone PostgreSQL management', () => {
     expect(attempts.filter((result) => result.status === 'fulfilled')).toHaveLength(1)
     for (const result of attempts) {
       if (result.status === 'rejected')
-        expect(result.reason).toMatchObject({ code: 'INVALID_STATE' })
+        expect(result.reason).toMatchObject({ code: 'ENDPOINT_LIMIT' })
     }
     expect(await management.source.matchRecipients(null, 'order.created')).toHaveLength(1000)
     await management.remove(null, first.endpoint.id)

@@ -63,6 +63,11 @@ export function createPostgresManagementRepository(
       return result.rows[0] ?? null
     },
     async create(scope, endpoint, limit) {
+      if (!Number.isSafeInteger(limit) || limit < 0 || limit > ENDPOINT_LIMIT)
+        throw new WebhookError(
+          'INVALID_INPUT',
+          `The endpoint limit must be from 0 to ${ENDPOINT_LIMIT}.`,
+        )
       const scopeId = key(scope)
       const client = await database.connect()
       try {
@@ -74,15 +79,10 @@ export function createPostgresManagementRepository(
           `SELECT count(*)::integer AS count FROM ${table} WHERE scope_key=$1 AND status<>'deleted'`,
           [scopeId],
         )
-        if (
-          !Number.isSafeInteger(limit) ||
-          limit < 0 ||
-          limit > ENDPOINT_LIMIT ||
-          (count.rows[0]?.count ?? 0) >= limit
-        )
+        if ((count.rows[0]?.count ?? 0) >= limit)
           throw new WebhookError(
-            'INVALID_STATE',
-            `A scope may have at most ${limit} nondeleted endpoints.`,
+            'ENDPOINT_LIMIT',
+            `This scope already has its limit of ${limit} endpoints.`,
           )
         const result = await client.query<StoredEndpoint & Record<string, unknown>>(
           `INSERT INTO ${table}(id,scope_key,url,description,event_types,status,pause_reason,secret,previous_secret,previous_secret_expires_at,revision,created_at,updated_at)
