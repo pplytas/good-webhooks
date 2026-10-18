@@ -120,14 +120,14 @@ The policy defaults to denial and never overrides user or organization authoriza
 
 ## Route errors
 
-| Condition                       | HTTP status                                         |
-| ------------------------------- | --------------------------------------------------- |
-| Missing session                 | `401`                                               |
-| Unauthorized scope or action    | `403`                                               |
-| `INVALID_INPUT` or `UNSAFE_URL` | `400`                                               |
-| `NOT_FOUND`                     | `404`                                               |
-| `INVALID_STATE`                 | `409`                                               |
-| Other `WebhookError`            | `500` with the message `Webhook management failed.` |
+| Condition                           | HTTP status                                         |
+| ----------------------------------- | --------------------------------------------------- |
+| Missing session                     | `401`                                               |
+| Unauthorized scope or action        | `403`                                               |
+| `INVALID_INPUT` or `UNSAFE_URL`     | `400`                                               |
+| `NOT_FOUND`                         | `404`                                               |
+| `INVALID_STATE` or `ENDPOINT_LIMIT` | `409`                                               |
+| Other `WebhookError`                | `500` with the message `Webhook management failed.` |
 
 Better Auth validates request bodies and handles errors outside this mapping. The Good Webhooks error code remains in mapped error bodies.
 

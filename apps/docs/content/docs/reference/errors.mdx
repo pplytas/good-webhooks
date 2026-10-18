@@ -51,6 +51,7 @@ try {
 | `UNSAFE_URL`           | Destination fails URL or resolved-address validation.                            | Endpoint create, update, and resume                                     |
 | `NOT_FOUND`            | Record or owner is absent in the selected scope.                                 | Endpoint and delivery lookups                                           |
 | `INVALID_STATE`        | Operation conflicts with lifecycle, limits, retention, or concurrent state.      | Endpoint lifecycle, `replay`, worker overlap                            |
+| `ENDPOINT_LIMIT`       | The scope already has its `maxEndpoints` limit of endpoints.                     | Endpoint create                                                         |
 | `IDEMPOTENCY_CONFLICT` | An accepted key identifies different event content.                              | `publish`                                                               |
 | `REPLAY_IN_PROGRESS`   | An original delivery already has a pending or in-flight replay.                  | `replay`                                                                |
 | `SCHEMA_MISMATCH`      | Expected storage is missing or incompatible.                                     | `check()`, Better Auth record reads                                     |

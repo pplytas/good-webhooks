@@ -114,4 +114,4 @@ const management = createManagement({
 
 Creates the storage implementation without the lifecycle API or cipher, as an extension point for [`createManagement`](/docs/reference/management#createmanagement). Most applications use `createPostgresManagement`. `schema` defaults to `'public'` and follows the [identifier rules](/docs/reference/migrations#schema-names); invalid database or schema configuration produces `INVALID_CONFIG`.
 
-The repository scopes every query and uses revision-guarded updates. Creation uses a transaction and an advisory lock to enforce the limit it receives (at most 1,000 nondeleted endpoints); a full scope produces `INVALID_STATE`. Enumeration rejects with `INVALID_STATE` if storage exceeds that limit rather than returning a partial recipient set.
+The repository scopes every query and uses revision-guarded updates. Creation uses a transaction and an advisory lock to enforce the limit it receives (at most 1,000 nondeleted endpoints); a full scope produces `ENDPOINT_LIMIT`. Enumeration rejects with `INVALID_STATE` if storage exceeds that limit rather than returning a partial recipient set.

@@ -24,13 +24,13 @@ A delivery is `pending` until a worker sends it (`in_flight`), then ends `succee
 | Any other status, including `3xx` and `4xx` | Back to `pending` until the next retry time. Redirects are never followed       |
 | Network, DNS, or timeout error              | Back to `pending` until the next retry time                                     |
 
-By default a delivery gets up to seven attempts within 24 hours:
+By default a delivery gets up to eight attempts over about 28 hours, so a receiver whose owner fixes it the next day still gets the event:
 
-| Attempt | 1   | 2   | 3   | 4    | 5   | 6    | 7    |
-| ------- | --- | --- | --- | ---- | --- | ---- | ---- |
-| Waits   | now | 1 s | 5 s | 30 s | 2 m | 10 m | 30 m |
+| Attempt | 1   | 2   | 3   | 4    | 5   | 6   | 7    | 8    |
+| ------- | --- | --- | --- | ---- | --- | --- | ---- | ---- |
+| Waits   | now | 5 s | 5 m | 30 m | 2 h | 5 h | 10 h | 10 h |
 
-Change it with `retry: { delaysMs, maxAgeMs }` on `createWebhooks()` or `createDelivery()`. A `429` or `503` with a longer `Retry-After` header waits that long instead, within the same 24 hours. Every retry keeps the event ID and body and gets a fresh timestamp and signature.
+Change it with `retry: { delaysMs, maxAgeMs }` on `createWebhooks()` or `createDelivery()`. A `429` or `503` with a longer `Retry-After` header waits that long instead, within `retry.maxAgeMs` (48 hours by default). Every retry keeps the event ID and body and gets a fresh timestamp and signature.
 
 ### Automatic pauses
 

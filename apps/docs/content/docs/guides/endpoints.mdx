@@ -114,7 +114,7 @@ A scope holds at most 1,000 live endpoints, and each endpoint subscribes to 1 to
 maxEndpoints: (scope) => (scope === null ? 1000 : 3)
 ```
 
-At the limit, `create` throws `INVALID_STATE`. Lowering a limit never removes endpoints; it only blocks new ones. URLs must use HTTPS, carry no credentials, and be at most 2,048 characters. The [management reference](/docs/reference/management#inputs-and-limits) lists every limit.
+At the limit, `create` throws `ENDPOINT_LIMIT` (409 through Better Auth), so you can show your own message. Lowering a limit never removes endpoints; it only blocks new ones. URLs must use HTTPS, carry no credentials, and be at most 2,048 characters. The [management reference](/docs/reference/management#inputs-and-limits) lists every limit.
 
 ## When a scope owner leaves
 

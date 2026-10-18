@@ -123,12 +123,13 @@ A receiver failure is a result with `ok: false`, never a thrown error. An unsafe
 
 ### Errors
 
-| Error           | When                                                                                                          |
-| --------------- | ------------------------------------------------------------------------------------------------------------- |
-| `INVALID_INPUT` | An argument breaks a limit above, or names an event outside the configured list.                              |
-| `UNSAFE_URL`    | The URL fails destination validation.                                                                         |
-| `NOT_FOUND`     | No endpoint with this ID in the scope, or the scope's owner no longer exists.                                 |
-| `INVALID_STATE` | The endpoint is deleted, the scope is full, a signing-secret overlap is active, or the record keeps changing. |
+| Error            | When                                                                                       |
+| ---------------- | ------------------------------------------------------------------------------------------ |
+| `INVALID_INPUT`  | An argument breaks a limit above, or names an event outside the configured list.           |
+| `UNSAFE_URL`     | The URL fails destination validation.                                                      |
+| `NOT_FOUND`      | No endpoint with this ID in the scope, or the scope's owner no longer exists.              |
+| `INVALID_STATE`  | The endpoint is deleted, a signing-secret overlap is active, or the record keeps changing. |
+| `ENDPOINT_LIMIT` | `create` in a scope that already has its endpoint limit.                                   |
 
 <Accordions>
 <Accordion title="Lifecycle rules for deleted endpoints and rotation">
@@ -273,12 +274,12 @@ interface ManagementRepository {
 }
 ```
 
-| Method   | Contract                                                                                                                               |
-| -------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `list`   | Returns every live record in the scope without truncation.                                                                             |
-| `get`    | Returns the record, including a deleted one, or `null`.                                                                                |
-| `create` | Atomically inserts the record unless the scope already has `limit` nondeleted records (0 to 1,000), then rejects with `INVALID_STATE`. |
-| `update` | Atomically guards on scope, ID, and revision, increments the revision, and applies the patch. A revision conflict returns `null`.      |
+| Method   | Contract                                                                                                                                |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `list`   | Returns every live record in the scope without truncation.                                                                              |
+| `get`    | Returns the record, including a deleted one, or `null`.                                                                                 |
+| `create` | Atomically inserts the record unless the scope already has `limit` nondeleted records (0 to 1,000), then rejects with `ENDPOINT_LIMIT`. |
+| `update` | Atomically guards on scope, ID, and revision, increments the revision, and applies the patch. A revision conflict returns `null`.       |
 
 Repository errors propagate. [`createPostgresManagementRepository`](/docs/reference/postgres#createpostgresmanagementrepository) is the built-in implementation.
 

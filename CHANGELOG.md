@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.4.0 (unreleased)
+
+Retries now cover about 28 hours by default, and a full scope reports its own error code. `0.3.0` announced both changes, and this release follows the [0.x minor rules](apps/docs/content/docs/operations/compatibility.mdx#releases). The database schema stays at version `5`, so no SQL is needed. [ADR 0013](docs/adr/0013-retry-every-unsuccessful-response.md) records the schedule.
+
+### Upgrade
+
+1. Restart producers and workers on `0.4.0`. No migration is required.
+2. If you set `retentionMs` below 48 hours without `retry.maxAgeMs`, set `retry.maxAgeMs` too. Otherwise the constructor throws `INVALID_CONFIG`, because retention must cover the age limit.
+3. If you check for `INVALID_STATE` when creating an endpoint in a full scope, check for `ENDPOINT_LIMIT`. A custom `ManagementRepository` should throw `ENDPOINT_LIMIT` at the limit and `INVALID_INPUT` for a limit outside 0 to 1,000.
+
+### Breaking
+
+- **Longer default retries.** `retry.delaysMs` defaults to 5 s, 5 min, 30 min, 2 h, 5 h, 10 h, 10 h: eight attempts over about 28 hours, instead of seven over about 43 minutes. `retry.maxAgeMs` defaults to 48 hours (was 24). Set both to keep the old schedule.
+- **`ENDPOINT_LIMIT`.** Creating an endpoint in a scope at its `maxEndpoints` limit throws the new `ENDPOINT_LIMIT` code instead of `INVALID_STATE`, so apps can show their own message ([#74](https://github.com/pplytas/good-webhooks/issues/74)). Better Auth still answers `409`, with code `ENDPOINT_LIMIT`.
+
+### Fixed
+
+- The PostgreSQL repository reports a limit outside 0 to 1,000 as `INVALID_INPUT`, like the Better Auth repository.
+
 ## 0.3.0 (2026-10-18)
 
 Endpoint owners can now send a test event, the worker retries every unsuccessful response except `410`, and scopes can have a lower endpoint limit. `0.2.1` announced these changes, and this release follows the [0.x minor rules](apps/docs/content/docs/operations/compatibility.mdx#releases). The database schema stays at version `5`, so no SQL is needed. [Issue #75](https://github.com/pplytas/good-webhooks/issues/75) tracked the work, and [ADR 0013](docs/adr/0013-retry-every-unsuccessful-response.md) and [ADR 0014](docs/adr/0014-test-event-outside-delivery.md) record the design.
