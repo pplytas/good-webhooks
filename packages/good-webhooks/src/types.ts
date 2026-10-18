@@ -1,6 +1,7 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
 import type {
   AutomaticPauseReason,
+  EndpointLimit,
   EndpointManagement,
   EndpointSource,
 } from './management/types.js'
@@ -107,6 +108,8 @@ export interface WebhookOptions<E extends EventDefinitions> extends Omit<
   encryptionKey?: string | Uint8Array
   /** Share an existing management provider, including Better Auth management. */
   management?: EndpointManagement
+  /** Built-in PostgreSQL management only: most nondeleted endpoints per scope, from 0 to 1000. */
+  maxEndpoints?: EndpointLimit
 }
 export interface ResolvedConfig {
   database: Database

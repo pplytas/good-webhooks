@@ -66,6 +66,40 @@ describe('standalone PostgreSQL management', () => {
     ).rejects.toMatchObject({ code: '23514' })
   })
 
+  it('applies a per-scope endpoint limit under concurrent creation', async () => {
+    const user = { type: 'user', id: 'owner' }
+    const management = createPostgresManagement({
+      database: pool,
+      eventTypes: ['order.created'],
+      encryptionKey,
+      allowLocalhost: true,
+      maxEndpoints: async (scope) => (scope === null ? 5 : 2),
+    })
+    const attempts = await Promise.allSettled(
+      Array.from({ length: 8 }, () => management.create(user, input)),
+    )
+    expect(attempts.filter((result) => result.status === 'fulfilled')).toHaveLength(2)
+    for (const result of attempts)
+      if (result.status === 'rejected')
+        expect(result.reason).toMatchObject({
+          code: 'INVALID_STATE',
+          message: 'A scope may have at most 2 nondeleted endpoints.',
+        })
+    await Promise.all(Array.from({ length: 5 }, () => management.create(null, input)))
+    const [first] = await management.list(user)
+    await management.remove(user, first!.id)
+    await expect(management.create(user, input)).resolves.toBeDefined()
+
+    const invalid = createPostgresManagement({
+      database: pool,
+      eventTypes: ['order.created'],
+      encryptionKey,
+      allowLocalhost: true,
+      maxEndpoints: () => 1001,
+    })
+    await expect(invalid.create(user, input)).rejects.toMatchObject({ code: 'INVALID_CONFIG' })
+  })
+
   it('enforces the strict limit under concurrent creation and reclaims deleted capacity', async () => {
     const management = create()
     const first = await management.create(null, input)
@@ -78,7 +112,9 @@ describe('standalone PostgreSQL management', () => {
     const repository = createPostgresManagementRepository(pool)
     const stored = (await repository.get(null, first.endpoint.id))!
     // An insert failure must roll back cleanly and leave the final slot available.
-    await expect(repository.create(null, { ...stored, eventTypes: [] })).rejects.toMatchObject({
+    await expect(
+      repository.create(null, { ...stored, eventTypes: [] }, 1000),
+    ).rejects.toMatchObject({
       code: '23514',
     })
     const attempts = await Promise.allSettled(

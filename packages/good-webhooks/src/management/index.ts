@@ -15,6 +15,7 @@ export type * from './types.js'
 
 const MAX_ROTATION_GRACE_MS = 86_400_000
 const MAX_UPDATE_RETRIES = 32
+const MAX_ENDPOINTS = 1000
 
 function invalid(message: string): never {
   throw new WebhookError('INVALID_INPUT', message)
@@ -80,13 +81,14 @@ export function createManagement(options: ManagementOptions): EndpointManagement
     typeof options.cipher.decrypt !== 'function' ||
     (options.allowLocalhost !== undefined && typeof options.allowLocalhost !== 'boolean') ||
     (options.scopeExists !== undefined && typeof options.scopeExists !== 'function') ||
+    (options.maxEndpoints !== undefined && typeof options.maxEndpoints !== 'function') ||
     (options.validateUrl !== undefined && typeof options.validateUrl !== 'function')
   )
     throw new WebhookError(
       'INVALID_CONFIG',
       'Supply event names, a management repository, and a secret cipher.',
     )
-  const { repository, cipher, scopeExists } = options
+  const { repository, cipher, scopeExists, maxEndpoints } = options
   const validateUrl = options.validateUrl
   const allowLocalhost = options.allowLocalhost ?? false
   const allowed = new Set(options.eventTypes)
@@ -109,6 +111,17 @@ export function createManagement(options: ManagementOptions): EndpointManagement
 
   async function ownerExists(scope: ManagementScope): Promise<boolean> {
     return scopeExists ? scopeExists(scope) : true
+  }
+
+  async function endpointLimit(scope: ManagementScope): Promise<number> {
+    if (!maxEndpoints) return MAX_ENDPOINTS
+    const limit = await maxEndpoints(scope)
+    if (!Number.isSafeInteger(limit) || limit < 0 || limit > MAX_ENDPOINTS)
+      throw new WebhookError(
+        'INVALID_CONFIG',
+        `maxEndpoints must return an integer from 0 to ${MAX_ENDPOINTS}.`,
+      )
+    return limit
   }
 
   async function requireOwner(scope: ManagementScope): Promise<void> {
@@ -225,22 +238,27 @@ export function createManagement(options: ManagementOptions): EndpointManagement
       const desc = description(input.description)
       await requireOwner(scope)
       await safeUrl(url)
+      const limit = await endpointLimit(scope)
       const secret = generateSecret()
       const encryptedSecret = await cipher.encrypt(secret)
       const now = new Date()
-      const row = await repository.create(scope, {
-        url,
-        description: desc,
-        eventTypes: subscriptions,
-        status: 'active',
-        pauseReason: null,
-        encryptedSecret,
-        previousEncryptedSecret: null,
-        previousSecretExpiresAt: null,
-        revision: 0,
-        createdAt: now,
-        updatedAt: now,
-      })
+      const row = await repository.create(
+        scope,
+        {
+          url,
+          description: desc,
+          eventTypes: subscriptions,
+          status: 'active',
+          pauseReason: null,
+          encryptedSecret,
+          previousEncryptedSecret: null,
+          previousSecretExpiresAt: null,
+          revision: 0,
+          createdAt: now,
+          updatedAt: now,
+        },
+        limit,
+      )
       // A concurrent owner deletion can finish before this insert. Do not leave a live orphan.
       if (!(await ownerExists(scope))) {
         await remove(scope, row.id)

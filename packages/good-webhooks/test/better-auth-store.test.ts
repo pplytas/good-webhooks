@@ -79,7 +79,7 @@ describe('Better Auth management repository with real SQLite adapter and generat
   for (const ids of [undefined, 'serial', 'uuid'] as const) {
     it(`round trips arrays and private fields with ${ids ?? 'default'} IDs and custom database names`, async () => {
       const { repository } = await fixture(ids)
-      const created = await repository.create(scope, data())
+      const created = await repository.create(scope, data(), 1000)
       expect(typeof created.id).toBe('string')
       expect(created.eventTypes).toEqual(['invoice.paid'])
       expect(created.encryptedSecret).toBe('encrypted-value')
@@ -100,7 +100,7 @@ describe('Better Auth management repository with real SQLite adapter and generat
     const { adapter, repository } = await fixture()
     await seed(adapter, 995)
     const results = await Promise.allSettled(
-      Array.from({ length: 20 }, () => repository.create(scope, data())),
+      Array.from({ length: 20 }, () => repository.create(scope, data(), 1000)),
     )
     expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(5)
     expect(results.filter((result) => result.status === 'rejected')).toHaveLength(15)
@@ -109,7 +109,7 @@ describe('Better Auth management repository with real SQLite adapter and generat
     const first = rows[0]!
     const deleted = await repository.update(scope, first.id, first.revision, { status: 'deleted' })
     expect(deleted?.status).toBe('deleted')
-    const replacement = await repository.create(scope, data())
+    const replacement = await repository.create(scope, data(), 1000)
     expect(replacement.id).not.toBe(first.id)
     expect(await repository.list(scope)).toHaveLength(1000)
     expect((await repository.get(scope, first.id))?.status).toBe('deleted')
@@ -118,9 +118,34 @@ describe('Better Auth management repository with real SQLite adapter and generat
     ).rejects.toMatchObject({ code: 'INVALID_STATE' })
   })
 
+  it('admits at most a lower limit under concurrent creation and counts endpoints in any slot', async () => {
+    const { repository } = await fixture()
+    const results = await Promise.allSettled(
+      Array.from({ length: 10 }, () => repository.create(scope, data(), 3)),
+    )
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(3)
+    for (const result of results)
+      if (result.status === 'rejected')
+        expect(result.reason).toMatchObject({ code: 'INVALID_STATE' })
+
+    // An endpoint created under the default limit can hold any slot and still counts.
+    const other = await fixture()
+    await other.adapter.create({
+      model: 'webhookEndpoint',
+      data: { ...data(), scopeKey: scopeKey(scope), allocationKey: key(900), creationToken: 'old' },
+    })
+    await other.repository.create(scope, data(), 2)
+    await expect(other.repository.create(scope, data(), 2)).rejects.toMatchObject({
+      code: 'INVALID_STATE',
+    })
+    await expect(other.repository.create(scope, data(), 1001)).rejects.toMatchObject({
+      code: 'INVALID_INPUT',
+    })
+  })
+
   it('has one winner for concurrent revision-guarded writes including rotation fields', async () => {
     const { repository } = await fixture()
-    const original = await repository.create(scope, data())
+    const original = await repository.create(scope, data(), 1000)
     const expiresAt = new Date('2026-10-08T00:00:00Z')
     const results = await Promise.all(
       Array.from({ length: 20 }, (_, index) =>
@@ -147,7 +172,7 @@ describe('Better Auth management repository with real SQLite adapter and generat
       { length: 100 },
       (_, index) => `${'x'.repeat(116)}${String(index).padStart(4, '0')}`,
     )
-    const created = await repository.create(scope, { ...data(), eventTypes })
+    const created = await repository.create(scope, { ...data(), eventTypes }, 1000)
     expect(created.eventTypes).toEqual(eventTypes)
     const stored = database
       .prepare('SELECT event_types, additionalEventTypes FROM custom_endpoint')
@@ -172,7 +197,9 @@ describe('Better Auth management repository with real SQLite adapter and generat
         throw new Error('Connection lost after commit')
       },
     })
-    await expect(failing.create(scope, data())).rejects.toThrow('Connection lost after commit')
+    await expect(failing.create(scope, data(), 1000)).rejects.toThrow(
+      'Connection lost after commit',
+    )
     expect(inserts).toBe(1)
     expect(await repository.list(scope)).toHaveLength(1)
   })
@@ -196,7 +223,7 @@ describe('Better Auth management repository with real SQLite adapter and generat
         return adapter.incrementOne(input)
       },
     })
-    const created = await retrying.create(scope, data())
+    const created = await retrying.create(scope, data(), 1000)
     expect(insertions).toHaveLength(2)
     expect(insertions[0]).toEqual(insertions[1])
     expect(await repository.list(scope)).toHaveLength(1)
@@ -209,7 +236,7 @@ describe('Better Auth management repository with real SQLite adapter and generat
 
   it('does not retry an ambiguous committed conditional mutation', async () => {
     const { adapter, repository } = await fixture()
-    const created = await repository.create(scope, data())
+    const created = await repository.create(scope, data(), 1000)
     let writes = 0
     const failing = createBetterAuthRepository({
       ...adapter,
@@ -234,9 +261,11 @@ describe('Better Auth management repository with real SQLite adapter and generat
         throw new Error('Unavailable')
       },
     })
-    await expect(failing.create(scope, data())).rejects.toThrow('Unavailable')
+    await expect(failing.create(scope, data(), 1000)).rejects.toThrow('Unavailable')
     expect(await repository.list(scope)).toEqual([])
-    await expect(repository.create(scope, data())).resolves.toMatchObject({ status: 'active' })
+    await expect(repository.create(scope, data(), 1000)).resolves.toMatchObject({
+      status: 'active',
+    })
   })
 
   it('enumerates unchanged records completely when earlier slots disappear between batches', async () => {

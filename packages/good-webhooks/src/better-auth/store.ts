@@ -218,16 +218,21 @@ export function createBetterAuthRepository(
       const row = await read(canonicalScope(scope), id)
       return row === null ? null : endpoint(row)
     },
-    async create(scope, data) {
+    async create(scope, data, limit) {
       if (data.status === 'deleted')
         throw new WebhookError('INVALID_INPUT', 'New endpoints cannot be deleted.')
+      if (!Number.isSafeInteger(limit) || limit < 0 || limit > CAPACITY)
+        throw new WebhookError('INVALID_INPUT', `The endpoint limit must be from 0 to ${CAPACITY}.`)
       const key = canonicalScope(scope)
       const keys = allocationKeys(key)
       const occupied = new Set((await readScope(key)).map((row) => row.allocationKey))
       const creationToken = randomUUID()
-      const start = randomInt(CAPACITY)
-      for (let offset = 0; offset < CAPACITY; offset++) {
-        const allocationKey = keys[(start + offset) % CAPACITY]!
+      // New endpoints use only the first `limit` slots, so concurrent creates cannot exceed it.
+      // Endpoints created under a higher limit may hold any slot, so they are counted first.
+      const slots = occupied.size < limit ? limit : 0
+      const start = slots > 0 ? randomInt(slots) : 0
+      for (let offset = 0; offset < slots; offset++) {
+        const allocationKey = keys[(start + offset) % slots]!
         if (occupied.has(allocationKey)) continue
         try {
           const row = await retryRolledBack(() =>
@@ -266,7 +271,7 @@ export function createBetterAuthRepository(
       }
       throw new WebhookError(
         'INVALID_STATE',
-        `A scope may have at most ${CAPACITY} nondeleted endpoints.`,
+        `A scope may have at most ${limit} nondeleted endpoints.`,
       )
     },
     async update(scope, id, revision, patch: StoredEndpointPatch) {

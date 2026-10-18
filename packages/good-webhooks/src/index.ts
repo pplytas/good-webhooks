@@ -56,6 +56,7 @@ export type { DeliveryOptions } from './types.js'
 export type {
   AutomaticPauseInput,
   AutomaticPauseReason,
+  EndpointLimit,
   EndpointManagement,
   EndpointSource,
   EndpointResolution,
@@ -66,6 +67,11 @@ export type {
 export function createWebhooks<const E extends EventDefinitions>(options: WebhookOptions<E>) {
   if (!options || !options.events || typeof options.events !== 'object')
     throw new WebhookError('INVALID_CONFIG', 'Define events with Standard Schema validators.')
+  if (options.management && options.maxEndpoints !== undefined)
+    throw new WebhookError(
+      'INVALID_CONFIG',
+      'maxEndpoints applies to built-in management. Configure the limit on the shared provider.',
+    )
   const standalone = options.management
     ? undefined
     : createPostgresManagement({
@@ -74,6 +80,7 @@ export function createWebhooks<const E extends EventDefinitions>(options: Webhoo
         encryptionKey: options.encryptionKey!,
         ...(options.schema === undefined ? {} : { schema: options.schema }),
         ...(options.allowLocalhost === undefined ? {} : { allowLocalhost: options.allowLocalhost }),
+        ...(options.maxEndpoints === undefined ? {} : { maxEndpoints: options.maxEndpoints }),
       })
   const management = options.management ?? standalone!
   const delivery = createDelivery({ ...options, source: management.source })

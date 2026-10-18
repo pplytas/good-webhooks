@@ -125,6 +125,17 @@ describe('Better Auth endpoint management plugin', () => {
     ).toBe(403)
   })
 
+  it('applies a per-scope endpoint limit and reports it as a conflict', async () => {
+    const { user, call, management } = await setup({
+      maxEndpoints: (scope) => (scope === null ? 10 : 2),
+    })
+    const alice = await user()
+    for (const status of [200, 200, 409])
+      expect((await call('create', input, alice.headers)).status).toBe(status)
+    for (let index = 0; index < 3; index++) await management.create(null, input)
+    expect(await management.list(null)).toHaveLength(3)
+  })
+
   it('exposes signing secrets only on create and rotation, and resolves the same records for a trusted worker', async () => {
     const { auth, user, call, management, database } = await setup()
     const alice = await user()
@@ -253,7 +264,7 @@ describe('Better Auth endpoint management plugin', () => {
         code: 'NOT_FOUND',
       })
       // Even a pre-existing alias record cannot become usable by a trusted sender.
-      const aliasEndpoint = await repository.create(aliasScope, stored)
+      const aliasEndpoint = await repository.create(aliasScope, stored, 1000)
       expect(await management.source.resolveEndpoint(aliasScope, aliasEndpoint.id)).toEqual({
         status: 'deleted',
       })

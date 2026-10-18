@@ -1,6 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import { createWebhooks } from '../src/index.js'
+import { createPostgresManagement } from '../src/management/postgres.js'
 import { decryptSecret, signWebhook } from '../src/crypto.js'
 import { parseWebhook } from '../src/verify.js'
 import { events } from '../examples/basic/events.js'
@@ -17,6 +18,20 @@ beforeEach(resetDatabase)
 afterAll(closeDatabase)
 
 describe('public server API', () => {
+  it('limits endpoints per scope for built-in management only', async () => {
+    const app = createWebhooks({ ...options, maxEndpoints: () => 1 })
+    const input = { url: 'http://127.0.0.1:12345', eventTypes: ['order.created'] as const }
+    await app.endpoints.create(input)
+    await expect(app.endpoints.create(input)).rejects.toMatchObject({ code: 'INVALID_STATE' })
+    expect(() =>
+      createWebhooks({
+        ...options,
+        management: createPostgresManagement({ ...options, eventTypes: ['order.created'] }),
+        maxEndpoints: () => 1,
+      }),
+    ).toThrow(expect.objectContaining({ code: 'INVALID_CONFIG' }))
+  })
+
   it.each(['1', '95', '9007199254740987'])(
     'lists and paginates deliveries in numeric order starting at %s',
     async (start) => {

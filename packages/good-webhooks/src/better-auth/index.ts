@@ -7,13 +7,19 @@ import {
 } from 'better-auth/api'
 import * as z from 'zod'
 import { WebhookError } from '../errors.js'
-import type { EndpointManagement, ManagedEndpoint, ManagementScope } from '../management/types.js'
+import type {
+  EndpointLimit,
+  EndpointManagement,
+  ManagedEndpoint,
+  ManagementScope,
+} from '../management/types.js'
 import { authorizeManagement, type ManagementAction, type ScopePolicy } from './authorization.js'
 import { managementForContext, type AuthContext } from './provider.js'
 import { createBetterAuthManagementSchema } from './schema.js'
 
 export { createBetterAuthManagement } from './provider.js'
 export type { ManagementAction, ScopeAuthorization, ScopePolicy } from './authorization.js'
+export type { EndpointLimit } from '../management/types.js'
 
 export interface GoodWebhooksOptions<EventTypes extends readonly string[] = readonly string[]> {
   eventTypes: EventTypes
@@ -22,6 +28,8 @@ export interface GoodWebhooksOptions<EventTypes extends readonly string[] = read
   schema?: Parameters<typeof createBetterAuthManagementSchema>[0]
   /** Required for application and custom scopes. User/org scopes always use native BA authorization. */
   authorizeScope?: ScopePolicy
+  /** Most nondeleted endpoints a scope may have, from 0 to 1000. Defaults to 1000. */
+  maxEndpoints?: EndpointLimit
 }
 
 export type WebhookEndpointDTO<EventType extends string = string> = Omit<
@@ -66,6 +74,7 @@ export function goodWebhooks<const EventTypes extends readonly string[]>(
   const providerOptions = {
     eventTypes: [...options.eventTypes],
     ...(options.allowLocalhost === undefined ? {} : { allowLocalhost: options.allowLocalhost }),
+    ...(options.maxEndpoints === undefined ? {} : { maxEndpoints: options.maxEndpoints }),
   }
   const authorizeScope = options.authorizeScope
   const eventType = z.custom<EventType>(

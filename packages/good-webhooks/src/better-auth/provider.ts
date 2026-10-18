@@ -2,19 +2,24 @@ import type { Auth } from 'better-auth'
 import { symmetricDecrypt, symmetricEncrypt } from 'better-auth/crypto'
 import { WebhookError } from '../errors.js'
 import { createManagement } from '../management/index.js'
-import type { EndpointManagement } from '../management/types.js'
+import type { EndpointLimit, EndpointManagement } from '../management/types.js'
 import { createBetterAuthRepository } from './store.js'
 
 export type AuthContext = Awaited<Auth['$context']>
 
 export function managementForContext(
   context: AuthContext,
-  options: { eventTypes: readonly string[]; allowLocalhost?: boolean },
+  options: {
+    eventTypes: readonly string[]
+    allowLocalhost?: boolean
+    maxEndpoints?: EndpointLimit
+  },
 ): EndpointManagement {
   return createManagement({
     repository: createBetterAuthRepository(context.adapter),
     eventTypes: options.eventTypes,
     ...(options.allowLocalhost === undefined ? {} : { allowLocalhost: options.allowLocalhost }),
+    ...(options.maxEndpoints === undefined ? {} : { maxEndpoints: options.maxEndpoints }),
     cipher: {
       encrypt: (data) => symmetricEncrypt({ key: context.secretConfig, data }),
       decrypt: (data) => symmetricDecrypt({ key: context.secretConfig, data }),

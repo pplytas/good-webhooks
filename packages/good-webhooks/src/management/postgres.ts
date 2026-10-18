@@ -8,6 +8,7 @@ import type { Database } from '../types.js'
 import { createManagement } from './index.js'
 import { validateResolvedUrl } from './node-url.js'
 import type {
+  EndpointLimit,
   EndpointManagement,
   ManagementRepository,
   ManagementScope,
@@ -61,7 +62,7 @@ export function createPostgresManagementRepository(
       )
       return result.rows[0] ?? null
     },
-    async create(scope, endpoint) {
+    async create(scope, endpoint, limit) {
       const scopeId = key(scope)
       const client = await database.connect()
       try {
@@ -73,10 +74,15 @@ export function createPostgresManagementRepository(
           `SELECT count(*)::integer AS count FROM ${table} WHERE scope_key=$1 AND status<>'deleted'`,
           [scopeId],
         )
-        if ((count.rows[0]?.count ?? 0) >= ENDPOINT_LIMIT)
+        if (
+          !Number.isSafeInteger(limit) ||
+          limit < 0 ||
+          limit > ENDPOINT_LIMIT ||
+          (count.rows[0]?.count ?? 0) >= limit
+        )
           throw new WebhookError(
             'INVALID_STATE',
-            `A scope may have at most ${ENDPOINT_LIMIT} nondeleted endpoints.`,
+            `A scope may have at most ${limit} nondeleted endpoints.`,
           )
         const result = await client.query<StoredEndpoint & Record<string, unknown>>(
           `INSERT INTO ${table}(id,scope_key,url,description,event_types,status,pause_reason,secret,previous_secret,previous_secret_expires_at,revision,created_at,updated_at)
@@ -144,6 +150,8 @@ export interface PostgresManagementOptions {
   /** Old keys remain readable during reencrypt(). Remove only after all affected scopes finish. */
   decryptionKeys?: readonly (string | Uint8Array)[]
   allowLocalhost?: boolean
+  /** Most nondeleted endpoints a scope may have, from 0 to 1000. Defaults to 1000. */
+  maxEndpoints?: EndpointLimit
 }
 
 export interface PostgresManagement extends EndpointManagement {
@@ -163,6 +171,7 @@ export function createPostgresManagement(options: PostgresManagementOptions): Po
     eventTypes: options.eventTypes,
     allowLocalhost,
     validateUrl: (url) => validateResolvedUrl(url, allowLocalhost),
+    ...(options.maxEndpoints === undefined ? {} : { maxEndpoints: options.maxEndpoints }),
     cipher: {
       async encrypt(secret) {
         return encryptSecret(secret, encryptionKey)

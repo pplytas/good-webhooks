@@ -74,8 +74,15 @@ export interface ManagementRepository {
   /** Return every live endpoint in scope. Never truncate; enforce the 1000 endpoint bound. */
   list(scope: ManagementScope): Promise<StoredEndpoint[]>
   get(scope: ManagementScope, id: string): Promise<StoredEndpoint | null>
-  /** Atomically insert a complete record while enforcing the strict per-scope bound. */
-  create(scope: ManagementScope, endpoint: Omit<StoredEndpoint, 'id'>): Promise<StoredEndpoint>
+  /**
+   * Atomically insert a complete record unless the scope already has `limit` nondeleted
+   * endpoints. `limit` is an integer from 0 to 1000. Reject with INVALID_STATE at the limit.
+   */
+  create(
+    scope: ManagementScope,
+    endpoint: Omit<StoredEndpoint, 'id'>,
+    limit: number,
+  ): Promise<StoredEndpoint>
   /** Atomically guard on scope/id/revision, increment revision, and apply the patch. */
   update(
     scope: ManagementScope,
@@ -99,4 +106,9 @@ export interface ManagementOptions {
   validateUrl?: (url: string) => Promise<void>
   /** Verify the owning user/organization still exists. Failures must reject. */
   scopeExists?: (scope: ManagementScope) => Promise<boolean>
+  /** Most nondeleted endpoints a scope may have, from 0 to 1000. Defaults to 1000. */
+  maxEndpoints?: EndpointLimit
 }
+
+/** Lowering a limit never removes endpoints; it only blocks new ones. */
+export type EndpointLimit = (scope: ManagementScope) => number | Promise<number>
