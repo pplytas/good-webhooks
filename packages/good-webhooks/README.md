@@ -148,6 +148,7 @@ const event = await parseWebhook({
 | Better Auth endpoints with built-in delivery | [Add delivery](https://good-webhooks.dev/docs/better-auth/delivery)    |
 | Endpoint management for your own sender      | [Custom senders](https://good-webhooks.dev/docs/guides/custom-senders) |
 | Only receiving webhooks                      | [Receive webhooks](https://good-webhooks.dev/docs/guides/receive)      |
+| To see it work before installing             | [Playground](https://playground.good-webhooks.dev)                     |
 
 ## Requirements
 

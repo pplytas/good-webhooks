@@ -1,7 +1,13 @@
 ---
 title: Examples
-description: Two complete applications that install the published package and show the full path from a business action to a verified webhook.
+description: A hosted Playground to receive signed webhooks right away, and two complete applications that install the published package.
 ---
+
+## Try the Playground
+
+[playground.good-webhooks.dev](https://playground.good-webhooks.dev) is a public app built on the published package. Sign in with GitHub, add an HTTPS endpoint, and receive signed `clock.ticked` and `ping.requested` events within minutes, with delivery history, retries, replay, and test events in the browser. Its [source](https://github.com/pplytas/good-webhooks-playground) is a complete Next.js and worker deployment, and it is where the library is dogfooded.
+
+## Complete applications
 
 Both applications live under [`examples/`](https://github.com/pplytas/good-webhooks/tree/main/examples). They install `good-webhooks` from npm, so you can copy either one into your own repository.
 

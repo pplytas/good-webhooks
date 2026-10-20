@@ -51,6 +51,10 @@ Requires Node.js 24 or later. Built-in delivery and standalone management need P
 
 The [package README](packages/good-webhooks/README.md) walks through publishing, running a worker, and verifying on the receiving side.
 
+## Try the Playground
+
+[playground.good-webhooks.dev](https://playground.good-webhooks.dev) is a public app built on the published package. Sign in with GitHub, add an HTTPS endpoint, and receive signed events within minutes. Its [source](https://github.com/pplytas/good-webhooks-playground) is a complete deployment and the library's dogfood.
+
 ## Run complete applications
 
 Two interactive examples show the full path from a business action to a verified webhook and receiver outcome:

@@ -505,7 +505,19 @@ export default function HomePage() {
 
       <section className="relative border-t px-6 py-20 sm:px-10 sm:py-24">
         <Marks />
-        <SectionHeading lede="Two applications in the repository install the published package and show the full path from a business action to a verified webhook. Copy either one into your own project.">
+        <SectionHeading
+          lede={
+            <>
+              Two applications in the repository install the published package and show the full
+              path from a business action to a verified webhook. Copy either one into your own
+              project, or receive signed webhooks right away in the hosted{' '}
+              <a href="https://playground.good-webhooks.dev" className="link">
+                Playground
+              </a>
+              .
+            </>
+          }
+        >
           Run a complete application
         </SectionHeading>
         <div className="grid-cells cells-2 mt-12 sm:grid-cols-2">
@@ -590,7 +602,7 @@ export default function HomePage() {
   )
 }
 
-function SectionHeading({ children, lede }: { children: string; lede?: string }) {
+function SectionHeading({ children, lede }: { children: string; lede?: ReactNode }) {
   return (
     <div className="max-w-2xl">
       <h2 className="text-2xl font-medium leading-tight tracking-[-0.03em] sm:text-[1.75rem]">
