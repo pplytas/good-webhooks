@@ -8,7 +8,7 @@ Public APIs, dependencies, and database schema (version `5`) are unchanged from 
 - The npm README links the hosted [Playground](https://playground.good-webhooks.dev).
 - Docs: a [serverless and cron page](apps/docs/content/docs/operations/serverless.mdx) for `runOnce()` on Vercel cron, Railway cron, and AWS Lambda, a Fastify tab in the [receiving guide](apps/docs/content/docs/guides/receive.mdx), advice on [out-of-order events](apps/docs/content/docs/concepts/delivery-guarantees.mdx), and a [threat table](apps/docs/content/docs/concepts/security.mdx#threats-and-defences) that cites the test behind each defence.
 - [`SECURITY.md`](SECURITY.md) states response targets: an initial response within 14 days, and a fix for medium or higher severity within 60 days of confirmation.
-- CI lints the packed archive with `attw` and `publint` and type-checks consumers on TypeScript 6.0 as well as 5.9.3 and 7.0. Dependabot, CodeQL, and OpenSSF Scorecard arrive with [#92](https://github.com/pplytas/good-webhooks/pull/92).
+- CI lints the packed archive with `attw` and `publint` and type-checks consumers on TypeScript 6.0 as well as 5.9.3 and 7.0. Dependabot, CodeQL, and OpenSSF Scorecard run on the repository ([#92](https://github.com/pplytas/good-webhooks/pull/92)).
 
 ### Coming in 0.5.0
 
