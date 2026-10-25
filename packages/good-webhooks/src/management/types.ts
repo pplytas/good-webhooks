@@ -23,8 +23,9 @@ export type EndpointResolution =
       /** Changes whenever the endpoint changes. Automatic pauses use it to ignore stale failures. */
       revision?: string
       /**
-       * Endpoint headers to send with every attempt. Custom sources may omit it; the built-in
-       * sources return none until a later release.
+       * Endpoint headers for every attempt. Custom sources may omit it. The worker validates
+       * them but does not send them yet; sending, and the built-in sources returning them,
+       * arrive in a later release.
        */
       headers?: Record<string, string>
     }
