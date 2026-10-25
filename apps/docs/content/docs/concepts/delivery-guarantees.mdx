@@ -13,7 +13,7 @@ description: At least once, no ordering. What a successful publish promises, how
 
 Receivers handle rule 2 by [processing each `event.id` once](/docs/guides/receive#process-each-event-once). Rule 3 needs a version check.
 
-Order usually matters within one entity, such as one invoice. A retry of an older event can arrive after a newer one succeeded, and a replay can arrive days later. Put a version number or an updated-at time for that entity in `data`. The envelope's `occurredAt` is assigned when the event is published, not when the change happened, so it works as a version only when one place publishes all of an entity's events. Apply an event only when its version is newer than the one you stored. Otherwise answer `2xx` and skip it. Run the check in the same transaction as the [receipt table](/docs/guides/receive#process-each-event-once), so a repeated or stale event changes nothing:
+Order usually matters within one entity, such as one invoice. A retry of an older event can arrive after a newer one succeeded, and a replay can arrive days later. Put a version number or an updated-at time for that entity in `data`. The envelope's `occurredAt` is assigned when the event is published, not when the change happened, so it works as a version only when one place publishes all of an entity's events. Apply an event only when its version is newer than the one you stored. Otherwise answer `2xx` and skip it. Run the check in the same transaction as the [receipt table](/docs/guides/receive#process-each-event-once), so a repeated or stale event leaves the invoice unchanged:
 
 ```sql
 INSERT INTO invoices (id, amount, version) VALUES ($1, $2, $3)
