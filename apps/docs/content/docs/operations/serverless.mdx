@@ -11,7 +11,7 @@ A worker does not have to be a long-running process. A scheduled function can ca
 
 A schedule changes how fast deliveries move:
 
-- A new event waits for the next run. Latency is at least the schedule interval.
+- A new event waits for the next run: up to one interval when runs are on time, and longer when the scheduler is late or a run ends on its budget.
 - Retry delays are rounded up to the interval. With a one-minute schedule, the first retry (5 seconds by default) happens about a minute later; the [later delays](/docs/concepts/delivery-guarantees#retries) of 5 minutes and more barely change.
 - Overlapping runs are safe. Separate worker instances [coordinate through PostgreSQL leases](/docs/reference/delivery#worker), so a run that starts before the last one ends claims different deliveries.
 
@@ -80,7 +80,7 @@ The Vercel durations apply with Fluid compute. These numbers were checked in Oct
 
 A Vercel Hobby schedule holds deliveries for up to a day. Use Pro or Enterprise.
 
-A cron job calls a route in your app. When the project has a `CRON_SECRET` environment variable, Vercel sends it in the `authorization` header, so reject any request without it:
+A cron job calls a route in your app. Before you deploy, set a `CRON_SECRET` environment variable on the project (a random string of at least 16 characters). Vercel sends it in the `authorization` header, so reject any request without it:
 
 ```ts title="app/api/cron/webhooks/route.ts"
 import { deliverDue } from '@/lib/deliver'
@@ -132,7 +132,7 @@ Set the service's start command to the compiled script, such as `node dist/deliv
 
 ## AWS Lambda
 
-Invoke a Lambda function from an EventBridge Scheduler schedule. Set the function timeout to cover your budget, well above the 15-second margin the loop keeps.
+Invoke a Lambda function from an EventBridge Scheduler schedule. The handler keeps a 15-second margin, and the loop needs another 15 seconds to run one batch, so set the function timeout above 30 seconds. 300 seconds is a practical choice.
 
 ```ts title="handler.ts"
 import { deliverDue } from './deliver.js'
