@@ -1,0 +1,48 @@
+---
+title: OpenTelemetry
+description: Export delivery attempts and automatic pauses as OpenTelemetry metrics through the worker's hooks.
+---
+
+The package records no metrics itself. A short recipe turns the worker's [hooks](/docs/guides/hooks) into OpenTelemetry metrics, so attempt latency, outcomes, and automatic pauses reach the backend you already use.
+
+## What it records
+
+| Instrument                        | Type      | Unit         | Attributes                   |
+| --------------------------------- | --------- | ------------ | ---------------------------- |
+| `good_webhooks.attempt.duration`  | Histogram | `s`          | `outcome`, `event_type`      |
+| `good_webhooks.attempts`          | Counter   | `{attempt}`  | `outcome`, `event_type`      |
+| `good_webhooks.attempt.responses` | Counter   | `{response}` | `status_class`, `event_type` |
+| `good_webhooks.endpoint.pauses`   | Counter   | `{pause}`    | `reason`                     |
+
+- `outcome` is one of the [attempt outcomes](/docs/reference/delivery#attempt-outcomes): `succeeded`, `retry`, `failed`, or `abandoned`.
+- `status_class` is `2xx`, `4xx`, `5xx`, and so on, or `none` when no response arrived.
+- `reason` is `failing` or `gone`. Pauses with `pause()` aren't counted.
+- Durations are in seconds, as the OpenTelemetry semantic conventions ask, although the hook reports milliseconds. The histogram passes the HTTP client duration buckets as advice, because the SDK's default buckets were made for milliseconds.
+
+## Wire it up
+
+Copy the recipe into your app. It depends only on `@opentelemetry/api`:
+
+<include cwd lang="ts" meta='title="examples/operations/otel.ts"'>
+  ../../packages/good-webhooks/examples/operations/otel.ts
+</include>
+
+Pass its hooks to the engine that runs your worker:
+
+```ts title="webhooks.ts"
+import { createWebhooks } from 'good-webhooks'
+import { createOtelHooks } from './otel.js'
+
+export const webhooks = createWebhooks({
+  database,
+  encryptionKey: process.env.WEBHOOK_ENCRYPTION_KEY!,
+  events,
+  hooks: createOtelHooks(),
+})
+```
+
+Your app configures the OpenTelemetry SDK and exporter, as for any other metrics. Register its MeterProvider before you call `createOtelHooks()`: a meter taken earlier stays a no-op and records nothing. To use a meter of your own, pass `createOtelHooks({ meter })`, and `prefix` changes the `good_webhooks` part of each name. To keep your own hooks too, call both from one function, since `hooks` takes one function per hook.
+
+## Keep cardinality bounded
+
+The attributes leave out endpoint, scope, delivery, and event IDs on purpose. Every distinct attribute value starts a new time series, so unbounded IDs would grow your metrics storage without limit. `event_type` is bounded by your event definitions. To find a failing endpoint, use [delivery history](/docs/operations/retries-and-replay#inspect-deliveries) or the `endpointId` in the [hook event](/docs/reference/delivery#hooks) with your logs.

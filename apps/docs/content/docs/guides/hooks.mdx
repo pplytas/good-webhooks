@@ -41,7 +41,7 @@ export const webhooks = createWebhooks({
 })
 ```
 
-`outcome` is one of the [attempt outcomes](/docs/reference/delivery#attempt-outcomes): `'succeeded'`, `'retry'`, `'failed'`, or `'abandoned'`. `responseStatus` is `null` when no response arrived, and `error` then says why, for example `network_error`. The [supervised worker](/docs/operations/workers#a-supervised-worker-process) logs both hooks as JSON lines.
+`outcome` is one of the [attempt outcomes](/docs/reference/delivery#attempt-outcomes): `'succeeded'`, `'retry'`, `'failed'`, or `'abandoned'`. `responseStatus` is `null` when no response arrived, and `error` then says why, for example `network_error`. The [supervised worker](/docs/operations/workers#a-supervised-worker-process) logs both hooks as JSON lines. To export these metrics through OpenTelemetry, use the [OpenTelemetry recipe](/docs/operations/opentelemetry).
 
 ## How hooks run
 

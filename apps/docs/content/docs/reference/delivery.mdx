@@ -49,20 +49,20 @@ export const delivery = createDelivery({ database, events, source: management.so
 
 Any [`EndpointSource`](/docs/reference/management#endpointsource) works as `source`, including [Better Auth management](/docs/better-auth/delivery). The constructor starts no work.
 
-| Option                    | Default                                                          | Contract                                                                                                                                |
-| ------------------------- | ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `database`                | Required                                                         | PostgreSQL executor with `query()` and `connect()`. A checked-out client has `query()` and `release()`. `pg.Pool` satisfies this shape. |
-| `events`                  | Required                                                         | Nonempty map of event names to Standard Schema validators.                                                                              |
-| `source`                  | Required                                                         | Trusted `EndpointSource` with `matchRecipients` and `resolveEndpoint`.                                                                  |
-| `schema`                  | `'public'`                                                       | PostgreSQL schema containing delivery tables.                                                                                           |
-| `retry.delaysMs`          | `[5000, 300000, 1800000, 7200000, 18000000, 36000000, 36000000]` | At most 20 integer delays, each from 1 through 86,400,000 ms. An empty array disables retries.                                          |
-| `retry.maxAgeMs`          | `172800000`                                                      | Delivery age limit from 100 through 2,592,000,000 ms. The default (48 hours) fits the default schedule with jitter.                     |
-| `retry.respectRetryAfter` | `true`                                                           | Wait at least as long as a `429` or `503` response's `Retry-After` asks. See [attempt outcomes](#attempt-outcomes).                     |
-| `endpointHealth`          | On                                                               | Automatic pauses, or `false` to turn them off. See [automatic pauses](#automatic-pauses).                                               |
-| `hooks`                   | None                                                             | Callbacks after each recorded outcome. See [hooks](#hooks).                                                                             |
-| `retentionMs`             | `604800000`                                                      | Event retention from 1,000 through 31,536,000,000 ms. Must be at least `retry.maxAgeMs`.                                                |
-| `allowLocalhost`          | `false`                                                          | Permits HTTP loopback destinations for development. Other private addresses stay forbidden.                                             |
-| `delivery`                | See below                                                        | Per-attempt and per-batch limits.                                                                                                       |
+| Option                    | Default                                                          | Contract                                                                                                                                                                     |
+| ------------------------- | ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `database`                | Required                                                         | PostgreSQL executor with `query()` and `connect()`. A checked-out client has `query()` and `release()`. `pg.Pool` satisfies this shape.                                      |
+| `events`                  | Required                                                         | Nonempty map of event names to Standard Schema validators.                                                                                                                   |
+| `source`                  | Required                                                         | Trusted `EndpointSource` with `matchRecipients` and `resolveEndpoint`.                                                                                                       |
+| `schema`                  | `'public'`                                                       | PostgreSQL schema containing delivery tables.                                                                                                                                |
+| `retry.delaysMs`          | `[5000, 300000, 1800000, 7200000, 18000000, 36000000, 36000000]` | At most 20 integer delays, each from 1 through 86,400,000 ms. An empty array disables retries.                                                                               |
+| `retry.maxAgeMs`          | `172800000`                                                      | Retry window from 100 through 2,592,000,000 ms, counted from creation or from the first attempt after a pause. The default (48 hours) fits the default schedule with jitter. |
+| `retry.respectRetryAfter` | `true`                                                           | Wait at least as long as a `429` or `503` response's `Retry-After` asks. See [attempt outcomes](#attempt-outcomes).                                                          |
+| `endpointHealth`          | On                                                               | Automatic pauses, or `false` to turn them off. See [automatic pauses](#automatic-pauses).                                                                                    |
+| `hooks`                   | None                                                             | Callbacks after each recorded outcome. See [hooks](#hooks).                                                                                                                  |
+| `retentionMs`             | `604800000`                                                      | Event retention from 1,000 through 31,536,000,000 ms. Must be at least `retry.maxAgeMs`.                                                                                     |
+| `allowLocalhost`          | `false`                                                          | Permits HTTP loopback destinations for development. Other private addresses stay forbidden.                                                                                  |
+| `delivery`                | See below                                                        | Per-attempt and per-batch limits.                                                                                                                                            |
 
 Event names match `^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,119}$`. The constructor validates each event's Standard Schema interface. Any invalid option throws `INVALID_CONFIG`. [Delivery guarantees](/docs/concepts/delivery-guarantees) explains how `retry` plays out.
 
@@ -135,6 +135,7 @@ Payload normalization sorts object keys. It rejects nonfinite numbers, cycles, n
 deliveries.list(query?: DeliveryQuery): Promise<Page<Delivery>>
 deliveries.get(id: string): Promise<DeliveryDetail>
 deliveries.replay(id: string): Promise<Delivery>
+deliveries.replayMany(input: ReplayManyInput): Promise<ReplayManyResult>
 ```
 
 ```ts
@@ -170,6 +171,31 @@ if (detail.replayOf === null) await delivery.deliveries.replay(detail.id)
 | `NOT_FOUND`          | No delivery with this ID in the selected scope.                                                                         |
 | `INVALID_STATE`      | The endpoint is not active, the delivery is a replay or not `succeeded` or `failed`, or the event is outside retention. |
 | `REPLAY_IN_PROGRESS` | The original delivery already has a pending or in-flight replay.                                                        |
+
+### replayMany
+
+`replayMany` replays one page of an endpoint's original deliveries in one transaction, newest delivery IDs first. Each eligible delivery follows `replay`'s rules; an ineligible one is skipped instead of failing the call. See [bulk replay](/docs/operations/retries-and-replay#bulk-replay).
+
+| `ReplayManyInput` field | Contract                                                                         |
+| ----------------------- | -------------------------------------------------------------------------------- |
+| `endpointId`            | Required. Only original deliveries to this endpoint; replays are never examined. |
+| `status`                | `'failed'` (default) or `'succeeded'`.                                           |
+| `since`                 | `Date`. Only deliveries with `createdAt` at or after it.                         |
+| `until`                 | `Date`. Only deliveries with `createdAt` before it. Not earlier than `since`.    |
+| `limit`                 | Deliveries examined per call, from 1 through 1,000. Default 100.                 |
+| `before`                | Exclusive delivery-ID cursor. Pass the previous `nextCursor`.                    |
+
+| `ReplayManyResult` field | Meaning                                                                                                  |
+| ------------------------ | -------------------------------------------------------------------------------------------------------- |
+| `replayed`               | New replay deliveries created.                                                                           |
+| `skipped`                | Examined deliveries whose event is outside retention or that already have a pending or in-flight replay. |
+| `nextCursor`             | The last examined delivery ID when more remain, or `null`.                                               |
+
+| Error           | When                                                                            |
+| --------------- | ------------------------------------------------------------------------------- |
+| `INVALID_INPUT` | A missing or invalid field, an unknown `status`, or `since` later than `until`. |
+| `NOT_FOUND`     | The endpoint is deleted or unknown in the selected scope.                       |
+| `INVALID_STATE` | The endpoint is paused.                                                         |
 
 ### Delivery and attempt records
 
@@ -281,7 +307,7 @@ All worker methods cover every scope in the configured delivery database and sch
 | URL resolves to an unsafe address at send time | `failed`, no retry                                                             |
 | Worker stopped or lease expired mid-request    | `abandoned`. The delivery retries if budget remains                            |
 
-Each retry waits its configured delay plus up to 20% random jitter. When a `429` or `503` response carries a `Retry-After` header (seconds or an HTTP date) that asks for longer, the retry waits at least that long, plus the same jitter, unless `retry.respectRetryAfter` is `false`. The worker doesn't schedule a retry that would land after `retry.maxAgeMs`, so the delivery fails.
+Each retry waits its configured delay plus up to 20% random jitter. When a `429` or `503` response carries a `Retry-After` header (seconds or an HTTP date) that asks for longer, the retry waits at least that long, plus the same jitter, unless `retry.respectRetryAfter` is `false`. The worker doesn't schedule a retry that would land after the retry window ends, so the delivery fails. The window is `retry.maxAgeMs`, counted from the delivery's creation, or from its first attempt after the endpoint was paused.
 
 ### Automatic pauses
 
@@ -360,6 +386,6 @@ const organization = delivery.forScope({ type: 'organization', id: 'org_123' })
 await organization.deliveries.list()
 ```
 
-`check()` verifies delivery schema version `5` and throws `SCHEMA_MISMATCH` otherwise, naming the SQL to apply. It never applies migrations and does not check management storage.
+`check()` verifies delivery schema version `6` and throws `SCHEMA_MISMATCH` otherwise, naming the SQL to apply. It never applies migrations and does not check management storage.
 
 `forScope(scope)` returns `publish`, `deliveries`, and `deliverySettings` bound to one named scope. An invalid scope throws `INVALID_INPUT`. The root methods use application scope. Scope selection does not authorize access. See [scopes](/docs/concepts/scopes).

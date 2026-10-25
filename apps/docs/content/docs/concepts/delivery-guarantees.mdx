@@ -38,7 +38,7 @@ By default a delivery gets up to eight attempts over about 28 hours, so a receiv
 | ------- | --- | --- | --- | ---- | --- | --- | ---- | ---- |
 | Waits   | now | 5 s | 5 m | 30 m | 2 h | 5 h | 10 h | 10 h |
 
-Change it with `retry: { delaysMs, maxAgeMs }` on `createWebhooks()` or `createDelivery()`. A `429` or `503` with a longer `Retry-After` header waits that long instead, within `retry.maxAgeMs` (48 hours by default). Every retry keeps the event ID and body and gets a fresh timestamp and signature.
+Change it with `retry: { delaysMs, maxAgeMs }` on `createWebhooks()` or `createDelivery()`. A `429` or `503` with a longer `Retry-After` header waits that long instead, within `retry.maxAgeMs` (48 hours by default). The retry window counts from the delivery's creation, or from its first attempt after a pause, so a delivery held behind a paused endpoint gets its full window again after the resume. `retentionMs` still bounds it. Every retry keeps the event ID and body and gets a fresh timestamp and signature.
 
 ### Automatic pauses
 
@@ -55,14 +55,14 @@ The worker pauses an endpoint when all its attempts have failed for five days, o
 
 ## Endpoint changes while work is queued
 
-| Change                | Effect on queued deliveries                                                |
-| --------------------- | -------------------------------------------------------------------------- |
-| Pause                 | Held until resume, or until the delivery passes its age limit              |
-| Automatic pause       | Same as a pause                                                            |
-| Resume                | Eligible deliveries send again                                             |
-| Delete                | Pending work is cancelled when the worker sees it. Secrets are cleared     |
-| Change URL            | The next attempt uses the new URL                                          |
-| Change subscriptions  | Later events only. Already accepted recipients stay                        |
-| Rotate signing secret | The next attempt signs with the current secrets (both, during the overlap) |
+| Change                | Effect on queued deliveries                                                                              |
+| --------------------- | -------------------------------------------------------------------------------------------------------- |
+| Pause                 | Held until resume. The retry window restarts at the first attempt after the resume, within `retentionMs` |
+| Automatic pause       | Same as a pause                                                                                          |
+| Resume                | Eligible deliveries send again                                                                           |
+| Delete                | Pending work is cancelled when the worker sees it. Secrets are cleared                                   |
+| Change URL            | The next attempt uses the new URL                                                                        |
+| Change subscriptions  | Later events only. Already accepted recipients stay                                                      |
+| Rotate signing secret | The next attempt signs with the current secrets (both, during the overlap)                               |
 
 A request already being sent when you pause or delete can still arrive. If endpoint management is unreachable at attempt time, the delivery waits without using up an attempt. An outage is never treated as a deletion.

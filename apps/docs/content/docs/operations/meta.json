@@ -6,6 +6,7 @@
     "workers",
     "serverless",
     "retries-and-replay",
+    "opentelemetry",
     "key-rotation",
     "performance",
     "compatibility"

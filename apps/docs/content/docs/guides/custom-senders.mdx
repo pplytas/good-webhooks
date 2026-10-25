@@ -11,14 +11,20 @@ import type { EndpointSource } from 'good-webhooks/management'
 // interface EndpointSource {
 //   matchRecipients(scope, eventType): Promise<readonly string[]>
 //   resolveEndpoint(scope, endpointId): Promise<
-//     | { status: 'active'; url: string; secrets: readonly string[]; revision?: string }
+//     | {
+//         status: 'active'
+//         url: string
+//         secrets: readonly string[]
+//         revision?: string
+//         headers?: Record<string, string>
+//       }
 //     | { status: 'paused' | 'deleted' }
 //   >
 //   pause?(scope, endpointId, { reason, revision }): Promise<boolean>
 // }
 ```
 
-`scope` is `null` for application scope or `{ type, id }`. The source returns plaintext signing secrets, so keep it in trusted server code.
+`scope` is `null` for application scope or `{ type, id }`. The source returns plaintext signing secrets, so keep it in trusted server code. The built-in sources return no `headers`.
 
 <Steps>
 <Step>
@@ -60,4 +66,4 @@ To pause endpoints that keep failing, as the built-in worker does, call `source.
 
 Durable queuing, bounded retries, attempt history, retention, and concurrency limits are also yours. If that list is longer than you want, connect the [built-in delivery](/docs/better-auth/delivery) to the same source instead.
 
-To keep the endpoint lifecycle API but store endpoints somewhere else, implement the [`ManagementRepository` contract](/docs/reference/management#managementrepository) and pass it to `createManagement()`.
+To keep the endpoint lifecycle API but store endpoints somewhere else, implement the [`ManagementRepository` contract](/docs/reference/management#managementrepository) and pass it to `createManagement()`. Its `create` receives the limit as `{ limit }`, and it must store `encryptedHeaders` and return it unchanged.

@@ -5,7 +5,7 @@ description: Inspect delivery history, replay an event without changing its iden
 
 Retries follow the [retry policy](/docs/concepts/delivery-guarantees#retries). Two things look like failures but are not receiver failures:
 
-- **Paused endpoint.** The delivery waits until resume or expiry. That includes endpoints the worker [paused automatically](/docs/guides/endpoints#automatic-pauses).
+- **Paused endpoint.** The delivery waits until resume, however long the pause lasts. Its retry window restarts at the first attempt after the resume, so it gets its full `retry.maxAgeMs` again; `retentionMs` still bounds it. That includes endpoints the worker [paused automatically](/docs/guides/endpoints#automatic-pauses).
 - **Provider lookup failure.** The delivery is deferred without consuming an attempt, and the error goes to the worker's `onError`.
 
 History and replay are server operations on the client for the endpoint's scope. They are not exposed as Better Auth routes.
@@ -43,6 +43,50 @@ if (detail.replayOf === null && ['succeeded', 'failed'].includes(detail.status))
 - The replay gets a new delivery ID and retry budget, the same event ID and body, and the endpoint's current URL and secrets. A worker still has to send it.
 
 Because the event ID is unchanged, a [deduplicating receiver](/docs/guides/receive#process-each-event-once) ignores a replay of an event it already processed.
+
+## Bulk replay
+
+When a receiver lost many events, for example after a bad deploy, replay them in pages with `replayMany()`:
+
+```ts
+replayMany(input: {
+  endpointId: string
+  status?: 'failed' | 'succeeded' // default 'failed'
+  since?: Date // createdAt at or after
+  until?: Date // createdAt before
+  limit?: number // 1 to 1,000, default 100
+  before?: string // nextCursor from the previous call
+}): Promise<{ replayed: number; skipped: number; nextCursor: string | null }>
+```
+
+Each call examines one page of the endpoint's original deliveries with that status, newest first, and replays every eligible one in a single transaction. The rules match `replay()`:
+
+- Only originals are examined. A replay is never replayed again.
+- The endpoint must be active: a paused endpoint is `INVALID_STATE`, and a deleted or unknown one is `NOT_FOUND`. Nothing is replayed in either case.
+- A delivery whose event is outside retention, or that already has a pending or in-flight replay, is counted in `skipped` instead of failing the call.
+
+Loop until `nextCursor` is `null`:
+
+```ts
+let before: string | undefined
+do {
+  const page = await organization.deliveries.replayMany({ endpointId, since, before })
+  console.log(page.replayed, page.skipped)
+  before = page.nextCursor ?? undefined
+} while (before)
+```
+
+### Recover failed deliveries
+
+Failed deliveries are already kept as history, so there is no separate list to manage. After the receiver is fixed, look at what failed, then replay it:
+
+```ts
+const failed = await organization.deliveries.list({ endpointId, status: 'failed' })
+// Inspect failed.items, then replay everything that failed since the incident started.
+const page = await organization.deliveries.replayMany({ endpointId, since: incidentStart })
+```
+
+Each replay gets a new delivery ID and retry budget, and keeps the event ID, so a [deduplicating receiver](/docs/guides/receive#process-each-event-once) ignores events it already processed.
 
 ## Clean up history
 

@@ -51,7 +51,7 @@ Returns the `good-webhooks` Better Auth server plugin. It adds one management mo
 
 ### Storage model
 
-Schema field names are `scopeKey`, `allocationKey`, `creationToken`, `url`, `description`, `eventTypes`, `additionalEventTypes`, `status`, `pauseReason`, `encryptedSecret`, `previousEncryptedSecret`, `previousSecretExpiresAt`, `revision`, `createdAt`, and `updatedAt`.
+Schema field names are `scopeKey`, `allocationKey`, `creationToken`, `url`, `description`, `eventTypes`, `additionalEventTypes`, `status`, `pauseReason`, `encryptedSecret`, `previousEncryptedSecret`, `previousSecretExpiresAt`, `encryptedHeaders`, `revision`, `createdAt`, and `updatedAt`. `encryptedHeaders` is an optional string, never accepted as input or returned; it is reserved for endpoint headers and stays empty until a later release writes it.
 
 The plugin declares a unique `allocationKey` index for the per-scope endpoint limit. Generated fields and indexes are part of the storage contract. The host runs Better Auth's migration or schema-generation workflow. Standalone `management.sql` does not create this model.
 
