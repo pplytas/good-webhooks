@@ -11,6 +11,8 @@ const sixTypeScriptVersion = '6.0.3'
 const directory = await mkdtemp(join(tmpdir(), 'good-webhooks-consumer-'))
 const run = (command, args, cwd) =>
   execFileSync(command, args, { cwd, stdio: 'pipe', encoding: 'utf8' })
+// Package-local binaries, so the script also works outside `pnpm run`.
+const bin = (name) => join(packageDirectory, 'node_modules', '.bin', name)
 const typecheck = (args = []) => {
   // Install the compilers once and check the same archive and inference fixtures.
   for (const compiler of ['typescript-minimum', 'typescript-six', 'typescript']) {
@@ -53,7 +55,7 @@ try {
   const sqlExports = Object.keys(manifest.exports).filter((entry) => entry.endsWith('.sql'))
   console.log(
     run(
-      'attw',
+      bin('attw'),
       [
         archive,
         '--profile',
@@ -68,7 +70,7 @@ try {
       packageDirectory,
     ),
   )
-  console.log(run('publint', ['run', archive, '--strict'], packageDirectory))
+  console.log(run(bin('publint'), ['run', archive, '--strict'], packageDirectory))
   await writeFile(join(directory, 'package.json'), '{"private":true,"type":"module"}')
   run('npm', ['install', '--ignore-scripts', '--no-audit', '--no-fund', archive], directory)
   await writeFile(
