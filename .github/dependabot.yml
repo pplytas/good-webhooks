@@ -21,3 +21,8 @@ updates:
     groups:
       npm-minor-and-patch:
         update-types: [minor, patch]
+    ignore:
+      # CI tests 1.7.7 as the lowest supported Better Auth version (ci.yml, "Lowest supported
+      # version, from the lockfile"). Raise that floor by hand, not through Dependabot.
+      - dependency-name: better-auth
+      - dependency-name: auth
