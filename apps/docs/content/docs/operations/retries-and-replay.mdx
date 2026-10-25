@@ -5,7 +5,7 @@ description: Inspect delivery history, replay an event without changing its iden
 
 Retries follow the [retry policy](/docs/concepts/delivery-guarantees#retries). Two things look like failures but are not receiver failures:
 
-- **Paused endpoint.** The delivery waits until resume, however long the pause lasts. Its retry window restarts at the first attempt after the resume, so it gets its full `retry.maxAgeMs` again; `retentionMs` still bounds it. That includes endpoints the worker [paused automatically](/docs/guides/endpoints#automatic-pauses).
+- **Paused endpoint.** The delivery waits until resume and then gets a [full retry window](/docs/concepts/delivery-guarantees#retries). That includes endpoints the worker [paused automatically](/docs/guides/endpoints#automatic-pauses).
 - **Provider lookup failure.** The delivery is deferred without consuming an attempt, and the error goes to the worker's `onError`.
 
 History and replay are server operations on the client for the endpoint's scope. They are not exposed as Better Auth routes.
@@ -46,18 +46,7 @@ Because the event ID is unchanged, a [deduplicating receiver](/docs/guides/recei
 
 ## Bulk replay
 
-When a receiver lost many events, for example after a bad deploy, replay them in pages with `replayMany()`:
-
-```ts
-replayMany(input: {
-  endpointId: string
-  status?: 'failed' | 'succeeded' // default 'failed'
-  since?: Date // createdAt at or after
-  until?: Date // createdAt before
-  limit?: number // 1 to 1,000, default 100
-  before?: string // nextCursor from the previous call
-}): Promise<{ replayed: number; skipped: number; nextCursor: string | null }>
-```
+When a receiver lost many events, for example after a bad deploy, replay them in pages with `replayMany()`. It takes the endpoint, an optional status (`failed` by default), a `createdAt` range, a page size up to 1,000, and a cursor. The [reference](/docs/reference/delivery#replaymany) lists every field.
 
 Each call examines one page of the endpoint's original deliveries with that status, newest first, and replays every eligible one in a single transaction. The rules match `replay()`:
 

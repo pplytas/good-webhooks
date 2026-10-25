@@ -15,7 +15,7 @@ Bulk replay recovers the deliveries a receiver lost, a pause no longer fails the
 ### Breaking
 
 - **Schema upgrade required.** Schema version `6` adds `webhook_deliveries.window_started_at` and `webhook_endpoints.encrypted_headers` (unused until `0.6.0`). `check()` on `0.5.0` refuses version 5 storage and names the upgrade.
-- **A pause resets the retry window.** A delivery that waits behind a paused endpoint keeps its full `retry.maxAgeMs` after the resume, instead of failing at the first claim. The worker measures the window from `window_started_at`, clears it when it defers a delivery for a pause, and starts it again at the first attempt after the resume. The attempt count and retry delays don't change, `retentionMs` still bounds every delivery, and owner pauses count too. The Playground's `failing` endpoint had 288 deliveries that failed this way ([#74](https://github.com/pplytas/good-webhooks/issues/74)).
+- **A pause resets the retry window.** A delivery that waits behind a paused endpoint keeps its full `retry.maxAgeMs` after the resume, instead of failing at the first claim. The worker measures the window from `window_started_at`, clears it when it defers a delivery for a pause, and starts it again at the first attempt after the resume. The attempt count and retry delays don't change, `retentionMs` still bounds every delivery, and owner pauses count too. 288 deliveries waited behind each paused Playground endpoint ([#74](https://github.com/pplytas/good-webhooks/issues/74)).
 - **Interfaces hosts implement.** These stop compiling: a `ManagementRepository` whose `create` declares `limit: number`, any direct call such as `repository.create(scope, endpoint, 1000)`, and object literals typed as `StoredEndpoint` or `Omit<StoredEndpoint, 'id'>` without `encryptedHeaders`. Repositories that spread the record they receive still compile. Both built-in repositories reject a bare number with `INVALID_INPUT`. `EndpointSource`, `EndpointManagement`, `DeliveryHooks`, and `SecretCipher` keep their shapes, and the built-in PostgreSQL and Better Auth management need no code change.
 
 ### Added
@@ -25,7 +25,7 @@ Bulk replay recovers the deliveries a receiver lost, a pause no longer fails the
 - An optional `headers` field on active `EndpointResolution` results. The worker accepts a plain object of strings and defers the delivery, without using an attempt, for anything else. The built-in sources return none. `EndpointSource`, `EndpointManagement`, `ManagementRepository`, `StoredEndpoint`, `SecretCipher`, `DeliveryHooks`, and `Endpoint` document their growth rule: new methods and fields are optional, and new inputs arrive in a trailing options object.
 - **OpenTelemetry recipe.** [`examples/operations/otel.ts`](packages/good-webhooks/examples/operations/otel.ts) maps `onAttempt` to `good_webhooks.attempt.duration` (a histogram in seconds, with HTTP client bucket advice), `good_webhooks.attempts`, and `good_webhooks.attempt.responses`, and `onEndpointPaused` to `good_webhooks.endpoint.pauses`. It depends only on `@opentelemetry/api`, a devDependency here, so installing `good-webhooks` adds no dependency. See the [OpenTelemetry page](apps/docs/content/docs/operations/opentelemetry.mdx).
 - `getPostgresUpgrade()` accepts `from: 5`. Shipped upgrade files never change, so `migrations/upgrades/006-*.sql` adds the new step.
-- CI rehearses the upgrade from the latest published release (`0.4.0`) with a pending backlog.
+- CI rehearses the upgrade from `0.4.0` storage with a pending backlog.
 
 ### Coming in 0.6.0
 

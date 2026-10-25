@@ -47,7 +47,7 @@ try {
 | Code                   | Meaning                                                                          | Thrown by                                                               |
 | ---------------------- | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
 | `INVALID_CONFIG`       | Invalid constructor, encryption, migration, or receiver-validator configuration. | Constructors, `getPostgresMigration`, `parseWebhook`, secret decryption |
-| `INVALID_INPUT`        | Invalid operation arguments or producer payload.                                 | Most operations, including `replayMany`                                 |
+| `INVALID_INPUT`        | Invalid operation arguments or producer payload.                                 | Most operations                                                         |
 | `UNSAFE_URL`           | Destination fails URL or resolved-address validation.                            | Endpoint create, update, and resume                                     |
 | `NOT_FOUND`            | Record or owner is absent in the selected scope.                                 | Endpoint and delivery lookups, `replayMany`                             |
 | `INVALID_STATE`        | Operation conflicts with lifecycle, limits, retention, or concurrent state.      | Endpoint lifecycle, `replay`, `replayMany`, worker overlap              |

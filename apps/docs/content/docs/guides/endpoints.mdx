@@ -70,13 +70,13 @@ const { secret } = await organization.endpoints.rotateSecret(id, { graceMs: 3_60
 await organization.endpoints.remove(id)
 ```
 
-| Method         | Effect                                                                                                                    |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `update`       | Changes the URL, description, or subscriptions. A new URL is checked again                                                |
-| `pause`        | Keeps subscriptions and queued deliveries. The worker holds them until resume, then retries them with a full retry window |
-| `resume`       | Checks the URL again, then queued deliveries send                                                                         |
-| `rotateSecret` | Returns a new signing secret. Both sign requests during the overlap (default and max 24 h)                                |
-| `remove`       | Permanent. Clears stored secrets, cancels queued deliveries, and keeps a deleted record                                   |
+| Method         | Effect                                                                                                                  |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `update`       | Changes the URL, description, or subscriptions. A new URL is checked again                                              |
+| `pause`        | Keeps subscriptions and queued deliveries. The worker holds them until resume, then sends them with a full retry window |
+| `resume`       | Checks the URL again, then queued deliveries send                                                                       |
+| `rotateSecret` | Returns a new signing secret. Both sign requests during the overlap (default and max 24 h)                              |
+| `remove`       | Permanent. Clears stored secrets, cancels queued deliveries, and keeps a deleted record                                 |
 
 These calls return as soon as the record changes. A request already being sent can still arrive after a pause or remove. See [endpoint changes while work is queued](/docs/concepts/delivery-guarantees#endpoint-changes-while-work-is-queued).
 
@@ -95,7 +95,7 @@ Receivers built with `parseWebhook()` accept test events without listing them. S
 
 ## Automatic pauses
 
-The worker pauses an endpoint when every attempt to it has failed for five days, or when it answers `410 Gone`. Nothing is deleted. Subscriptions and queued deliveries stay, and `resume` works as usual once the receiver works again. After the resume, queued deliveries get a full retry window, however long the pause lasted. `pauseReason` tells the two kinds of pause apart:
+The worker pauses an endpoint when every attempt to it has failed for five days, or when it answers `410 Gone`. Nothing is deleted. Subscriptions and queued deliveries stay, and `resume` works as usual once the receiver works again. `pauseReason` tells the two kinds of pause apart:
 
 | `pauseReason` | Meaning                                       |
 | ------------- | --------------------------------------------- |
