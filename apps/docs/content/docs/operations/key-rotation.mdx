@@ -40,6 +40,8 @@ const { data } = await authClient.goodWebhooks.rotateSecret({ id: endpointId, gr
 
 ## Rotate the standalone storage key
 
+Rotating the storage key re-encrypts the stored signing secrets and leaves their values unchanged. If the old key may have been stolen together with a copy of the endpoint records, also [rotate each affected signing secret](#rotate-a-signing-secret), because the old key still decrypts that copy.
+
 The standalone PostgreSQL provider decrypts with the current key first, then any `decryptionKeys`. Reads never rewrite ciphertext, so rotation is explicit:
 
 <Steps>

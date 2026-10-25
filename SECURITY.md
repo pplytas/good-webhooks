@@ -4,7 +4,7 @@ Report suspected vulnerabilities through [GitHub's private vulnerability reporti
 
 ## Response targets
 
-One maintainer works on Good Webhooks part time, so these targets are ceilings, not averages.
+One maintainer works on Good Webhooks part time, so these targets are ceilings, not averages. They apply to reports against [supported versions](#supported-versions); alpha and beta versions receive no fixes.
 
 - You get an initial response within 14 days of your report.
 - A fix for medium or higher severity ships within 60 days of confirmation. Severity follows CVSS 4.0 or the maintainer's judgement.
