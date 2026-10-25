@@ -1,6 +1,6 @@
 ---
 title: Receive webhooks
-description: Verify the raw request, decode a typed event, and process each event exactly once. Examples for Next.js, Hono, Express, and Node.js.
+description: Verify the raw request, decode a typed event, and process each event exactly once. Examples for Next.js, Hono, Express, Fastify, and Node.js.
 ---
 
 A receiver reads the raw body, verifies it with `parseWebhook()`, processes the event once, and responds. `good-webhooks/verify` loads no database or worker code, so it fits in any Node.js service.
@@ -9,7 +9,7 @@ A receiver reads the raw body, verifies it with `parseWebhook()`, processes the 
 
 Each handler is complete. Put your [event map](#share-the-event-map) in `events.ts` and the endpoint's signing secret in `WEBHOOK_SECRET`.
 
-<Tabs groupId="framework" persist items={['Next.js', 'Hono', 'Express', 'Node.js http']}>
+<Tabs groupId="framework" persist items={['Next.js', 'Hono', 'Express', 'Fastify', 'Node.js http']}>
 <Tab>
 
 ```ts title="app/webhooks/route.ts"
@@ -116,6 +116,51 @@ app.listen(3000)
 ```
 
 Register `express.raw()` on this route before any global `express.json()`. Parsed JSON cannot be verified.
+
+</Tab>
+<Tab>
+
+```ts title="server.ts"
+import Fastify from 'fastify'
+import { parseWebhook, WebhookError } from 'good-webhooks/verify'
+import { events } from './events.js'
+
+const app = Fastify()
+
+// Raw bytes, not parsed JSON: the signature covers the exact body.
+app.register(async (instance) => {
+  instance.addContentTypeParser(
+    'application/json',
+    { parseAs: 'buffer', bodyLimit: 512 * 1024 },
+    (request, body, done) => done(null, body),
+  )
+
+  instance.post<{ Body: Buffer }>('/webhooks', async (request, reply) => {
+    try {
+      const event = await parseWebhook({
+        body: request.body,
+        headers: request.headers,
+        secret: process.env.WEBHOOK_SECRET!,
+        events,
+      })
+      console.log(event.type, event.id) // Process once: see below.
+      return reply.code(204).send()
+    } catch (error) {
+      if (error instanceof WebhookError && isRejection(error)) {
+        return reply.code(400).send('Invalid webhook')
+      }
+      throw error // Fastify turns this into a 500: the sender retries.
+    }
+  })
+})
+
+const isRejection = (error: WebhookError) =>
+  ['SIGNATURE_INVALID', 'SIGNATURE_EXPIRED', 'PAYLOAD_INVALID'].includes(error.code)
+
+await app.listen({ port: 3000 })
+```
+
+The parser applies only inside this `app.register()` scope, so the rest of the app keeps Fastify's JSON parsing. `bodyLimit` answers `413` before the handler runs.
 
 </Tab>
 <Tab>
