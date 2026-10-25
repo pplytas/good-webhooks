@@ -28,3 +28,7 @@ The failure table in [Run workers](../apps/docs/content/docs/operations/workers.
 | `SIGKILL` recovery with a backlog                                 | `scripts/check-operations.mjs` (`pnpm test:operations`)                                                 |
 | Killed connections, exclusive lock, failing and hanging receivers | `scripts/check-chaos.mjs` (`pnpm test:chaos`)                                                           |
 | Old and new packages across an upgrade                            | `scripts/check-upgrade-compat.mjs` (`pnpm test:compat`)                                                 |
+
+## Export metrics with OpenTelemetry
+
+`packages/good-webhooks/examples/operations/otel.ts` maps the delivery hooks to OpenTelemetry metrics and depends only on `@opentelemetry/api`. It records an attempt duration histogram and counters for attempts by outcome, responses by status class, and automatic pauses by reason. `test/otel-recipe.test.ts` checks the recorded values and attributes with a fake meter and the API's no-op meter. A docs-site page follows in the 0.5.0 release.
