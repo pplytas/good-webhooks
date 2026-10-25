@@ -12,9 +12,9 @@ Labels used below:
 
 ## 0. Bottom line
 
-1. **Own-channel reach is about zero today [V].** The 0.1.0 X thread got 110 impressions and 4 likes from an account with 11 followers. The repo got 54 views and 16 unique visitors in 14 days. Only `github.com` and `good-webhooks.dev` appear as referrers. No public repo outside your own depends on the package (GitHub code search for `"good-webhooks"` in `package.json` returns only pplytas repos). The ~1,800 weekly downloads spike on release days and are zero on other days, so they are CI and mirrors.
+1. **Own-channel reach is about zero today [V].** The 0.1.0 X thread got 110 impressions and 4 likes from an account with 11 followers. The repo got 54 views and 16 unique visitors in 14 days. Only `github.com` and `good-webhooks.dev` appear as referrers. No public repo outside your own depends on the package (GitHub code search for `"good-webhooks"` in `package.json` returns only pplytas repos). The ~1,800 weekly downloads spike on release days and are zero on other days; [I] that pattern points to CI and mirrors rather than people, though no download breakdown proves it.
 2. **So growth must come from borrowed audiences**: Hacker News, a few subreddits, ecosystem lists that other people already read (Standard Webhooks, Zod, Better Auth, Context7, skills.sh), and a small number of hand-picked teams. [I]
-3. **Set realistic targets.** A decent Show HN converts at a median of ~1.4 stars per point [V, below]. Comparable Postgres or webhook libraries that did well on HN got 60 to 90 points and then roughly 100 stars (see section 2). Expect tens to low hundreds of stars from a launch, not thousands. The goal that matters is 3 to 5 real external adopters, not star count. [I]
+3. **Set realistic targets.** A decent Show HN converts at a median of ~1.4 stars per point within 48 hours [S, below]. Comparable Postgres or webhook libraries that did well on HN got 60 to 90 points and then roughly 100 stars [I, from the current star counts in section 2, not a measured conversion]. Expect tens to low hundreds of stars from a launch, not thousands. The goal that matters is 3 to 5 real external adopters, not star count. [I]
 4. **Biggest levers, in order** [I]: (a) fix the funnel and get a zero-signup demo, (b) free registry placements (Context7, skills.sh, MCP registry, Zod, Standard Webhooks, Fumadocs), (c) one strong tutorial plus one honest comparison page, (d) one well-prepared Show HN, (e) 10 hand-picked design-partner conversations, (f) GitHub Sponsors then Neon and Railway programs.
 5. **Two time-boxed things.** Console.dev only features pre-1.0 or beta tools, so pitch them before 1.0 [V]. NLnet's next deadline is 2026-11-03 noon CET, but fit is doubtful (section 3).
 
@@ -255,7 +255,7 @@ Priority order is by expected value per hour, not by tier number. "Reach" is my 
 **22. Show HN (one attempt).** Hours: 10 prep + 6 on the day. Reach: realistic 10 to 90 points; at the median 1.4 stars per point, 60 points is about 85 stars [I].
 
 - Prep: README first screen answers "what, why not Svix, how to try in 60 seconds"; FAQ prepared for the four questions in section 2; account has some real comment history; title in the `Show HN: Name – verb thing using your own Postgres` pattern; first comment explains why you built it and what it does not do.
-- Timing [S, inference from the dataset]: Friday 12:00 to 13:00 UTC (14:00 to 15:00 Athens) has the highest mean score and keeps you awake. Be present for the first 6 hours.
+- Timing [S, inference from the dataset]: Friday 12:00 to 15:00 UTC (14:00 to 17:00 Athens) has the highest mean score and keeps you awake; pick a start inside that window. Be present for the first 6 hours.
 - Rules: no asking for upvotes (even in DMs), no AI-written text, no delete and repost, do not post a second Show HN for a minor release.
 
 **23. Reddit, spaced over a week.** Hours: 4. Reach: low hundreds of visits per good post [I].
@@ -316,9 +316,9 @@ Gates are in bold. Dates for the HN launch assume the demo and tutorial are done
 | 9    | Dec 21 to 27    | Holiday week. Respond to issues only. Write 19 (reliability post) offline.                                                                                                                                                                                                  | ~4    |
 | 10   | Dec 28 to Jan 3 | Publish 19. Finish framework recipes (20).                                                                                                                                                                                                                                  | ~10   |
 | 11   | Jan 4 to 10     | Follow up with design partners; ask permission to quote. Check Vercel OSS (31). FLOSS/fund (32) if traction. Re-run AI baseline.                                                                                                                                            | ~8    |
-| 12   | Jan 11 to 17    | Review metrics. Decide 1.0 timing against Console.dev eligibility. If stars are near 100, submit awesome-nodejs. Plan next quarter.                                                                                                                                         | ~6    |
+| 12   | Jan 11 to 17    | Review metrics. Decide 1.0 timing against Console.dev eligibility. If stars are at or above 100, submit awesome-nodejs. Plan next quarter.                                                                                                                                  | ~6    |
 
-Rough total: 150 to 170 hours. If you only have 40 hours, do these in order: 1, 3, 6, 7, 8, 9, 11, 15, 16, 22, 28, 33 (with 5 partners instead of 10). [I]
+Rough total: 150 to 170 hours. If you only have about 60 hours, do these in order: 1, 3, 6, 7, 8, 9, 11, 15, 16, 22, 28, 33 (with 5 partners instead of 10); they add up to roughly 50 to 60 hours. [I]
 
 ### Expected outcomes by week 12 [I, not evidence]
 
