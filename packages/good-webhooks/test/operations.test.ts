@@ -622,7 +622,7 @@ describe('bounded run-once process', () => {
       await waitUntil(async () => {
         const result = await pool.query(`SELECT pid FROM pg_stat_activity
           WHERE datname=current_database() AND application_name='webhooks-example-run-once'
-          AND wait_event_type='Lock' AND clock_timestamp()-query_start > interval '50 milliseconds'`)
+          AND wait_event_type='Lock' AND clock_timestamp()-query_start > interval '150 milliseconds'`)
         return result.rows.length === 1
       }, 'a run-once claim to remain blocked beyond its time budget')
       await lock.query('COMMIT')

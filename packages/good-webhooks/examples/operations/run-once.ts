@@ -67,9 +67,10 @@ try {
     totals.retried += result.retried
     totals.failed += result.failed
     totals.stale += result.stale
-    // A batch claims nothing when the queue is empty. Do not start another.
+    // A batch claims nothing when the queue is empty, or when the signal
+    // interrupted the claim. Do not start another.
     if (result.claimed === 0) {
-      totals.reason = 'empty'
+      totals.reason = stop.signal.aborted ? 'signal' : 'empty'
       break
     }
   }
