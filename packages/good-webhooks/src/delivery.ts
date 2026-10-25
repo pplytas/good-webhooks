@@ -10,6 +10,7 @@ import type {
   EventDefinitions,
   PublishInput,
   PublishOptions,
+  ReplayManyInput,
   Scope,
 } from './types.js'
 
@@ -59,6 +60,11 @@ export function createDelivery<const E extends EventDefinitions>(options: Delive
         list: (query?: DeliveryQuery) => store.listDeliveries(key, query),
         get: (id: string) => store.getDelivery(key, id),
         replay: (id: string) => store.replay(key, id),
+        /**
+         * Replay one page of an active endpoint's original deliveries in one transaction.
+         * Skips deliveries outside retention or with a replay already pending or in flight.
+         */
+        replayMany: (input: ReplayManyInput) => store.replayMany(key, input),
       },
       deliverySettings: {
         get: (id: string) => store.getEndpointDeliveryOptions(key, id),

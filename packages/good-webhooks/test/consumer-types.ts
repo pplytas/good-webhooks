@@ -106,6 +106,15 @@ function consumerTypes(request: IncomingMessage) {
   // @ts-expect-error bound clients do not expose global maintenance
   scoped.worker.runOnce()
   scoped.deliveries.list({ eventId: '00000000-0000-0000-0000-000000000001' })
+  app.deliveries.replayMany({ endpointId: 'opaque-endpoint-id', since: new Date(), limit: 500 })
+  scoped.deliveries.replayMany({ endpointId: 'opaque-endpoint-id', status: 'succeeded' })
+  delivery.deliveries.replayMany({ endpointId: 'opaque-endpoint-id', before: '42' })
+  // @ts-expect-error bulk replay requires an endpoint
+  app.deliveries.replayMany({ status: 'failed' })
+  // @ts-expect-error only finished originals can be replayed
+  scoped.deliveries.replayMany({ endpointId: 'opaque-endpoint-id', status: 'pending' })
+  // @ts-expect-error date filters take Date objects
+  app.deliveries.replayMany({ endpointId: 'opaque-endpoint-id', since: '2026-10-01' })
   scoped.publish({ type: 'order.created', data: { id: 'o1', total: 1 } })
   scoped.endpoints.create({ url: 'https://example.com/hook', eventTypes: ['order.created'] })
   // @ts-expect-error event names are inferred, not arbitrary strings

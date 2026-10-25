@@ -12,6 +12,8 @@ import type {
   Page,
   PublishOptions,
   PublishResult,
+  ReplayManyInput,
+  ReplayManyResult,
   ResolvedConfig,
   SqlClient,
 } from './types.js'
@@ -86,6 +88,15 @@ function deliveryId(id: string): void {
 function eventType(type: string): void {
   if (typeof type !== 'string' || !type.trim() || type.length > 120 || type.includes('\0'))
     invalid('An event name must contain 1–120 characters and no null bytes.')
+}
+function pageLimit(value: number, max: number, name: string): number {
+  if (!Number.isSafeInteger(value) || value < 1 || value > max)
+    invalid(`${name} must be an integer from 1 to ${max}.`)
+  return value
+}
+function date(value: Date, name: string): void {
+  if (!(value instanceof Date) || Number.isNaN(value.getTime()))
+    invalid(`${name} must be a valid Date.`)
 }
 function maxInFlight(value: number): number {
   if (!Number.isSafeInteger(value) || value < 1 || value > 50)
@@ -261,9 +272,7 @@ export function createStore(config: ResolvedConfig) {
     if (query.before !== undefined) deliveryId(query.before)
     if (query.status !== undefined && !DELIVERY_STATUSES.has(query.status))
       invalid('Unknown delivery status.')
-    const limit = query.limit ?? 25
-    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100)
-      invalid('Delivery list limit must be an integer from 1 to 100.')
+    const limit = pageLimit(query.limit ?? 25, 100, 'Delivery list limit')
     // Sort the bigint column, not the text output named "id", to match the cursor comparison.
     const { rows } = await config.database.query<DeliveryRow>(
       `SELECT ${DELIVERY_FIELDS} FROM ${tables.deliveries} AS d WHERE scope_key=$1 AND ($2::text IS NULL OR endpoint_id=$2) AND ($3::text IS NULL OR status=$3) AND ($4::bigint IS NULL OR id<$4) AND ($6::uuid IS NULL OR event_id=$6) ORDER BY d.id DESC LIMIT $5`,
@@ -366,6 +375,69 @@ export function createStore(config: ResolvedConfig) {
     })
   }
 
+  /** Replays one page of an endpoint's originals; skips rather than fails per delivery. */
+  async function replayMany(scopeKey: string, input: ReplayManyInput): Promise<ReplayManyResult> {
+    scope(scopeKey)
+    object(input, 'Bulk replay input')
+    endpointId(input.endpointId)
+    const status = input.status ?? 'failed'
+    if (status !== 'failed' && status !== 'succeeded')
+      invalid('Bulk replay status must be failed or succeeded.')
+    if (input.since !== undefined) date(input.since, 'since')
+    if (input.until !== undefined) date(input.until, 'until')
+    if (input.since && input.until && input.since > input.until)
+      invalid('since must not be later than until.')
+    if (input.before !== undefined) deliveryId(input.before)
+    const limit = pageLimit(input.limit ?? 100, 1000, 'Bulk replay limit')
+    const target = await config.source.resolveEndpoint(scopeFromKey(scopeKey), input.endpointId)
+    if (target.status !== 'active')
+      throw new WebhookError('INVALID_STATE', 'Bulk replay requires an active endpoint.')
+    return transaction(async (client) => {
+      await lockScope(client, schema, scopeKey)
+      await client.query(
+        `SELECT endpoint_id FROM ${tables.endpointState} WHERE scope_key=$1 AND endpoint_id=$2 FOR NO KEY UPDATE`,
+        [scopeKey, input.endpointId],
+      )
+      // Replays of any delivery take the scope lock, so the active-replay check cannot go stale.
+      const { rows } = await client.query<{ id: string; eligible: boolean }>(
+        `SELECT d.id::text,
+          e.created_at>clock_timestamp()-$8::bigint*interval '1 millisecond' AND NOT EXISTS (
+            SELECT 1 FROM ${tables.deliveries} r WHERE r.scope_key=d.scope_key AND r.replay_of=d.id
+            AND r.status IN ('pending','in_flight')
+          ) AS eligible
+        FROM ${tables.deliveries} AS d JOIN ${tables.events} e ON e.scope_key=d.scope_key AND e.id=d.event_id
+        WHERE d.scope_key=$1 AND d.endpoint_id=$2 AND d.replay_of IS NULL AND d.status=$3
+          AND ($4::timestamptz IS NULL OR d.created_at>=$4) AND ($5::timestamptz IS NULL OR d.created_at<$5)
+          AND ($6::bigint IS NULL OR d.id<$6)
+        ORDER BY d.id DESC LIMIT $7 FOR UPDATE OF d`,
+        [
+          scopeKey,
+          input.endpointId,
+          status,
+          input.since ?? null,
+          input.until ?? null,
+          input.before ?? null,
+          limit + 1,
+          config.retentionMs,
+        ],
+      )
+      const examined = rows.slice(0, limit)
+      const ids = examined.filter((row) => row.eligible).map((row) => row.id)
+      if (ids.length)
+        await client.query(
+          `INSERT INTO ${tables.deliveries}(scope_key,endpoint_id,event_id,replay_of)
+          SELECT scope_key,endpoint_id,event_id,id FROM ${tables.deliveries}
+          WHERE scope_key=$1 AND id=ANY($2::bigint[]) ORDER BY id`,
+          [scopeKey, ids],
+        )
+      return {
+        replayed: ids.length,
+        skipped: examined.length - ids.length,
+        nextCursor: rows.length > limit ? examined.at(-1)!.id : null,
+      }
+    })
+  }
+
   async function getEndpointDeliveryOptions(
     scopeKey: string,
     id: string,
@@ -408,6 +480,7 @@ export function createStore(config: ResolvedConfig) {
     listDeliveries,
     getDelivery,
     replay,
+    replayMany,
     getEndpointDeliveryOptions,
     setEndpointDeliveryOptions,
   }

@@ -204,6 +204,27 @@ export interface DeliveryQuery {
   limit?: number
   before?: string
 }
+/** Selects original deliveries of one endpoint for bulk replay, newest first. */
+export interface ReplayManyInput {
+  endpointId: string
+  /** Defaults to failed. */
+  status?: 'failed' | 'succeeded'
+  /** Inclusive lower bound on the delivery's createdAt. */
+  since?: Date
+  /** Exclusive upper bound on the delivery's createdAt. */
+  until?: Date
+  /** Deliveries examined per call, from 1 to 1000. Defaults to 100. */
+  limit?: number
+  /** Continue after a previous result's nextCursor. */
+  before?: string
+}
+export interface ReplayManyResult {
+  replayed: number
+  /** Deliveries outside retention or with a replay already pending or in flight. */
+  skipped: number
+  /** Pass as before to examine the next page, or null when none remain. */
+  nextCursor: string | null
+}
 export interface Page<T> {
   items: T[]
   nextCursor: string | null

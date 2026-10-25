@@ -38,6 +38,8 @@ export type {
   PublishInput,
   PublishOptions,
   PublishResult,
+  ReplayManyInput,
+  ReplayManyResult,
   SqlClient,
   Scope,
   TestEventResult,
