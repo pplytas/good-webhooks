@@ -31,4 +31,4 @@ The failure table in [Run workers](../apps/docs/content/docs/operations/workers.
 
 ## Export metrics with OpenTelemetry
 
-`packages/good-webhooks/examples/operations/otel.ts` maps the delivery hooks to OpenTelemetry metrics and depends only on `@opentelemetry/api`. It records an attempt duration histogram in seconds and counters for attempts by outcome, responses by status class, and automatic pauses by reason. `test/otel-recipe.test.ts` checks the recorded values and attributes with a fake meter and the API's no-op meter. A docs-site page follows in the 0.5.0 release.
+`packages/good-webhooks/examples/operations/otel.ts` maps the delivery hooks to OpenTelemetry metrics and depends only on `@opentelemetry/api`. It records an attempt duration histogram in seconds, with the HTTP client bucket boundaries from the semantic conventions, and counters for attempts by outcome, responses by status class, and automatic pauses by reason. `test/otel-recipe.test.ts` checks the recorded values and attributes with a fake meter and the API's no-op meter. A docs-site page follows in the 0.5.0 release.

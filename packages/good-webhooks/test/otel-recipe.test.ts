@@ -1,4 +1,4 @@
-import type { Attributes, Meter } from '@opentelemetry/api'
+import type { Attributes, Meter, MetricOptions } from '@opentelemetry/api'
 import { describe, expect, it } from 'vitest'
 import type { AttemptEvent } from '../src/types.js'
 import { createOtelHooks } from '../examples/operations/otel.ts'
@@ -17,26 +17,38 @@ const attempt: AttemptEvent = {
 }
 
 function fakeMeter() {
+  const instruments: { name: string; options: MetricOptions | undefined }[] = []
   const recorded: { name: string; value: number; attributes: Attributes | undefined }[] = []
-  const instrument = (name: string) => {
+  const instrument = (name: string, options?: MetricOptions) => {
+    instruments.push({ name, options })
     const record = (value: number, attributes?: Attributes) =>
       void recorded.push({ name, value, attributes })
     return { record, add: record }
   }
   const meter = { createHistogram: instrument, createCounter: instrument } as unknown as Meter
-  return { meter, recorded }
+  return { meter, instruments, recorded }
 }
 
 describe('OpenTelemetry recipe', () => {
-  it('records nothing and does not throw without a registered provider', async () => {
+  it('does not throw without a registered provider', async () => {
     const hooks = createOtelHooks()
     await hooks.onAttempt?.(attempt)
     await hooks.onEndpointPaused?.({ scope: null, endpointId: 'endpoint_1', reason: 'gone' })
   })
 
   it('records a succeeded 2xx attempt', async () => {
-    const { meter, recorded } = fakeMeter()
+    const { meter, instruments, recorded } = fakeMeter()
     await createOtelHooks({ meter }).onAttempt?.(attempt)
+    expect(instruments.map((instrument) => instrument.name)).toEqual([
+      'good_webhooks.attempt.duration',
+      'good_webhooks.attempts',
+      'good_webhooks.attempt.responses',
+      'good_webhooks.endpoint.pauses',
+    ])
+    expect(instruments[0]?.options).toMatchObject({
+      unit: 's',
+      advice: { explicitBucketBoundaries: expect.arrayContaining([0.005, 10]) },
+    })
     expect(recorded).toEqual([
       {
         name: 'good_webhooks.attempt.duration',
