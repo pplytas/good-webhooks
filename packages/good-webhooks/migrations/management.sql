@@ -4,7 +4,7 @@ CREATE SCHEMA IF NOT EXISTS "public";
 
 CREATE TABLE IF NOT EXISTS "public"."webhook_schema_version" (component text PRIMARY KEY, version integer NOT NULL CHECK (version > 0));
 
-INSERT INTO "public"."webhook_schema_version" (component, version) VALUES ('management', 5);
+INSERT INTO "public"."webhook_schema_version" (component, version) VALUES ('management', 6);
 
 CREATE TABLE "public"."webhook_endpoints" (
   id text PRIMARY KEY,
@@ -17,6 +17,7 @@ CREATE TABLE "public"."webhook_endpoints" (
   secret text NOT NULL,
   previous_secret text,
   previous_secret_expires_at timestamptz,
+  encrypted_headers text,
   revision integer NOT NULL DEFAULT 0 CHECK (revision >= 0),
   created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
   updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),

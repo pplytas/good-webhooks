@@ -14,7 +14,7 @@ import { getPostgresUpgrade, POSTGRES_SCHEMA_VERSION } from '../dist/migrations.
 
 const connectionString = process.env.TEST_DATABASE_URL
 if (!connectionString) throw new Error('Set TEST_DATABASE_URL to a disposable PostgreSQL database.')
-const previous = process.env.PREVIOUS_GOOD_WEBHOOKS_VERSION ?? '0.1.1'
+const previous = process.env.PREVIOUS_GOOD_WEBHOOKS_VERSION ?? '0.4.0'
 const encryptionKey = Buffer.alloc(32, 7).toString('base64')
 const events = {
   'invoice.paid': {
@@ -117,6 +117,11 @@ try {
 
   // 3. Upgrade SQL runs while the backlog is pending; the old process keeps working until it restarts.
   await apply(getPostgresUpgrade({ from }))
+  // Schema 6 starts each existing delivery's retry window at its creation, so the backlog keeps its age.
+  const { rows: windows } = await pool.query(
+    'SELECT count(*)::int AS count FROM public.webhook_deliveries WHERE window_started_at IS DISTINCT FROM created_at',
+  )
+  assert(windows[0].count === 0, `${windows[0].count} deliveries start their window elsewhere`)
   const result = await drain(oldApp)
   assert(
     result.succeeded === 3,

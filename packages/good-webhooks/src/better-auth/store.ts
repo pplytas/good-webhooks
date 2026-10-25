@@ -18,6 +18,7 @@ interface EndpointRow extends StoredEndpoint {
   allocationKey: string
   creationToken: string
   additionalEventTypes: string[]
+  encryptedHeaders?: string | null
 }
 
 function canonicalScope(scope: ManagementScope): string {
@@ -54,6 +55,11 @@ function endpoint(row: EndpointRow): StoredEndpoint {
       row.previousEncryptedSecret === null ||
       row.previousEncryptedSecret === undefined ||
       typeof row.previousEncryptedSecret === 'string'
+    ) ||
+    !(
+      row.encryptedHeaders === null ||
+      row.encryptedHeaders === undefined ||
+      typeof row.encryptedHeaders === 'string'
     ) ||
     !validDate(row.createdAt) ||
     !validDate(row.updatedAt) ||

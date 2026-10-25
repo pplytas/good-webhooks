@@ -27,6 +27,7 @@ export function getPostgresMigration(options: PostgresMigrationOptions = {}): st
   const tables = postgresTables(options.schema)
   const namespace = quotePostgresSchema(options.schema)
   const version = `CREATE TABLE IF NOT EXISTS ${tables.schemaVersion} (component text PRIMARY KEY, version integer NOT NULL CHECK (version > 0));`
+  // encrypted_headers is reserved for endpoint headers (0.6.0); nothing reads or writes it yet.
   const management = `INSERT INTO ${tables.schemaVersion} (component, version) VALUES ('management', ${POSTGRES_SCHEMA_VERSION});
 
 CREATE TABLE ${tables.endpoints} (
@@ -40,6 +41,7 @@ CREATE TABLE ${tables.endpoints} (
   secret text NOT NULL,
   previous_secret text,
   previous_secret_expires_at timestamptz,
+  encrypted_headers text,
   revision integer NOT NULL DEFAULT 0 CHECK (revision >= 0),
   created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
   updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
@@ -50,6 +52,7 @@ CREATE TABLE ${tables.endpoints} (
 CREATE INDEX webhook_endpoints_scope_idx ON ${tables.endpoints}(scope_key)
   WHERE status <> 'deleted';`
 
+  // window_started_at starts at creation; the worker clears it while the endpoint is paused (ADR 0015).
   const delivery = `INSERT INTO ${tables.schemaVersion} (component, version) VALUES ('delivery', ${POSTGRES_SCHEMA_VERSION});
 
 CREATE TABLE ${tables.endpointState} (
@@ -89,6 +92,7 @@ CREATE TABLE ${tables.deliveries} (
   last_error text,
   last_status integer,
   created_at timestamptz NOT NULL DEFAULT statement_timestamp(),
+  window_started_at timestamptz DEFAULT statement_timestamp(),
   UNIQUE (scope_key,id),
   FOREIGN KEY (scope_key,replay_of) REFERENCES ${tables.deliveries}(scope_key,id) ON DELETE CASCADE,
   FOREIGN KEY (scope_key,endpoint_id) REFERENCES ${tables.endpointState}(scope_key,endpoint_id),
@@ -179,6 +183,19 @@ UPDATE ${tables.schemaVersion} SET version = 5 WHERE component = 'delivery';`,
 ALTER TABLE ${tables.endpoints}
   ADD COLUMN pause_reason text CHECK (pause_reason IN ('owner', 'failing', 'gone'));
 UPDATE ${tables.schemaVersion} SET version = 5 WHERE component = 'management';`,
+  },
+  // Schema 6 records when a delivery's retry window started and reserves encrypted endpoint headers for 0.6.0.
+  5: {
+    // statement_timestamp() is stable, so the default needs no table rewrite. Existing deliveries keep their age (ADR 0015).
+    delivery: (tables) => `${expectVersion(tables, 'delivery', 5)}
+ALTER TABLE ${tables.deliveries}
+  ADD COLUMN window_started_at timestamptz DEFAULT statement_timestamp();
+UPDATE ${tables.deliveries} SET window_started_at = created_at;
+UPDATE ${tables.schemaVersion} SET version = 6 WHERE component = 'delivery';`,
+    management: (tables) => `${expectVersion(tables, 'management', 5)}
+ALTER TABLE ${tables.endpoints}
+  ADD COLUMN encrypted_headers text;
+UPDATE ${tables.schemaVersion} SET version = 6 WHERE component = 'management';`,
   },
 }
 

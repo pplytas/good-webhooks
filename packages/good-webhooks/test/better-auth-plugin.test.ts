@@ -100,6 +100,18 @@ async function setup(
 }
 
 describe('Better Auth endpoint management plugin', () => {
+  it('declares reserved encrypted headers as an optional private column', async () => {
+    expect(goodWebhooks({ eventTypes }).schema.webhookEndpoint.fields.encryptedHeaders).toEqual({
+      type: 'string',
+      required: false,
+      input: false,
+      returned: false,
+    })
+    const { database } = await setup()
+    const columns = database.prepare("SELECT name FROM pragma_table_info('webhookEndpoint')").all()
+    expect(columns).toContainEqual({ name: 'encryptedHeaders' })
+  })
+
   it('authenticates HTTP and auth.api calls, and restricts personal endpoints to their current owner', async () => {
     const { auth, user, call } = await setup()
     const alice = await user()

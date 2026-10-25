@@ -4,7 +4,7 @@ CREATE SCHEMA IF NOT EXISTS "public";
 
 CREATE TABLE IF NOT EXISTS "public"."webhook_schema_version" (component text PRIMARY KEY, version integer NOT NULL CHECK (version > 0));
 
-INSERT INTO "public"."webhook_schema_version" (component, version) VALUES ('management', 5);
+INSERT INTO "public"."webhook_schema_version" (component, version) VALUES ('management', 6);
 
 CREATE TABLE "public"."webhook_endpoints" (
   id text PRIMARY KEY,
@@ -17,6 +17,7 @@ CREATE TABLE "public"."webhook_endpoints" (
   secret text NOT NULL,
   previous_secret text,
   previous_secret_expires_at timestamptz,
+  encrypted_headers text,
   revision integer NOT NULL DEFAULT 0 CHECK (revision >= 0),
   created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
   updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
@@ -27,7 +28,7 @@ CREATE TABLE "public"."webhook_endpoints" (
 CREATE INDEX webhook_endpoints_scope_idx ON "public"."webhook_endpoints"(scope_key)
   WHERE status <> 'deleted';
 
-INSERT INTO "public"."webhook_schema_version" (component, version) VALUES ('delivery', 5);
+INSERT INTO "public"."webhook_schema_version" (component, version) VALUES ('delivery', 6);
 
 CREATE TABLE "public"."webhook_endpoint_state" (
   scope_key text NOT NULL,
@@ -66,6 +67,7 @@ CREATE TABLE "public"."webhook_deliveries" (
   last_error text,
   last_status integer,
   created_at timestamptz NOT NULL DEFAULT statement_timestamp(),
+  window_started_at timestamptz DEFAULT statement_timestamp(),
   UNIQUE (scope_key,id),
   FOREIGN KEY (scope_key,replay_of) REFERENCES "public"."webhook_deliveries"(scope_key,id) ON DELETE CASCADE,
   FOREIGN KEY (scope_key,endpoint_id) REFERENCES "public"."webhook_endpoint_state"(scope_key,endpoint_id),

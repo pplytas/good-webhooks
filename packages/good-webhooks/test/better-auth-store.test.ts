@@ -170,6 +170,34 @@ describe('Better Auth management repository with real SQLite adapter and generat
     expect(await repository.get(scope, original.id)).toEqual(winners[0])
   })
 
+  it('keeps reserved encrypted headers on a valid endpoint across updates', async () => {
+    const { adapter, repository, database } = await fixture()
+    await adapter.create({
+      model: 'webhookEndpoint',
+      data: {
+        ...data(),
+        scopeKey: scopeKey(scope),
+        allocationKey: key(0),
+        creationToken: 'headers',
+        encryptedHeaders: 'x',
+      },
+    })
+    const [stored] = await repository.list(scope)
+    expect(stored).not.toHaveProperty('encryptedHeaders')
+    await repository.update(scope, stored!.id, stored!.revision, { status: 'paused' })
+    expect(database.prepare('SELECT encryptedHeaders FROM custom_endpoint').get()).toEqual({
+      encryptedHeaders: 'x',
+    })
+    const corrupt = createBetterAuthRepository({
+      ...adapter,
+      findOne: async <T>(input: Parameters<DBAdapter['findOne']>[0]) =>
+        ({ ...(await adapter.findOne<Record<string, unknown>>(input)), encryptedHeaders: 5 }) as T,
+    })
+    await expect(corrupt.get(scope, stored!.id)).rejects.toMatchObject({
+      code: 'SCHEMA_MISMATCH',
+    })
+  })
+
   it('preserves all 100 maximum-length subscriptions in bounded physical array fields', async () => {
     const { repository, database } = await fixture()
     const eventTypes = Array.from(

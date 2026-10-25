@@ -49,11 +49,16 @@ describe('PostgreSQL schema configuration', () => {
       )
     const body = (sql: string) => sql.slice(sql.indexOf('\n'))
     for (const component of ['all', 'management', 'delivery'] as const) {
+      const step6 = await upgrade('006', component)
+      expect(step6).toBe(getPostgresUpgrade({ component, from: 5 }))
+      // Published steps never change: older versions replay the shipped 004 and 005 steps, then 006.
       const step5 = await upgrade('005', component)
-      expect(step5).toBe(getPostgresUpgrade({ component, from: 4 }))
-      // Published steps never change: upgrading from 3 replays the shipped 004 step, then 005.
-      const fromThree = getPostgresUpgrade({ component, from: 3 })
-      expect(body(fromThree)).toBe(body(await upgrade('004', component)) + body(step5).slice(1))
+      expect(body(getPostgresUpgrade({ component, from: 4 }))).toBe(
+        body(step5) + body(step6).slice(1),
+      )
+      expect(body(getPostgresUpgrade({ component, from: 3 }))).toBe(
+        body(await upgrade('004', component)) + body(step5).slice(1) + body(step6).slice(1),
+      )
     }
   })
 

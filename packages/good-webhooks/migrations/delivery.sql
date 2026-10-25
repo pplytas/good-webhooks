@@ -4,7 +4,7 @@ CREATE SCHEMA IF NOT EXISTS "public";
 
 CREATE TABLE IF NOT EXISTS "public"."webhook_schema_version" (component text PRIMARY KEY, version integer NOT NULL CHECK (version > 0));
 
-INSERT INTO "public"."webhook_schema_version" (component, version) VALUES ('delivery', 5);
+INSERT INTO "public"."webhook_schema_version" (component, version) VALUES ('delivery', 6);
 
 CREATE TABLE "public"."webhook_endpoint_state" (
   scope_key text NOT NULL,
@@ -43,6 +43,7 @@ CREATE TABLE "public"."webhook_deliveries" (
   last_error text,
   last_status integer,
   created_at timestamptz NOT NULL DEFAULT statement_timestamp(),
+  window_started_at timestamptz DEFAULT statement_timestamp(),
   UNIQUE (scope_key,id),
   FOREIGN KEY (scope_key,replay_of) REFERENCES "public"."webhook_deliveries"(scope_key,id) ON DELETE CASCADE,
   FOREIGN KEY (scope_key,endpoint_id) REFERENCES "public"."webhook_endpoint_state"(scope_key,endpoint_id),
