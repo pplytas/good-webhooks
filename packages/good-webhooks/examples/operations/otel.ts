@@ -24,7 +24,11 @@ export function createOtelHooks({
     unit: 's',
     // The SDK's default buckets were made for milliseconds. These are the HTTP client
     // request duration buckets from the semantic conventions.
-    advice: { explicitBucketBoundaries: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10] },
+    advice: {
+      explicitBucketBoundaries: [
+        0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10,
+      ],
+    },
   })
   const attempts = meter.createCounter(`${prefix}.attempts`, {
     description: 'Delivery attempts by outcome.',
