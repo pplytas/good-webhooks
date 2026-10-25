@@ -23,7 +23,7 @@ function integer(
 
 /** Importing this module reads no environment, opens no connection, and starts no worker. */
 export function readOperationsConfig(
-  role: 'worker' | 'cleanup',
+  role: 'worker' | 'cleanup' | 'run-once',
   env: NodeJS.ProcessEnv = process.env,
 ) {
   const connectionString = required(env, 'DATABASE_URL')
@@ -59,6 +59,7 @@ export function readOperationsConfig(
     pollIntervalMs: integer(env, 'WEBHOOK_POLL_INTERVAL_MS', 1_000, 10, 60_000),
     cleanupMaxBatches: integer(env, 'WEBHOOK_CLEANUP_MAX_BATCHES', 20, 1, 1_000),
     cleanupMaxDurationMs: integer(env, 'WEBHOOK_CLEANUP_MAX_DURATION_MS', 30_000, 100, 3_600_000),
+    runOnceMaxDurationMs: integer(env, 'WEBHOOK_RUN_ONCE_MAX_DURATION_MS', 30_000, 100, 3_600_000),
   }
 }
 

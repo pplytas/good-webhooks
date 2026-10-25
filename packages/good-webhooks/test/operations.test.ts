@@ -44,6 +44,7 @@ function start(args: string[], overrides: NodeJS.ProcessEnv = {}): Running {
       WEBHOOK_POLL_INTERVAL_MS: '60000',
       WEBHOOK_CLEANUP_MAX_BATCHES: '20',
       WEBHOOK_CLEANUP_MAX_DURATION_MS: '30000',
+      WEBHOOK_RUN_ONCE_MAX_DURATION_MS: '30000',
       ...overrides,
     },
     stdio: ['pipe', 'pipe', 'pipe'],
@@ -74,7 +75,7 @@ function start(args: string[], overrides: NodeJS.ProcessEnv = {}): Running {
   return running
 }
 
-function example(entry: 'worker' | 'cleanup', env?: NodeJS.ProcessEnv): Running {
+function example(entry: 'worker' | 'cleanup' | 'run-once', env?: NodeJS.ProcessEnv): Running {
   return start([`examples/operations/${entry}.ts`], env)
 }
 
@@ -108,7 +109,7 @@ function records(output: string): Array<Record<string, unknown>> {
     .map((line) => JSON.parse(line))
 }
 
-async function assertClosed(role: 'worker' | 'cleanup'): Promise<void> {
+async function assertClosed(role: 'worker' | 'cleanup' | 'run-once'): Promise<void> {
   await waitUntil(async () => {
     const result = await pool.query(
       'SELECT pid FROM pg_stat_activity WHERE datname=current_database() AND application_name=$1',
@@ -563,6 +564,82 @@ describe('bounded cleanup process', () => {
       expect((await pool.query('SELECT id FROM public.webhook_events')).rows).toEqual([
         { id: event.eventId },
       ])
+    } finally {
+      await lock.query('ROLLBACK')
+      lock.release()
+    }
+  })
+})
+
+describe('bounded run-once process', () => {
+  it('drains a small backlog and exits 0 with reason empty', async () => {
+    let hits = 0
+    const port = await listen(
+      createHttpServer((request, outgoing) => {
+        request.resume()
+        hits += 1
+        outgoing.writeHead(200).end('ok')
+      }),
+    )
+    for (let i = 0; i < 3; i += 1) await queued(`http://127.0.0.1:${port}/hooks`)
+    const running = example('run-once')
+    expect(await running.result).toEqual({ code: 0, signal: null })
+    expect(records(running.stdout)).toContainEqual({
+      event: 'webhooks.run-once.finished',
+      batches: 2,
+      claimed: 3,
+      succeeded: 3,
+      retried: 0,
+      failed: 0,
+      stale: 0,
+      reason: 'empty',
+    })
+    expect(running.stderr).toBe('')
+    expect(hits).toBe(3)
+    expect(
+      (await pool.query("SELECT status FROM public.webhook_deliveries WHERE status='pending'"))
+        .rows,
+    ).toEqual([])
+    await assertClosed('run-once')
+  })
+
+  it('stops at the time budget without starting another batch', async () => {
+    const port = await listen(
+      createHttpServer((request, outgoing) => {
+        request.resume()
+        outgoing.writeHead(200).end('ok')
+      }),
+    )
+    for (let i = 0; i < 3; i += 1) await queued(`http://127.0.0.1:${port}/hooks`)
+    const lock = await pool.connect()
+    try {
+      await lock.query('BEGIN')
+      await lock.query('LOCK TABLE public.webhook_deliveries IN ACCESS EXCLUSIVE MODE')
+      const running = example('run-once', {
+        WEBHOOK_RUN_ONCE_MAX_DURATION_MS: '100',
+        WEBHOOK_DB_STATEMENT_TIMEOUT_MS: '5000',
+      })
+      await waitUntil(async () => {
+        const result = await pool.query(`SELECT pid FROM pg_stat_activity
+          WHERE datname=current_database() AND application_name='webhooks-example-run-once'
+          AND wait_event_type='Lock' AND clock_timestamp()-query_start > interval '50 milliseconds'`)
+        return result.rows.length === 1
+      }, 'a run-once claim to remain blocked beyond its time budget')
+      await lock.query('COMMIT')
+      expect(await running.result).toEqual({ code: 0, signal: null })
+      const finished = records(running.stdout).find(
+        (record) => record.event === 'webhooks.run-once.finished',
+      )
+      expect(finished).toMatchObject({ reason: 'time_budget' })
+      expect(records(running.stderr)).toContainEqual(
+        expect.objectContaining({
+          event: 'webhooks.run-once.budget_exhausted',
+          reason: 'time_budget',
+        }),
+      )
+      // The blocked batch is the only one that ran; the budget stopped the loop.
+      expect(finished).toMatchObject({ batches: 1 })
+      await assertClosed('run-once')
     } finally {
       await lock.query('ROLLBACK')
       lock.release()
