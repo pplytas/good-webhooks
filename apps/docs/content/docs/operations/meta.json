@@ -4,6 +4,7 @@
     "production",
     "migrations",
     "workers",
+    "serverless",
     "retries-and-replay",
     "key-rotation",
     "performance",

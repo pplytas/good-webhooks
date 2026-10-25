@@ -28,6 +28,8 @@ const result = await webhooks.worker.runOnce()
 // { claimed, succeeded, retried, failed, stale }
 ```
 
+To deliver from a scheduled function instead of a long-running process, see [serverless and cron](/docs/operations/serverless).
+
 ## A supervised worker process
 
 The package ships a complete entrypoint. It validates configuration, listens for signals, checks the schema, runs, and exits nonzero on failure after closing its pool.

@@ -1,0 +1,169 @@
+---
+title: Serverless and cron
+description: Deliver webhooks from a scheduled function instead of a long-running worker, on Vercel, Railway, and AWS Lambda, and know when a schedule is not enough.
+---
+
+A worker does not have to be a long-running process. A scheduled function can call `runOnce()` in a loop, deliver what is due, and exit. This page shows that pattern on Vercel, Railway, and AWS Lambda, and says when to run a [real worker](/docs/operations/workers) instead.
+
+## When a schedule is enough
+
+`runOnce()` recovers expired leases, processes one bounded batch of up to `delivery.concurrency` claims (10 by default), and returns `{ claimed, succeeded, retried, failed, stale }`. It does not drain the queue, so a scheduled function calls it until a batch claims nothing or its time runs out.
+
+A schedule changes how fast deliveries move:
+
+- A new event waits for the next run. Latency is at least the schedule interval.
+- Retry delays are rounded up to the interval. With a one-minute schedule, the first retry (5 seconds by default) happens about a minute later; the [later delays](/docs/concepts/delivery-guarantees#retries) of 5 minutes and more barely change.
+- Overlapping runs are safe. Separate worker instances [coordinate through PostgreSQL leases](/docs/reference/delivery#worker), so a run that starts before the last one ends claims different deliveries.
+
+If those delays are acceptable to your receivers, a schedule saves you a process to supervise.
+
+## The delivery loop
+
+Every platform below calls this function. It ends the pool before it returns.
+
+```ts title="deliver.ts"
+import { createWebhooks } from 'good-webhooks'
+import { Pool } from 'pg'
+import { events } from './events.js'
+
+const SEND_TIMEOUT_MS = 10_000 // delivery.timeoutMs, the default
+const GRACE_MS = 5_000 // time in-flight sends get after an abort
+
+/** Deliver due webhooks until a batch claims nothing or about budgetMs has passed. */
+export async function deliverDue(budgetMs: number) {
+  const started = Date.now()
+  // Abort early enough for in-flight sends to use their grace period inside the budget.
+  const signal = AbortSignal.timeout(Math.max(0, budgetMs - GRACE_MS))
+  const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 10 })
+  const totals = { batches: 0, claimed: 0, succeeded: 0, retried: 0, failed: 0, stale: 0 }
+  try {
+    const webhooks = createWebhooks({
+      database: pool,
+      encryptionKey: process.env.WEBHOOK_ENCRYPTION_KEY!,
+      events,
+    })
+    await webhooks.check()
+    // Start a batch only while its sends can finish before the abort.
+    while (!signal.aborted && Date.now() - started < budgetMs - GRACE_MS - SEND_TIMEOUT_MS) {
+      const result = await webhooks.worker.runOnce({ signal, shutdownGraceMs: GRACE_MS })
+      totals.batches += 1
+      for (const key of ['claimed', 'succeeded', 'retried', 'failed', 'stale'] as const) {
+        totals[key] += result[key]
+      }
+      if (result.claimed === 0) break
+    }
+  } finally {
+    await pool.end()
+  }
+  return totals
+}
+```
+
+Pass a budget below the platform's time limit, leaving room for `check()`, the final writes, and `pool.end()`. The budget must be more than `SEND_TIMEOUT_MS + GRACE_MS` (15 seconds with the defaults), or no batch runs. If you change `delivery.timeoutMs`, change `SEND_TIMEOUT_MS` to match. If a batch throws, the run ends early and the next run picks up what is left; catch and log inside the loop if you prefer to keep going. Add the connection and statement timeouts from [bound database waits](/docs/operations/workers#bound-database-waits) so a slow database cannot use up the budget.
+
+The function creates its client per call on purpose. One instance throws `INVALID_STATE` if `runOnce()` is called while another batch is in progress on it, and [Vercel's Fluid compute](https://vercel.com/docs/fluid-compute) runs several invocations in one instance. Where instances stay warm, you can move the `Pool` to module scope and skip `pool.end()`; keep creating the client inside the function.
+
+Workers never delete history. Run `prune()` on a second, daily schedule, in the same loop shape: call it until it returns zero or a budget runs out. See [clean up history](/docs/operations/retries-and-replay#clean-up-history).
+
+## Platform limits
+
+| Platform                            | Most frequent schedule                         | Longest run                   |
+| ----------------------------------- | ---------------------------------------------- | ----------------------------- |
+| Vercel Hobby                        | Once per day, within the hour                  | 300 s                         |
+| Vercel Pro and Enterprise           | Once per minute                                | 300 s by default, up to 800 s |
+| Railway cron                        | Every 5 minutes                                | Until the process exits       |
+| AWS Lambda on EventBridge Scheduler | `rate(1 minute)`, invoked within a 60 s window | 900 s                         |
+
+The Vercel durations apply with Fluid compute. These numbers were checked in October 2026; confirm them in each platform's documentation before you rely on them.
+
+## Vercel cron
+
+A Vercel Hobby schedule holds deliveries for up to a day. Use Pro or Enterprise.
+
+A cron job calls a route in your app. When the project has a `CRON_SECRET` environment variable, Vercel sends it in the `authorization` header, so reject any request without it:
+
+```ts title="app/api/cron/webhooks/route.ts"
+import { deliverDue } from '@/lib/deliver'
+
+export const maxDuration = 300 // seconds
+
+export async function GET(request: Request) {
+  const secret = process.env.CRON_SECRET
+  if (!secret || request.headers.get('authorization') !== `Bearer ${secret}`) {
+    return new Response('Unauthorized', { status: 401 })
+  }
+  const totals = await deliverDue(270_000) // 30 s below maxDuration
+  return Response.json(totals)
+}
+```
+
+```json title="vercel.json"
+{
+  "crons": [
+    { "path": "/api/cron/webhooks", "schedule": "* * * * *" },
+    { "path": "/api/cron/prune", "schedule": "0 3 * * *" }
+  ]
+}
+```
+
+The second entry points at a route that loops `prune()` behind the same check. A project can have 100 cron jobs on every plan.
+
+Vercel delivers cron invocations on a best-effort basis. It does not retry a failed invocation, and it can run the same job twice or let runs overlap. Leases make overlaps safe, and the next run picks up whatever the failed one left.
+
+## Railway cron
+
+On Railway, run the shipped [worker entrypoint](/docs/operations/workers#a-supervised-worker-process) as an always-on service. It picks up new events within a second, and the cron form adds a delay of at least five minutes.
+
+A cron schedule on a Railway service runs its start command at each scheduled time, in UTC. The process must exit when it is done, and Railway skips a run while the previous one is still active.
+
+```ts title="deliver-once.ts"
+import { deliverDue } from './deliver.js'
+
+try {
+  const totals = await deliverDue(240_000) // well inside the 5-minute interval
+  console.log(JSON.stringify({ event: 'webhooks.cron.finished', ...totals }))
+} catch (error) {
+  console.error(error)
+  process.exitCode = 1
+}
+```
+
+Set the service's start command to the compiled script, such as `node dist/deliver-once.js`, and its cron schedule to `*/5 * * * *`. For cleanup, a second cron service can run the shipped [cleanup entrypoint](/docs/operations/retries-and-replay#clean-up-history) once a day.
+
+## AWS Lambda
+
+Invoke a Lambda function from an EventBridge Scheduler schedule. Set the function timeout to cover your budget, well above the 15-second margin the loop keeps.
+
+```ts title="handler.ts"
+import { deliverDue } from './deliver.js'
+
+export async function handler(_event: unknown, context: { getRemainingTimeInMillis(): number }) {
+  // Leave 15 s for check(), the final writes, and pool.end().
+  return deliverDue(context.getRemainingTimeInMillis() - 15_000)
+}
+```
+
+With a 300-second function timeout and a one-minute schedule, runs overlap when the queue is long, which the leases handle. Unlike Vercel, Lambda retries a failed invocation twice; leases make that safe too. If the database is in a VPC, the function needs network access to it, and RDS Proxy can keep the connection count down.
+
+## Cloudflare Workers
+
+Do not run the delivery worker on Cloudflare Workers. Run it on a Node.js schedule or process from the sections above.
+
+The worker resolves each endpoint host with `node:dns`, then sends with `node:http`, `node:https`, `node:net`, and `node:tls`, connecting to the vetted address and checking the certificate against the original hostname. Workers' `nodejs_compat` lists `node:tls` and `node:dns` as only partially supported, and a Cron Trigger on the free plan gets 10 ms of CPU time. This project verifies Node.js only; [other JavaScript runtimes are not verified](/docs/operations/compatibility#supported-configurations).
+
+Two parts might work under `nodejs_compat`, but this project does not test them:
+
+- Publishing: `publish()` needs a PostgreSQL client that connects over TCP.
+- Receiving: `parseWebhook()` verifies the signature with `node:crypto` HMAC.
+
+If you try either, test it yourself before you depend on it.
+
+## When to run a real worker instead
+
+Run a long-running [worker](/docs/operations/workers) when any of these holds:
+
+- Volume is sustained, so most scheduled runs end on the time budget instead of an empty batch.
+- Receivers need deliveries faster than the schedule interval.
+- Receivers respond slowly enough that a batch takes a large share of the budget.
+
+A worker starts the next batch as soon as one finishes, waits only `pollIntervalMs` when the queue is empty, and shuts down without losing in-flight work.
