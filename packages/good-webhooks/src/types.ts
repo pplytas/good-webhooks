@@ -95,6 +95,7 @@ export interface EndpointPausedEvent {
   endpointId: string
   reason: AutomaticPauseReason
 }
+/** Growth rule: new hooks are optional, and their events only gain fields. */
 export interface DeliveryHooks {
   /** Called after each attempt's outcome is recorded. */
   onAttempt?: (event: AttemptEvent) => void | Promise<void>
@@ -132,6 +133,7 @@ export interface ResolvedConfig {
 export type EndpointStatus = 'active' | 'paused' | 'deleted'
 /** Who paused an endpoint: its owner, or the worker after sustained failure or an HTTP 410 answer. */
 export type PauseReason = 'owner' | 'failing' | 'gone'
+/** Growth rule: fields added later are optional, because custom management providers return it. */
 export interface Endpoint {
   id: string
   url: string

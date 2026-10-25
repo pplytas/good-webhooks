@@ -554,6 +554,36 @@ describe('delivery with an independent management provider', () => {
     expect((await rows())[0]).toMatchObject({ status: 'pending', attempt_count: 0 })
   })
 
+  it('accepts endpoint headers from a custom source without sending them yet', async () => {
+    const target = await receiver()
+    const source = provider()
+    source.resolveEndpoint = async () => ({
+      ...active(),
+      url: target.url,
+      headers: { 'x-endpoint-header': 'value' },
+    })
+    const app = engine(source)
+    await app.publish(event)
+    expect(await app.worker.runOnce()).toMatchObject({ claimed: 1, succeeded: 1 })
+    expect(target.received).toHaveLength(1)
+    expect(target.received[0]!.headers).not.toHaveProperty('x-endpoint-header')
+  })
+
+  for (const headers of ['x', { a: 1 }, ['a'], null])
+    it(`treats endpoint headers ${JSON.stringify(headers)} as a lookup failure`, async () => {
+      const source = provider()
+      source.resolveEndpoint = async () =>
+        ({ ...active(), headers }) as unknown as EndpointResolution
+      const app = engine(source)
+      await app.publish(event)
+      const error = await app.worker.runOnce().catch((reason: unknown) => reason)
+      expect(error).toBeInstanceOf(AggregateError)
+      expect((error as AggregateError).errors[0]).toMatchObject({
+        message: 'Endpoint source returned invalid endpoint headers.',
+      })
+      expect((await rows())[0]).toMatchObject({ status: 'pending', attempt_count: 0 })
+    })
+
   it('stops waiting for provider reads when shutdown is requested', async () => {
     const started = deferred<void>()
     const source = provider()

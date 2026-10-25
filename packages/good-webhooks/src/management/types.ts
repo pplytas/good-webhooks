@@ -22,6 +22,11 @@ export type EndpointResolution =
       secrets: readonly string[]
       /** Changes whenever the endpoint changes. Automatic pauses use it to ignore stale failures. */
       revision?: string
+      /**
+       * Endpoint headers to send with every attempt. Custom sources may omit it; the built-in
+       * sources return none until a later release.
+       */
+      headers?: Record<string, string>
     }
   | { status: 'paused' | 'deleted' }
 
@@ -32,7 +37,10 @@ export interface AutomaticPauseInput {
   revision?: string
 }
 
-/** Trusted server capability. Lookup failures reject; missing records resolve as deleted. */
+/**
+ * Trusted server capability. Lookup failures reject; missing records resolve as deleted.
+ * Growth rule: new methods and resolution fields are optional, and new inputs arrive in a trailing options object.
+ */
 export interface EndpointSource {
   matchRecipients(scope: ManagementScope, eventType: string): Promise<readonly string[]>
   resolveEndpoint(scope: ManagementScope, id: string): Promise<EndpointResolution>
@@ -43,6 +51,7 @@ export interface EndpointSource {
   pause?(scope: ManagementScope, id: string, input: AutomaticPauseInput): Promise<boolean>
 }
 
+/** Growth rule: new methods are optional, and new inputs arrive in a trailing options object. */
 export interface EndpointManagement {
   readonly source: EndpointSource
   create(scope: ManagementScope, input: CreateManagedEndpoint): Promise<ManagedEndpointWithSecret>
@@ -64,27 +73,33 @@ export interface EndpointManagement {
   reencrypt(scope: ManagementScope): Promise<number>
 }
 
-/** Persistence contract for management providers. Never expose stored records to clients. */
+/**
+ * Persistence contract for management providers. Never expose stored records to clients.
+ * Growth rule: fields added later are optional, and a repository stores every field it receives.
+ */
 export interface StoredEndpoint extends ManagedEndpoint {
   revision: number
   encryptedSecret: string
   previousEncryptedSecret: string | null
   previousSecretExpiresAt: Date | null
+  /** Endpoint headers as one encrypted JSON blob, or null. Store it and return it unchanged; never drop it. */
+  encryptedHeaders: string | null
 }
 export type StoredEndpointPatch = Partial<Omit<StoredEndpoint, 'id' | 'createdAt' | 'revision'>>
 
+/** Growth rule: new methods are optional, and new inputs arrive as keys of an options object. */
 export interface ManagementRepository {
   /** Return every live endpoint in scope. Never truncate; enforce the 1000 endpoint bound. */
   list(scope: ManagementScope): Promise<StoredEndpoint[]>
   get(scope: ManagementScope, id: string): Promise<StoredEndpoint | null>
   /**
-   * Atomically insert a complete record unless the scope already has `limit` nondeleted
+   * Atomically insert a complete record unless the scope already has `options.limit` nondeleted
    * endpoints. `limit` is an integer from 0 to 1000. Reject with ENDPOINT_LIMIT at the limit.
    */
   create(
     scope: ManagementScope,
     endpoint: Omit<StoredEndpoint, 'id'>,
-    limit: number,
+    options: { limit: number },
   ): Promise<StoredEndpoint>
   /** Atomically guard on scope/id/revision, increment revision, and apply the patch. */
   update(
@@ -95,6 +110,7 @@ export interface ManagementRepository {
   ): Promise<StoredEndpoint | null>
 }
 
+/** Growth rule: new inputs arrive in a trailing options object. */
 export interface SecretCipher {
   encrypt(value: string): Promise<string>
   decrypt(value: string): Promise<string>

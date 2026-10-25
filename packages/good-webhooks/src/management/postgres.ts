@@ -19,7 +19,7 @@ import type {
 const ENDPOINT_LIMIT = 1000
 const FIELDS = `id,url,description,event_types AS "eventTypes",status,pause_reason AS "pauseReason",
   secret AS "encryptedSecret",previous_secret AS "previousEncryptedSecret",
-  previous_secret_expires_at AS "previousSecretExpiresAt",revision,
+  previous_secret_expires_at AS "previousSecretExpiresAt",encrypted_headers AS "encryptedHeaders",revision,
   created_at AS "createdAt",updated_at AS "updatedAt"`
 
 function key(scope: ManagementScope): string {
@@ -62,7 +62,8 @@ export function createPostgresManagementRepository(
       )
       return result.rows[0] ?? null
     },
-    async create(scope, endpoint, limit) {
+    async create(scope, endpoint, options) {
+      const limit = options?.limit
       if (!Number.isSafeInteger(limit) || limit < 0 || limit > ENDPOINT_LIMIT)
         throw new WebhookError(
           'INVALID_INPUT',
@@ -85,8 +86,8 @@ export function createPostgresManagementRepository(
             `This scope already has its limit of ${limit} endpoints.`,
           )
         const result = await client.query<StoredEndpoint & Record<string, unknown>>(
-          `INSERT INTO ${table}(id,scope_key,url,description,event_types,status,pause_reason,secret,previous_secret,previous_secret_expires_at,revision,created_at,updated_at)
-           VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING ${FIELDS}`,
+          `INSERT INTO ${table}(id,scope_key,url,description,event_types,status,pause_reason,secret,previous_secret,previous_secret_expires_at,encrypted_headers,revision,created_at,updated_at)
+           VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING ${FIELDS}`,
           [
             randomUUID(),
             scopeId,
@@ -98,6 +99,7 @@ export function createPostgresManagementRepository(
             endpoint.encryptedSecret,
             endpoint.previousEncryptedSecret,
             endpoint.previousSecretExpiresAt,
+            endpoint.encryptedHeaders ?? null,
             endpoint.revision,
             endpoint.createdAt,
             endpoint.updatedAt,
@@ -122,6 +124,7 @@ export function createPostgresManagementRepository(
         encryptedSecret: 'secret',
         previousEncryptedSecret: 'previous_secret',
         previousSecretExpiresAt: 'previous_secret_expires_at',
+        encryptedHeaders: 'encrypted_headers',
         updatedAt: 'updated_at',
       }
       const values: unknown[] = [key(scope), id, revision]

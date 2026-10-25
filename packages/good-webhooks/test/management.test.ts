@@ -7,13 +7,16 @@ import type {
   ManagementRepository,
   ManagementScope,
   StoredEndpoint,
+  StoredEndpointPatch,
 } from '../src/management/types.js'
 
-function memoryRepository(): ManagementRepository {
+function memoryRepository() {
   const rows = new Map<string, StoredEndpoint>()
+  const creates: { limit: number }[] = []
+  const patches: StoredEndpointPatch[] = []
   let sequence = 0
   const key = (scope: ManagementScope, id: string) => JSON.stringify([scope, id])
-  return {
+  const repository: ManagementRepository = {
     async list(scope) {
       const prefix = JSON.stringify(scope)
       return [...rows.entries()]
@@ -23,7 +26,10 @@ function memoryRepository(): ManagementRepository {
     async get(scope, id) {
       return structuredClone(rows.get(key(scope, id)) ?? null)
     },
-    async create(scope, value) {
+    async create(scope, value, options) {
+      // A repository that drops encryptedHeaders would lose endpoint headers once 0.6.0 writes them.
+      if (!('encryptedHeaders' in value)) throw new Error('Record is missing encryptedHeaders.')
+      creates.push(structuredClone(options))
       const row = { ...structuredClone(value), id: `endpoint-${++sequence}` }
       rows.set(key(scope, row.id), row)
       return structuredClone(row)
@@ -31,11 +37,13 @@ function memoryRepository(): ManagementRepository {
     async update(scope, id, revision, patch) {
       const row = rows.get(key(scope, id))
       if (!row || row.revision !== revision || row.status === 'deleted') return null
+      patches.push(structuredClone(patch))
       const updated = { ...row, ...structuredClone(patch), revision: row.revision + 1 }
       rows.set(key(scope, id), updated)
       return structuredClone(updated)
     },
   }
+  return Object.assign(repository, { creates, patches })
 }
 
 function setup(overrides: Partial<ManagementOptions> = {}) {
@@ -132,6 +140,47 @@ describe('portable endpoint management', () => {
       code: 'INVALID_STATE',
     })
     await expect(management.remove(null, endpoint.id)).resolves.toMatchObject({ status: 'deleted' })
+  })
+
+  it('passes the endpoint limit as an options object and creates records with encryptedHeaders', async () => {
+    const { management, repository } = setup({ maxEndpoints: () => 3 })
+    const { endpoint } = await management.create(null, input)
+    expect(repository.creates).toEqual([{ limit: 3 }])
+    expect(await repository.get(null, endpoint.id)).toMatchObject({ encryptedHeaders: null })
+    const dropping = setup()
+    dropping.repository.create = async (scope, value, options) => {
+      const { encryptedHeaders: _dropped, ...rest } = value
+      return memoryRepository().create(scope, rest as typeof value, options)
+    }
+    await expect(dropping.management.create(null, input)).rejects.toThrow(
+      'Record is missing encryptedHeaders.',
+    )
+  })
+
+  it('never changes or returns encrypted endpoint headers', async () => {
+    vi.useFakeTimers({ now: new Date('2026-10-07T00:00:00Z') })
+    const { management, repository } = setup()
+    const { endpoint } = await management.create(null, input)
+    const stored = (await repository.get(null, endpoint.id))!
+    await repository.update(null, endpoint.id, stored.revision, { encryptedHeaders: 'blob' })
+    repository.patches.length = 0
+    const results: object[] = [
+      await management.get(null, endpoint.id),
+      ...(await management.list(null)),
+      await management.update(null, endpoint.id, { description: 'changed' }),
+      await management.pause(null, endpoint.id),
+      await management.resume(null, endpoint.id),
+      (await management.rotateSecret(null, endpoint.id, { graceMs: 1000 })).endpoint,
+    ]
+    expect(await management.reencrypt(null)).toBe(1)
+    expect((await repository.get(null, endpoint.id))?.encryptedHeaders).toBe('blob')
+    // The built-in source returns no endpoint headers until a later release.
+    expect(await management.source.resolveEndpoint(null, endpoint.id)).not.toHaveProperty('headers')
+    results.push(await management.remove(null, endpoint.id))
+    for (const result of results) expect(result).not.toHaveProperty('encryptedHeaders')
+    expect(repository.patches).toHaveLength(6)
+    for (const patch of repository.patches) expect(patch).not.toHaveProperty('encryptedHeaders')
+    expect((await repository.get(null, endpoint.id))?.encryptedHeaders).toBe('blob')
   })
 
   it('records who paused an endpoint and clears the reason on resume', async () => {

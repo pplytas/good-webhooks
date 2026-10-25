@@ -42,6 +42,29 @@ function consumerTypes(request: IncomingMessage) {
       return { status: 'deleted' }
     },
   }
+  const withHeaders: EndpointSource = {
+    async matchRecipients() {
+      return ['opaque-endpoint-id']
+    },
+    async resolveEndpoint() {
+      return {
+        status: 'active',
+        url: 'https://example.com/hook',
+        secrets: ['test-only'],
+        headers: { authorization: 'Bearer test-only' },
+      }
+    },
+  }
+  const invalidHeaders: EndpointSource = {
+    async matchRecipients() {
+      return []
+    },
+    // @ts-expect-error endpoint header values are strings
+    async resolveEndpoint() {
+      return { status: 'active', url: 'https://example.com/hook', secrets: [], headers: { a: 1 } }
+    },
+  }
+  void [withHeaders, invalidHeaders]
   const delivery = createDelivery({ database: new Pool(), source, events: appEvents })
   app.worker.runOnce()
   delivery.worker.runOnce({ signal: new AbortController().signal, shutdownGraceMs: 0 })

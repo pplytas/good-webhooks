@@ -41,6 +41,17 @@ type Resolution = { reservation: Reservation } & (
   { endpoint: EndpointResolution; error?: never } | { error: unknown; endpoint?: never }
 )
 
+/** Copy endpoint headers from a source, rejecting anything but a plain object of strings. */
+function endpointHeaders(value: unknown): Record<string, string> {
+  const prototype = value && typeof value === 'object' ? Object.getPrototypeOf(value) : undefined
+  if (prototype !== Object.prototype && prototype !== null)
+    throw new Error('Endpoint source returned invalid endpoint headers.')
+  const entries = Object.entries(value as object)
+  if (!entries.every(([, header]) => typeof header === 'string'))
+    throw new Error('Endpoint source returned invalid endpoint headers.')
+  return Object.fromEntries(entries)
+}
+
 /** Lock delivery-owned endpoint state before deliveries. Never hold a transaction during provider or HTTP calls. */
 export function createWorkerStore(config: ResolvedConfig) {
   const tables = postgresTables(config.schema)
@@ -226,6 +237,9 @@ export function createWorkerStore(config: ResolvedConfig) {
         signWebhook({ id: reservation.event_id, timestamp: 0, body: '', secrets: endpoint.secrets })
         if (endpoint.revision !== undefined && typeof endpoint.revision !== 'string')
           throw new Error('Endpoint source returned an invalid endpoint revision.')
+        const headers =
+          endpoint.headers === undefined ? undefined : endpointHeaders(endpoint.headers)
+        // Kept on the resolution but not sent yet; attempts send endpoint headers from 0.6.0.
         return {
           reservation,
           endpoint: {
@@ -233,6 +247,7 @@ export function createWorkerStore(config: ResolvedConfig) {
             url: endpoint.url,
             secrets: [...endpoint.secrets],
             ...(endpoint.revision === undefined ? {} : { revision: endpoint.revision }),
+            ...(headers === undefined ? {} : { headers }),
           },
         }
       }

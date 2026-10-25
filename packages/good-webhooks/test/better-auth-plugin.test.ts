@@ -304,7 +304,7 @@ describe('Better Auth endpoint management plugin', () => {
         code: 'NOT_FOUND',
       })
       // Even a pre-existing alias record cannot become usable by a trusted sender.
-      const aliasEndpoint = await repository.create(aliasScope, stored, 1000)
+      const aliasEndpoint = await repository.create(aliasScope, stored, { limit: 1000 })
       expect(await management.source.resolveEndpoint(aliasScope, aliasEndpoint.id)).toEqual({
         status: 'deleted',
       })

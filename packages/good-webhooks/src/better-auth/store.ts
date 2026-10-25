@@ -18,7 +18,6 @@ interface EndpointRow extends StoredEndpoint {
   allocationKey: string
   creationToken: string
   additionalEventTypes: string[]
-  encryptedHeaders?: string | null
 }
 
 function canonicalScope(scope: ManagementScope): string {
@@ -81,6 +80,7 @@ function endpoint(row: EndpointRow): StoredEndpoint {
     encryptedSecret: row.encryptedSecret,
     previousEncryptedSecret: row.previousEncryptedSecret ?? null,
     previousSecretExpiresAt: row.previousSecretExpiresAt ?? null,
+    encryptedHeaders: row.encryptedHeaders ?? null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   }
@@ -224,9 +224,10 @@ export function createBetterAuthRepository(
       const row = await read(canonicalScope(scope), id)
       return row === null ? null : endpoint(row)
     },
-    async create(scope, data, limit) {
+    async create(scope, data, options) {
       if (data.status === 'deleted')
         throw new WebhookError('INVALID_INPUT', 'New endpoints cannot be deleted.')
+      const limit = options?.limit
       if (!Number.isSafeInteger(limit) || limit < 0 || limit > CAPACITY)
         throw new WebhookError('INVALID_INPUT', `The endpoint limit must be from 0 to ${CAPACITY}.`)
       const key = canonicalScope(scope)

@@ -151,7 +151,7 @@ for (const name of ['all', 'management', 'delivery']) {
 import { Pool } from 'pg'
 import { z } from 'zod'
 import { createDelivery } from 'good-webhooks/delivery'
-import { createManagement, type EndpointManagement, type ManagementOptions } from 'good-webhooks/management'
+import { createManagement, type EndpointManagement, type ManagementOptions, type ManagementRepository, type StoredEndpoint } from 'good-webhooks/management'
 import { createPostgresManagement } from 'good-webhooks/management/postgres'
 import { getPostgresMigration } from 'good-webhooks/migrations'
 function consumer(options: ManagementOptions) {
@@ -168,6 +168,25 @@ function consumer(options: ManagementOptions) {
   void migration
 }
 void consumer
+const rows: StoredEndpoint[] = []
+const repository: ManagementRepository = {
+  async list() { return rows },
+  async get(_scope, id) { return rows.find((row) => row.id === id) ?? null },
+  async create(_scope, endpoint, { limit }) {
+    if (rows.length >= limit) throw new Error('ENDPOINT_LIMIT')
+    const encryptedHeaders: string | null = endpoint.encryptedHeaders
+    const row = { ...endpoint, encryptedHeaders, id: String(rows.length) }
+    rows.push(row)
+    return row
+  },
+  async update() { return null },
+}
+const legacy: ManagementRepository = {
+  ...repository,
+  // @ts-expect-error create takes { limit } since 0.5.0
+  async create(_scope, endpoint, limit: number) { return { ...endpoint, id: String(limit) } },
+}
+void legacy
 `,
   )
   typecheck()

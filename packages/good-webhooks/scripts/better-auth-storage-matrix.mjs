@@ -37,6 +37,7 @@ const data = () => ({
   encryptedSecret: 'encrypted-value',
   previousEncryptedSecret: null,
   previousSecretExpiresAt: null,
+  encryptedHeaders: null,
   createdAt: new Date('2026-10-01T00:00:00Z'),
   updatedAt: new Date('2026-10-01T00:00:00Z'),
 })
@@ -70,7 +71,7 @@ async function exercise(name, database, generateId, migrate = true) {
     })
   }
   const results = await Promise.allSettled(
-    Array.from({ length: 20 }, () => repository.create(scope, data(), 1000)),
+    Array.from({ length: 20 }, () => repository.create(scope, data(), { limit: 1000 })),
   )
   const successes = results.filter((result) => result.status === 'fulfilled')
   const failures = results.filter((result) => result.status === 'rejected')
@@ -99,7 +100,7 @@ async function exercise(name, database, generateId, migrate = true) {
   assert.equal(changed.previousSecretExpiresAt.toISOString(), '2026-10-08T00:00:00.000Z')
   const deleted = await repository.update(scope, changed.id, 1, { status: 'deleted' })
   assert.equal(deleted.status, 'deleted')
-  assert.notEqual((await repository.create(scope, data(), 1000)).id, deleted.id)
+  assert.notEqual((await repository.create(scope, data(), { limit: 1000 })).id, deleted.id)
   assert.equal((await repository.list(scope)).length, 1000)
   assert.equal((await repository.get(scope, deleted.id)).status, 'deleted')
   const eventTypes = Array.from(
@@ -109,6 +110,9 @@ async function exercise(name, database, generateId, migrate = true) {
   const updated = await repository.update(scope, rows[1].id, 0, { eventTypes })
   assert.deepEqual(updated.eventTypes, eventTypes)
   assert.deepEqual((await repository.get(scope, rows[1].id)).eventTypes, eventTypes)
+  assert.equal(updated.encryptedHeaders, null)
+  await repository.update(scope, rows[1].id, 1, { encryptedHeaders: 'blob' })
+  assert.equal((await repository.get(scope, rows[1].id)).encryptedHeaders, 'blob')
   // Three UTF8 bytes per UTF16 code unit exercises the largest byte expansion
   // for these character limits. Astral characters use two UTF16 code units.
   const fillUnicode = (prefix, limit) => prefix + '界'.repeat(limit - prefix.length)
@@ -121,17 +125,20 @@ async function exercise(name, database, generateId, migrate = true) {
     url: fillUnicode('https://example.com/διαδρομή🙂', 2048),
     description: fillUnicode('Περιγραφή 🙂', 2000),
   }
-  const unicodeRow = await repository.create(unicodeScope, unicode, 1000)
+  const unicodeRow = await repository.create(unicodeScope, unicode, { limit: 1000 })
   assert.equal(unicodeRow.url, unicode.url)
   assert.equal(unicodeRow.description, unicode.description)
   assert.equal((await repository.list(unicodeScope))[0].id, unicodeRow.id)
   assert.equal((await repository.get(unicodeScope, unicodeRow.id)).description, unicode.description)
-  assert.equal((await repository.create(null, data(), 1000)).eventTypes[0], 'invoice.paid')
+  assert.equal(
+    (await repository.create(null, data(), { limit: 1000 })).eventTypes[0],
+    'invoice.paid',
+  )
   assert.equal((await repository.list(null)).length, 1)
   // A lower limit holds under concurrent creates too.
   const capped = { type: 'capped', id: 'owner' }
   const cappedResults = await Promise.allSettled(
-    Array.from({ length: 10 }, () => repository.create(capped, data(), 3)),
+    Array.from({ length: 10 }, () => repository.create(capped, data(), { limit: 3 })),
   )
   assert.equal(cappedResults.filter((result) => result.status === 'fulfilled').length, 3)
   assert.equal((await repository.list(capped)).length, 3)

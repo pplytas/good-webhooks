@@ -259,11 +259,12 @@ export function createManagement(options: ManagementOptions): EndpointManagement
           encryptedSecret,
           previousEncryptedSecret: null,
           previousSecretExpiresAt: null,
+          encryptedHeaders: null,
           revision: 0,
           createdAt: now,
           updatedAt: now,
         },
-        limit,
+        { limit },
       )
       // A concurrent owner deletion can finish before this insert. Do not leave a live orphan.
       if (!(await ownerExists(scope))) {
@@ -369,6 +370,7 @@ export function createManagement(options: ManagementOptions): EndpointManagement
       const scope = snapshotScope(inputScope)
       await requireOwner(scope)
       let rewritten = 0
+      // Secrets only. Endpoint headers get re-encrypted here once 0.6.0 writes them.
       for (const row of await repository.list(scope)) {
         const updated = await edit(
           scope,

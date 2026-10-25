@@ -66,6 +66,33 @@ describe('standalone PostgreSQL management', () => {
     ).rejects.toMatchObject({ code: '23514' })
   })
 
+  it('round trips encrypted endpoint headers and keeps them out of client results', async () => {
+    const management = create()
+    const repository = createPostgresManagementRepository(pool)
+    const { endpoint } = await management.create(null, input)
+    const stored = (await repository.get(null, endpoint.id))!
+    expect(stored.encryptedHeaders).toBeNull()
+    const updated = await repository.update(null, endpoint.id, stored.revision, {
+      encryptedHeaders: 'blob',
+    })
+    expect(updated?.encryptedHeaders).toBe('blob')
+    expect((await repository.get(null, endpoint.id))?.encryptedHeaders).toBe('blob')
+    expect((await repository.list(null))[0]?.encryptedHeaders).toBe('blob')
+    // Management operations leave the blob alone and never return it.
+    expect(await management.pause(null, endpoint.id)).not.toHaveProperty('encryptedHeaders')
+    await management.rotateSecret(null, endpoint.id, { graceMs: 0 })
+    expect(await management.reencrypt(null)).toBe(1)
+    expect((await repository.get(null, endpoint.id))?.encryptedHeaders).toBe('blob')
+    expect(await management.get(null, endpoint.id)).not.toHaveProperty('encryptedHeaders')
+    const { id: _id, ...record } = stored
+    const copy = await repository.create(
+      null,
+      { ...record, encryptedHeaders: 'other' },
+      { limit: 1000 },
+    )
+    expect((await repository.get(null, copy.id))?.encryptedHeaders).toBe('other')
+  })
+
   it('applies a per-scope endpoint limit under concurrent creation', async () => {
     const user = { type: 'user', id: 'owner' }
     const management = createPostgresManagement({
@@ -113,12 +140,16 @@ describe('standalone PostgreSQL management', () => {
     const stored = (await repository.get(null, first.endpoint.id))!
     // An invalid limit is an input error, not a full scope.
     for (const limit of [-1, 1001, Number.NaN])
-      await expect(repository.create(null, stored, limit)).rejects.toMatchObject({
+      await expect(repository.create(null, stored, { limit })).rejects.toMatchObject({
         code: 'INVALID_INPUT',
       })
+    // A caller still passing the pre-0.5.0 bare limit gets an input error, not an insert.
+    await expect(repository.create(null, stored, 1000 as never)).rejects.toMatchObject({
+      code: 'INVALID_INPUT',
+    })
     // An insert failure must roll back cleanly and leave the final slot available.
     await expect(
-      repository.create(null, { ...stored, eventTypes: [] }, 1000),
+      repository.create(null, { ...stored, eventTypes: [] }, { limit: 1000 }),
     ).rejects.toMatchObject({
       code: '23514',
     })
