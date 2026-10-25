@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.4.1 (2026-10-25)
+
+Public APIs, dependencies, and database schema (version `5`) are unchanged from `0.4.0`. No migration is required.
+
+- The npm listing now says what the package is: outbound webhooks for TypeScript apps, stored in your own PostgreSQL. The description and keywords (`outbound-webhooks`, `webhook-delivery`, `transactional-outbox`, `outbox-pattern`, `webhook-sender`, `standard-schema`) changed, and the npm README tagline matches the new description. The code did not change.
+- The npm README links the hosted [Playground](https://playground.good-webhooks.dev).
+- Docs: a [serverless and cron page](apps/docs/content/docs/operations/serverless.mdx) for `runOnce()` on Vercel cron, Railway cron, and AWS Lambda, a Fastify tab in the [receiving guide](apps/docs/content/docs/guides/receive.mdx), advice on [out-of-order events](apps/docs/content/docs/concepts/delivery-guarantees.mdx), and a [threat table](apps/docs/content/docs/concepts/security.mdx#threats-and-defences) that cites the test behind each defence.
+- [`SECURITY.md`](SECURITY.md) states response targets: an initial response within 14 days, and a fix for medium or higher severity within 60 days of confirmation.
+- CI lints the packed archive with `attw` and `publint` and type-checks consumers on TypeScript 6.0 as well as 5.9.3 and 7.0. Dependabot, CodeQL, and OpenSSF Scorecard arrive with [#92](https://github.com/pplytas/good-webhooks/pull/92).
+
+### Coming in 0.5.0
+
+`0.5.0` will be a breaking minor, tracked in [issue #89](https://github.com/pplytas/good-webhooks/issues/89) and planned in the [roadmap](docs/roadmap.md):
+
+- **Upgrade SQL required.** Storage moves to schema version `6`, which adds `webhook_deliveries.window_started_at` and `webhook_endpoints.encrypted_headers` (unused until `0.6.0`). `getPostgresUpgrade({ from: 5 })` and `migrations/upgrades/006-*.sql` ship with it. The upgrade only adds columns, so `0.4.x` processes keep working until they restart. Better Auth users also run `auth migrate` for a new optional `encryptedHeaders` endpoint field.
+- **Deliveries queued behind a pause are retried on resume.** Today a delivery that waits behind a paused endpoint for longer than `retry.maxAgeMs` (48 hours by default) fails after the resume, without an attempt. So every delivery queued behind a five-day automatic pause fails. From `0.5.0` a pause resets the delivery's retry window: after the resume it has its full `retry.maxAgeMs` again, with its attempt count unchanged ([ADR 0015](docs/adr/0015-pause-resets-delivery-window.md)).
+- **Interfaces hosts implement.** `ManagementRepository.create(scope, endpoint, { limit })` takes an options object instead of a third argument, and `StoredEndpoint` gains `encryptedHeaders: string | null`, which a custom repository must store and return unchanged. The active `EndpointResolution` gains an optional `headers` field that a custom `EndpointSource` may omit. Built-in PostgreSQL and Better Auth management need no change from you.
+
 ## 0.4.0 (2026-10-18)
 
 Retries now cover about 28 hours by default, and a full scope reports its own error code. `0.3.0` announced both changes, and this release follows the [0.x minor rules](apps/docs/content/docs/operations/compatibility.mdx#releases). The database schema stays at version `5`, so no SQL is needed. [ADR 0013](docs/adr/0013-retry-every-unsuccessful-response.md) records the schedule.

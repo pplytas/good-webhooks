@@ -1,14 +1,20 @@
 {
   "name": "good-webhooks",
-  "version": "0.4.0",
-  "description": "Build webhook delivery into your TypeScript application.",
+  "version": "0.4.1",
+  "description": "Outbound webhooks for TypeScript apps, stored in your own PostgreSQL: transactional publish, Standard Webhooks signing, retries, and endpoint management.",
   "keywords": [
     "webhooks",
+    "outbound-webhooks",
+    "webhook-delivery",
+    "webhook-sender",
     "standard-webhooks",
+    "transactional-outbox",
+    "outbox-pattern",
+    "outbox",
+    "standard-schema",
     "postgresql",
     "typescript",
-    "better-auth",
-    "outbox"
+    "better-auth"
   ],
   "license": "MIT",
   "author": "pplytas",
