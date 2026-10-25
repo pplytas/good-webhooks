@@ -111,15 +111,20 @@ describe('pause and the retry window', () => {
     expect(before).toMatchObject({ status: 'pending', attemptCount: 1 })
 
     await store.pauseEndpoint('scope-a', endpointId)
+    // The retry is due during the pause, so the worker sees the paused endpoint and defers.
+    await due()
     expect((await worker.runOnce()).claimed).toBe(0)
+    expect(await row(deliveryId)).toMatchObject({
+      status: 'pending',
+      attempt_count: 1,
+      window_started_at: null,
+    })
+    expect(requests).toBe(1)
     await store.resumeEndpoint('scope-a', endpointId)
-    const after = await store.getDelivery('scope-a', deliveryId)
-    expect(after).toMatchObject({
+    expect(await store.getDelivery('scope-a', deliveryId)).toMatchObject({
       status: before.status,
       attemptCount: before.attemptCount,
-      nextAttemptAt: before.nextAttemptAt,
     })
-    expect((await row(deliveryId)).window_started_at).toEqual(window)
 
     status = 200
     await due()
@@ -128,6 +133,9 @@ describe('pause and the retry window', () => {
       status: 'succeeded',
       attemptCount: 2,
     })
+    // Only the window end moved, by the length of the pause; nothing the client sees changed.
+    const resumed = (await row(deliveryId)).window_started_at!
+    expect(resumed.getTime()).toBeGreaterThan(window!.getTime())
   })
 
   it('delivers work queued behind an automatic pause after resume', async () => {

@@ -59,16 +59,21 @@ export function createWorkerStore(config: ResolvedConfig) {
     }
   }
 
+  /** A delivery waiting behind a pause has no window start, so its age never expires (ADR 0015). */
+  function windowExpired(windowStartedAt: Date | null, now: Date): boolean {
+    return windowStartedAt !== null && now.getTime() - windowStartedAt.getTime() >= config.maxAgeMs
+  }
+
   function retryAt(
     attemptCount: number,
     windowStartedAt: Date | null,
     now: Date,
     minimumDelayMs: number | null = null,
   ): Date | null {
-    // A missing window start means the window starts now (ADR 0015).
+    // A missing window start means the window starts now.
     const start = windowStartedAt ?? now
     const scheduled = config.retryDelaysMs[attemptCount - 1]
-    if (scheduled === undefined || now.getTime() - start.getTime() >= config.maxAgeMs) return null
+    if (scheduled === undefined || windowExpired(windowStartedAt, now)) return null
     // A longer Retry-After wins, but never extends the retry window.
     const delay = Math.max(scheduled, minimumDelayMs ?? 0)
     // A bounded 0-20% delay avoids synchronized retries without retrying early.
@@ -77,15 +82,13 @@ export function createWorkerStore(config: ResolvedConfig) {
     return next.getTime() <= start.getTime() + config.maxAgeMs ? next : null
   }
 
-  /** A delivery waiting behind a pause has no window start, so only its attempts can exhaust it. */
   function exhausted(
     delivery: Pick<DeliveryRow, 'attempt_count' | 'window_started_at'>,
     now: Date,
   ): boolean {
     return (
       delivery.attempt_count >= config.retryDelaysMs.length + 1 ||
-      (delivery.window_started_at !== null &&
-        now.getTime() - delivery.window_started_at.getTime() >= config.maxAgeMs)
+      windowExpired(delivery.window_started_at, now)
     )
   }
 
@@ -349,8 +352,7 @@ export function createWorkerStore(config: ResolvedConfig) {
           ), attempts AS (
             INSERT INTO ${tables.attempts}(delivery_id,number,started_at)
             SELECT id,attempt_count,statement_timestamp() FROM claimed RETURNING delivery_id
-          ) SELECT c.id::text AS id,c.window_started_at FROM claimed c
-          JOIN attempts a ON a.delivery_id=c.id`,
+          ) SELECT c.id::text AS id,c.window_started_at FROM claimed c`,
           [prepared.map((row) => row.id), prepared.map((row) => row.token), config.leaseMs],
         )
         const windows = new Map(started.rows.map((row) => [row.id, row.window_started_at]))
