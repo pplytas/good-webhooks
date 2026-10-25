@@ -40,7 +40,7 @@ describe('OpenTelemetry recipe', () => {
     expect(recorded).toEqual([
       {
         name: 'good_webhooks.attempt.duration',
-        value: 42,
+        value: 0.042,
         attributes: { outcome: 'succeeded', event_type: 'invoice.paid' },
       },
       {
@@ -68,7 +68,7 @@ describe('OpenTelemetry recipe', () => {
     expect(recorded).toEqual([
       {
         name: 'billing.webhooks.attempt.duration',
-        value: 1500,
+        value: 1.5,
         attributes: { outcome: 'failed', event_type: 'invoice.paid' },
       },
       {

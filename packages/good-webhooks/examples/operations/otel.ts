@@ -20,7 +20,8 @@ export function createOtelHooks({
 }: OtelHooksOptions = {}): DeliveryHooks {
   const duration = meter.createHistogram(`${prefix}.attempt.duration`, {
     description: 'Duration of each delivery attempt, until the response or the failure.',
-    unit: 'ms',
+    // OpenTelemetry conventions measure durations in seconds; the hook reports milliseconds.
+    unit: 's',
   })
   const attempts = meter.createCounter(`${prefix}.attempts`, {
     description: 'Delivery attempts by outcome.',
@@ -38,7 +39,7 @@ export function createOtelHooks({
   // value starts a new time series, so unbounded IDs would grow storage without limit.
   return {
     onAttempt: ({ eventType, outcome, responseStatus, durationMs }) => {
-      duration.record(durationMs, { outcome, event_type: eventType })
+      duration.record(durationMs / 1000, { outcome, event_type: eventType })
       attempts.add(1, { outcome, event_type: eventType })
       responses.add(1, { status_class: statusClass(responseStatus), event_type: eventType })
     },
