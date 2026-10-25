@@ -132,7 +132,7 @@ Set the service's start command to the compiled script, such as `node dist/deliv
 
 ## AWS Lambda
 
-Invoke a Lambda function from an EventBridge Scheduler schedule. The handler keeps a 15-second margin, and the loop needs another 15 seconds to run one batch, so set the function timeout above 30 seconds. 300 seconds is a practical choice.
+Invoke a Lambda function from an EventBridge Scheduler schedule. The handler keeps a 15-second margin, and the loop needs another 15 seconds to run one batch, so a timeout near 30 seconds leaves no room for a cold start or a slow `check()`. Use 300 seconds unless you have a reason not to.
 
 ```ts title="handler.ts"
 import { deliverDue } from './deliver.js'
