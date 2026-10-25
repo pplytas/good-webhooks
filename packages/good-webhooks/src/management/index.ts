@@ -177,12 +177,14 @@ export function createManagement(options: ManagementOptions): EndpointManagement
       await edit(
         scope,
         id,
+        // Headers may hold credentials, so a deleted endpoint keeps neither secrets nor headers.
         () => ({
           status: 'deleted',
           pauseReason: null,
           encryptedSecret: '',
           previousEncryptedSecret: null,
           previousSecretExpiresAt: null,
+          encryptedHeaders: null,
         }),
         true,
       ),

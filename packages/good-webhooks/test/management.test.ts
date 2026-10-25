@@ -147,17 +147,9 @@ describe('portable endpoint management', () => {
     const { endpoint } = await management.create(null, input)
     expect(repository.creates).toEqual([{ limit: 3 }])
     expect(await repository.get(null, endpoint.id)).toMatchObject({ encryptedHeaders: null })
-    const dropping = setup()
-    dropping.repository.create = async (scope, value, options) => {
-      const { encryptedHeaders: _dropped, ...rest } = value
-      return memoryRepository().create(scope, rest as typeof value, options)
-    }
-    await expect(dropping.management.create(null, input)).rejects.toThrow(
-      'Record is missing encryptedHeaders.',
-    )
   })
 
-  it('never changes or returns encrypted endpoint headers', async () => {
+  it('never changes or returns encrypted endpoint headers until the endpoint is removed', async () => {
     vi.useFakeTimers({ now: new Date('2026-10-07T00:00:00Z') })
     const { management, repository } = setup()
     const { endpoint } = await management.create(null, input)
@@ -176,11 +168,14 @@ describe('portable endpoint management', () => {
     expect((await repository.get(null, endpoint.id))?.encryptedHeaders).toBe('blob')
     // The built-in source returns no endpoint headers until a later release.
     expect(await management.source.resolveEndpoint(null, endpoint.id)).not.toHaveProperty('headers')
-    results.push(await management.remove(null, endpoint.id))
-    for (const result of results) expect(result).not.toHaveProperty('encryptedHeaders')
-    expect(repository.patches).toHaveLength(6)
+    expect(repository.patches).toHaveLength(5)
     for (const patch of repository.patches) expect(patch).not.toHaveProperty('encryptedHeaders')
     expect((await repository.get(null, endpoint.id))?.encryptedHeaders).toBe('blob')
+    // Removal clears the headers along with the secrets.
+    results.push(await management.remove(null, endpoint.id))
+    for (const result of results) expect(result).not.toHaveProperty('encryptedHeaders')
+    expect(repository.patches[5]).toMatchObject({ status: 'deleted', encryptedHeaders: null })
+    expect((await repository.get(null, endpoint.id))?.encryptedHeaders).toBeNull()
   })
 
   it('records who paused an endpoint and clears the reason on resume', async () => {

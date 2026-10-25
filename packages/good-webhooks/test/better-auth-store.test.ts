@@ -147,6 +147,10 @@ describe('Better Auth management repository with real SQLite adapter and generat
     await expect(other.repository.create(scope, data(), { limit: 1001 })).rejects.toMatchObject({
       code: 'INVALID_INPUT',
     })
+    for (const options of [1000 as never, {} as never])
+      await expect(other.repository.create(scope, data(), options)).rejects.toMatchObject({
+        code: 'INVALID_INPUT',
+      })
   })
 
   it('has one winner for concurrent revision-guarded writes including rotation fields', async () => {

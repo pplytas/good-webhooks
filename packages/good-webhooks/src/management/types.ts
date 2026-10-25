@@ -87,7 +87,7 @@ export interface StoredEndpoint extends ManagedEndpoint {
 }
 export type StoredEndpointPatch = Partial<Omit<StoredEndpoint, 'id' | 'createdAt' | 'revision'>>
 
-/** Growth rule: new methods are optional, and new inputs arrive as keys of an options object. */
+/** Growth rule: new methods are optional, and new inputs arrive in a trailing options object. */
 export interface ManagementRepository {
   /** Return every live endpoint in scope. Never truncate; enforce the 1000 endpoint bound. */
   list(scope: ManagementScope): Promise<StoredEndpoint[]>

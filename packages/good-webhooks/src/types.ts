@@ -133,7 +133,7 @@ export interface ResolvedConfig {
 export type EndpointStatus = 'active' | 'paused' | 'deleted'
 /** Who paused an endpoint: its owner, or the worker after sustained failure or an HTTP 410 answer. */
 export type PauseReason = 'owner' | 'failing' | 'gone'
-/** Growth rule: fields added later are optional, because custom management providers return it. */
+/** Growth rule: fields added later are optional, because hosts implementing EndpointManagement return it. */
 export interface Endpoint {
   id: string
   url: string

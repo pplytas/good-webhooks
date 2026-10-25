@@ -91,6 +91,8 @@ describe('standalone PostgreSQL management', () => {
       { limit: 1000 },
     )
     expect((await repository.get(null, copy.id))?.encryptedHeaders).toBe('other')
+    await management.remove(null, copy.id)
+    expect((await repository.get(null, copy.id))?.encryptedHeaders).toBeNull()
   })
 
   it('applies a per-scope endpoint limit under concurrent creation', async () => {
