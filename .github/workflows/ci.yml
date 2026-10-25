@@ -172,7 +172,7 @@ jobs:
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
       - run: pnpm format:check
-      - name: Verify standalone and Better Auth package consumers
+      - name: Lint the archive and verify standalone and Better Auth package consumers
         run: pnpm test:package
       - name: Save the verified package archive
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

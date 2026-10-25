@@ -98,6 +98,7 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@arethetypeswrong/cli": "0.18.5",
     "@libsql/client": "^0.18.0",
     "@libsql/kysely-libsql": "^0.4.1",
     "@prisma/adapter-pg": "^7.10.0",
@@ -114,6 +115,7 @@
     "mysql2": "^3.24.5",
     "pg": "^8.23.1",
     "prisma": "^7.10.0",
+    "publint": "0.3.25",
     "tarn": "^3.1.2",
     "tedious": "^20.3.3",
     "typescript": "~7.0.2",

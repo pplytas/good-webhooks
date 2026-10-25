@@ -7,12 +7,13 @@ import { fileURLToPath } from 'node:url'
 const packageDirectory = fileURLToPath(new URL('..', import.meta.url))
 const manifest = JSON.parse(await readFile(join(packageDirectory, 'package.json'), 'utf8'))
 const minimumTypeScriptVersion = '5.9.3'
+const sixTypeScriptVersion = '6.0.3'
 const directory = await mkdtemp(join(tmpdir(), 'good-webhooks-consumer-'))
 const run = (command, args, cwd) =>
   execFileSync(command, args, { cwd, stdio: 'pipe', encoding: 'utf8' })
 const typecheck = (args = []) => {
-  // Install both compilers once and check the same archive and inference fixtures.
-  for (const compiler of ['typescript-minimum', 'typescript']) {
+  // Install the compilers once and check the same archive and inference fixtures.
+  for (const compiler of ['typescript-minimum', 'typescript-six', 'typescript']) {
     const executable = join(directory, 'node_modules', compiler, 'bin/tsc')
     const version = run(process.execPath, [executable, '--version'], directory).trim()
     for (const [module, moduleResolution] of [
@@ -46,6 +47,28 @@ try {
   const filename = `${manifest.name.replace('@', '').replace('/', '-')}-${manifest.version}.tgz`
   const archive = resolve(packageDirectory, filename)
   run('pnpm', ['pack', '--out', archive], packageDirectory)
+  // The package is ESM-only and CommonJS consumers load it through require(esm) on Node.js 24,
+  // which the CommonJS assertions below verify, so attw's cjs-resolves-to-esm warning is expected.
+  // SQL exports are not modules; attw cannot resolve them, and the consumer test reads each one.
+  const sqlExports = Object.keys(manifest.exports).filter((entry) => entry.endsWith('.sql'))
+  console.log(
+    run(
+      'attw',
+      [
+        archive,
+        '--profile',
+        'node16',
+        '--ignore-rules',
+        'cjs-resolves-to-esm',
+        '--exclude-entrypoints',
+        ...sqlExports,
+        '--format',
+        'table-flipped',
+      ],
+      packageDirectory,
+    ),
+  )
+  console.log(run('publint', ['run', archive, '--strict'], packageDirectory))
   await writeFile(join(directory, 'package.json'), '{"private":true,"type":"module"}')
   run('npm', ['install', '--ignore-scripts', '--no-audit', '--no-fund', archive], directory)
   await writeFile(
@@ -89,6 +112,7 @@ for (const name of ['all', 'management', 'delivery']) {
       '--no-fund',
       `typescript@${manifest.devDependencies.typescript}`,
       `typescript-minimum@npm:typescript@${minimumTypeScriptVersion}`,
+      `typescript-six@npm:typescript@${sixTypeScriptVersion}`,
       `@types/node@${manifest.devDependencies['@types/node']}`,
       `@types/pg@${manifest.devDependencies['@types/pg']}`,
       `pg@${manifest.devDependencies.pg}`,
