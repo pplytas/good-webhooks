@@ -159,6 +159,7 @@ describe('bulk replay', () => {
   })
 
   it('skips deliveries whose event is outside retention', async () => {
+    // Retention must cover the retry window, so shorten both.
     const app = createWebhooks({ ...options, retentionMs: 86_400_000, retry: { maxAgeMs: 1000 } })
     const { endpoint, ids } = await originals(app, 3)
     await setStatus(ids, 'failed')
@@ -218,6 +219,7 @@ describe('bulk replay', () => {
       {},
       { endpointId: '' },
       { endpointId, status: 'pending' },
+      { endpointId, status: null },
       { endpointId, limit: 0 },
       { endpointId, limit: 1001 },
       { endpointId, limit: 1.5 },
@@ -244,7 +246,7 @@ describe('bulk replay', () => {
     })
     await app.endpoints.remove(endpoint.id)
     await expect(app.deliveries.replayMany({ endpointId: endpoint.id })).rejects.toMatchObject({
-      code: 'INVALID_STATE',
+      code: 'NOT_FOUND',
     })
     expect(await deliveryCount()).toBe(before)
   })
@@ -257,10 +259,10 @@ describe('bulk replay', () => {
     await setStatus([...own.ids, ...other.ids], 'failed')
     await expect(
       app.deliveries.replayMany({ endpointId: other.endpoint.id }),
-    ).rejects.toMatchObject({ code: 'INVALID_STATE' })
+    ).rejects.toMatchObject({ code: 'NOT_FOUND' })
     await expect(
       scoped.deliveries.replayMany({ endpointId: own.endpoint.id }),
-    ).rejects.toMatchObject({ code: 'INVALID_STATE' })
+    ).rejects.toMatchObject({ code: 'NOT_FOUND' })
     expect(await scoped.deliveries.replayMany({ endpointId: other.endpoint.id })).toMatchObject({
       replayed: 3,
     })

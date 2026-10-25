@@ -61,7 +61,7 @@ export function createDelivery<const E extends EventDefinitions>(options: Delive
         get: (id: string) => store.getDelivery(key, id),
         replay: (id: string) => store.replay(key, id),
         /**
-         * Replay one page of an active endpoint's original deliveries in one transaction.
+         * Replays one page of an active endpoint's original deliveries in one transaction.
          * Skips deliveries outside retention or with a replay already pending or in flight.
          */
         replayMany: (input: ReplayManyInput) => store.replayMany(key, input),

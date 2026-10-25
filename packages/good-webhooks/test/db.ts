@@ -105,6 +105,8 @@ export function testStore(config: ResolvedConfig = testConfig()) {
     getDelivery: (id: string, deliveryId: string) =>
       delivery.getDelivery(testScopeKey(id), deliveryId),
     replay: (id: string, deliveryId: string) => delivery.replay(testScopeKey(id), deliveryId),
+    replayMany: (id: string, input: Parameters<typeof delivery.replayMany>[1]) =>
+      delivery.replayMany(testScopeKey(id), input),
     getEndpointDeliveryOptions: (id: string, endpointId: string) =>
       delivery.getEndpointDeliveryOptions(testScopeKey(id), endpointId),
     setEndpointDeliveryOptions: (

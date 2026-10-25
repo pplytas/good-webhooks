@@ -112,6 +112,7 @@ describe('schema setup and endpoint management', () => {
       () => store.rotateSecret('scope-b', endpoint.id),
       () => store.getDelivery('scope-b', delivery.id),
       () => store.replay('scope-b', delivery.id),
+      () => store.replayMany('scope-b', { endpointId: endpoint.id }),
     ]
     for (const operation of foreignOperations)
       await expect(operation()).rejects.toMatchObject({ code: 'NOT_FOUND' })

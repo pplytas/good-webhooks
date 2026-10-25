@@ -94,7 +94,7 @@ function pageLimit(value: number, max: number, name: string): number {
     invalid(`${name} must be an integer from 1 to ${max}.`)
   return value
 }
-function date(value: Date, name: string): void {
+function validDate(value: unknown, name: string): void {
   if (!(value instanceof Date) || Number.isNaN(value.getTime()))
     invalid(`${name} must be a valid Date.`)
 }
@@ -380,16 +380,18 @@ export function createStore(config: ResolvedConfig) {
     scope(scopeKey)
     object(input, 'Bulk replay input')
     endpointId(input.endpointId)
-    const status = input.status ?? 'failed'
+    const status = input.status === undefined ? 'failed' : input.status
     if (status !== 'failed' && status !== 'succeeded')
       invalid('Bulk replay status must be failed or succeeded.')
-    if (input.since !== undefined) date(input.since, 'since')
-    if (input.until !== undefined) date(input.until, 'until')
+    if (input.since !== undefined) validDate(input.since, 'since')
+    if (input.until !== undefined) validDate(input.until, 'until')
     if (input.since && input.until && input.since > input.until)
       invalid('since must not be later than until.')
     if (input.before !== undefined) deliveryId(input.before)
     const limit = pageLimit(input.limit ?? 100, 1000, 'Bulk replay limit')
     const target = await config.source.resolveEndpoint(scopeFromKey(scopeKey), input.endpointId)
+    if (target.status === 'deleted')
+      throw new WebhookError('NOT_FOUND', 'Endpoint not found in this scope.')
     if (target.status !== 'active')
       throw new WebhookError('INVALID_STATE', 'Bulk replay requires an active endpoint.')
     return transaction(async (client) => {
@@ -399,13 +401,13 @@ export function createStore(config: ResolvedConfig) {
         [scopeKey, input.endpointId],
       )
       // Replays of any delivery take the scope lock, so the active-replay check cannot go stale.
+      // The left join probes the unique partial index on active replays once per candidate.
       const { rows } = await client.query<{ id: string; eligible: boolean }>(
         `SELECT d.id::text,
-          e.created_at>clock_timestamp()-$8::bigint*interval '1 millisecond' AND NOT EXISTS (
-            SELECT 1 FROM ${tables.deliveries} r WHERE r.scope_key=d.scope_key AND r.replay_of=d.id
-            AND r.status IN ('pending','in_flight')
-          ) AS eligible
+          e.created_at>clock_timestamp()-$8::bigint*interval '1 millisecond' AND r.id IS NULL AS eligible
         FROM ${tables.deliveries} AS d JOIN ${tables.events} e ON e.scope_key=d.scope_key AND e.id=d.event_id
+        LEFT JOIN ${tables.deliveries} r ON r.scope_key=d.scope_key AND r.replay_of=d.id
+          AND r.status IN ('pending','in_flight')
         WHERE d.scope_key=$1 AND d.endpoint_id=$2 AND d.replay_of IS NULL AND d.status=$3
           AND ($4::timestamptz IS NULL OR d.created_at>=$4) AND ($5::timestamptz IS NULL OR d.created_at<$5)
           AND ($6::bigint IS NULL OR d.id<$6)
