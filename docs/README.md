@@ -5,6 +5,7 @@ Public documentation lives in [`apps/docs/content/docs`](<../apps/docs/content/d
 This directory keeps architecture decisions and historical implementation proposals:
 
 - [Architecture decisions](adr/)
+- [Roadmap to 1.0](roadmap.md) and its [research](research/2026-10-roadmap/)
 - [Initial v0 plan](v0-plan.md)
 - [Better Auth design discussion](better-auth-integration.md)
 - [Better Auth implementation plan](better-auth-implementation-plan.md)

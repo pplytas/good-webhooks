@@ -28,6 +28,10 @@ _Avoid_: Job, delivery, attempt
 A destination for webhook requests that belongs to one scope.
 _Avoid_: Receiver, subscription
 
+**Endpoint headers**:
+Extra request headers an endpoint owner sets, sent with every attempt and test event to that endpoint.
+_Avoid_: Custom headers, auth headers
+
 **Endpoint management**:
 The registration and maintenance of webhook destinations, their ownership, and their subscriptions.
 _Avoid_: Publication, delivery
@@ -75,6 +79,10 @@ _Avoid_: Replay, new event
 **Replay**:
 A deliberate request to deliver a previously recorded event again.
 _Avoid_: Retry, new event
+
+**Bulk replay**:
+A replay of many deliveries at once, selected by endpoint, time range, or delivery status.
+_Avoid_: Redrive, dead-letter, recover
 
 **Receiver**:
 The customer's application that accepts and processes webhook requests.
