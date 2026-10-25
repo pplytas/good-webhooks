@@ -1,9 +1,9 @@
 name: CI
 on:
   push:
-    branches: [main]
+    branches: [main, 'release/*']
   pull_request:
-    branches: [main]
+    branches: [main, 'release/*']
   workflow_dispatch:
   # Weekly run so new Better Auth releases in the "latest" matrix entries are tested without a push.
   schedule:

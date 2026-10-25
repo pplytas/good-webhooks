@@ -72,6 +72,10 @@ Keep documentation explicit about pre-release status and use the channel tag (`@
 
 Create a GitHub prerelease named `v<version>` targeting the verified commit, with its changelog entry and installation command. Install commands in the docs name the channel tag; publish promptly after merging a channel change so the deployed docs do not point at a tag that has no versions yet. Link the release's compatibility and migration notes. For an urgent fix, say so in the notes: pnpm 12 holds back versions newer than its `minimumReleaseAge` unless a project excludes them, which delayed the Playground's upgrade to `0.2.1` by a day ([#74](https://github.com/pplytas/good-webhooks/issues/74)). Retain old versions so existing lockfiles continue to work; use npm deprecation messages for superseded or broken versions when needed.
 
+## Release a patch from a release branch
+
+When `main` already carries the next minor's changes, a patch cannot ship from `main`. Cut `release/<major>.<minor>` from the last `main` commit before those changes, open the prepare PR against that branch, and dispatch the release workflow with `--ref release/<major>.<minor>`. CI and the release workflow accept `release/*` refs. The `npm` environment deploys only from protected branches, so add a branch protection rule for the release branch before dispatching. Merge the prepare PR's changelog entry back to `main` afterwards.
+
 ## Promote to a stable version
 
 The first stable release was `0.1.0` ([issue #22](https://github.com/pplytas/good-webhooks/issues/22)). To promote a pre-release line to a stable version, in the prepare PR set the package version to `0.1.0`, set `publishConfig.tag` to `latest`, date the changelog entry, and replace beta wording and `@beta` install commands with the plain package name. The release workflow accepts the stable version and publishes to `latest` directly, so no dist-tag move is needed afterwards. Create a normal (non-prerelease) GitHub release. Keep the `beta` tag on the last beta; do not delete pre-release versions.
