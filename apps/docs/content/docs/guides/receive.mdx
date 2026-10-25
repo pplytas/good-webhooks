@@ -129,29 +129,31 @@ const app = Fastify()
 
 // Raw bytes, not parsed JSON: the signature covers the exact body.
 app.register(async (instance) => {
-  instance.addContentTypeParser(
-    'application/json',
-    { parseAs: 'buffer', bodyLimit: 512 * 1024 },
-    (request, body, done) => done(null, body),
+  instance.addContentTypeParser('application/json', { parseAs: 'buffer' }, (request, body, done) =>
+    done(null, body),
   )
 
-  instance.post<{ Body: Buffer }>('/webhooks', async (request, reply) => {
-    try {
-      const event = await parseWebhook({
-        body: request.body,
-        headers: request.headers,
-        secret: process.env.WEBHOOK_SECRET!,
-        events,
-      })
-      console.log(event.type, event.id) // Process once: see below.
-      return reply.code(204).send()
-    } catch (error) {
-      if (error instanceof WebhookError && isRejection(error)) {
-        return reply.code(400).send('Invalid webhook')
+  instance.post<{ Body: Buffer }>(
+    '/webhooks',
+    { bodyLimit: 512 * 1024 },
+    async (request, reply) => {
+      try {
+        const event = await parseWebhook({
+          body: request.body,
+          headers: request.headers,
+          secret: process.env.WEBHOOK_SECRET!,
+          events,
+        })
+        console.log(event.type, event.id) // Process once: see below.
+        return reply.code(204).send()
+      } catch (error) {
+        if (error instanceof WebhookError && isRejection(error)) {
+          return reply.code(400).send('Invalid webhook')
+        }
+        throw error // Fastify turns this into a 500: the sender retries.
       }
-      throw error // Fastify turns this into a 500: the sender retries.
-    }
-  })
+    },
+  )
 })
 
 const isRejection = (error: WebhookError) =>
@@ -160,7 +162,7 @@ const isRejection = (error: WebhookError) =>
 await app.listen({ port: 3000 })
 ```
 
-The parser applies only inside this `app.register()` scope, so the rest of the app keeps Fastify's JSON parsing. `bodyLimit` answers `413` before the handler runs.
+The parser applies only inside this `app.register()` scope, so the rest of the app keeps Fastify's JSON parsing. The route's `bodyLimit` answers `413` for any content type before the handler runs.
 
 </Tab>
 <Tab>
