@@ -70,7 +70,7 @@ try {
       packageDirectory,
     ),
   )
-  console.log(run(bin('publint'), ['run', archive, '--strict'], packageDirectory))
+  console.log(run(bin('publint'), [archive, '--strict'], packageDirectory))
   await writeFile(join(directory, 'package.json'), '{"private":true,"type":"module"}')
   run('npm', ['install', '--ignore-scripts', '--no-audit', '--no-fund', archive], directory)
   await writeFile(
