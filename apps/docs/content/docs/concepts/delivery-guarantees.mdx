@@ -13,6 +13,14 @@ description: At least once, no ordering. What a successful publish promises, how
 
 Receivers handle rules 2 and 3 by [processing each `event.id` once](/docs/guides/receive#process-each-event-once).
 
+Order matters only within one entity, such as one invoice. Put a version number or an updated-at time for that entity in `data`. The envelope's `occurredAt` is the publication time, so it also works when one place publishes all of an entity's events. Apply an event only when its version is newer than the one you stored. Otherwise answer `2xx` and skip it. A retry of an older event can arrive after a newer one succeeded, and a replay can arrive days later. Run the check in the same transaction as the [receipt table](/docs/guides/receive#process-each-event-once), and a repeated event and a stale event both change nothing:
+
+```sql
+INSERT INTO invoices (id, status, version) VALUES ($1, $2, $3)
+ON CONFLICT (id) DO UPDATE SET status = excluded.status, version = excluded.version
+WHERE invoices.version < excluded.version;
+```
+
 ## Retries
 
 A delivery is `pending` until a worker sends it (`in_flight`), then ends `succeeded`, `failed`, or `cancelled` (the endpoint was deleted). Each attempt's response decides what happens next:

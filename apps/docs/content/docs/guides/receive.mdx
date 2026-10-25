@@ -244,6 +244,8 @@ await client.query('COMMIT')
 
 The [basic example](https://github.com/pplytas/good-webhooks/blob/main/packages/good-webhooks/examples/basic/demo.ts) runs exactly this and checks that a retry and a replay produce one invoice.
 
+To keep only the newest state of each entity when events arrive out of order, [compare versions](/docs/concepts/delivery-guarantees#the-rules).
+
 Retries and replays can also deliver an event published before your latest deploy. Keep event names backward compatible: add `invoice.paid.v2` for a breaking payload change, and deploy receiver support before the sender publishes it.
 
 ## Verify another sender's format
