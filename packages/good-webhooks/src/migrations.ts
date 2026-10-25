@@ -186,7 +186,9 @@ UPDATE ${tables.schemaVersion} SET version = 5 WHERE component = 'management';`,
   },
   // Schema 6 records when a delivery's retry window started and reserves encrypted endpoint headers for 0.6.0.
   5: {
-    // statement_timestamp() is stable, so the default needs no table rewrite. Existing deliveries keep their age (ADR 0015).
+    // statement_timestamp() is stable, so the ALTER itself is instant. The backfill then rewrites every
+    // delivery row under the ALTER's lock, so this step's duration scales with the deliveries table.
+    // Existing deliveries keep the age they already had (ADR 0015).
     delivery: (tables) => `${expectVersion(tables, 'delivery', 5)}
 ALTER TABLE ${tables.deliveries}
   ADD COLUMN window_started_at timestamptz DEFAULT statement_timestamp();

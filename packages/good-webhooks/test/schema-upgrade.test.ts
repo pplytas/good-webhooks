@@ -107,7 +107,7 @@ describe('schema upgrade to version 6', () => {
     expect(getPostgresUpgrade({ from: 4, component: 'delivery' })).not.toContain('management')
     expect(getPostgresUpgrade({ from: 5, component: 'management' })).not.toContain('delivery')
     expect(getPostgresUpgrade({ from: 5, component: 'delivery' })).not.toContain('management')
-    expect(getPostgresUpgrade({ from: 5 })).not.toContain('version 4 to 5')
+    expect(getPostgresUpgrade({ from: 5 })).not.toContain('failing_since')
   })
 
   it('refuses to start on version 5 storage and names the upgrade', async () => {
@@ -305,7 +305,7 @@ describe('schema upgrade to version 6', () => {
     await app().check()
   })
 
-  it('upgrades the version 5 components of a shared schema in either order', async () => {
+  it('upgrades the version 5 components of a shared schema delivery first', async () => {
     await apply(await fixture('all', 5))
     await apply(getPostgresUpgrade({ from: 5, component: 'delivery' }))
     expect(await versions()).toEqual([
