@@ -29,7 +29,8 @@ type DeliveryRow = {
   endpoint_id: string
   event_id: string
   attempt_count: number
-  created_at: Date
+  /** Start of the retry window; null while the delivery waits behind a paused endpoint. */
+  window_started_at: Date | null
   event_type: string
   body: string
   event_created_at: Date
@@ -60,28 +61,31 @@ export function createWorkerStore(config: ResolvedConfig) {
 
   function retryAt(
     attemptCount: number,
-    createdAt: Date,
+    windowStartedAt: Date | null,
     now: Date,
     minimumDelayMs: number | null = null,
   ): Date | null {
+    // A missing window start means the window starts now (ADR 0015).
+    const start = windowStartedAt ?? now
     const scheduled = config.retryDelaysMs[attemptCount - 1]
-    if (scheduled === undefined || now.getTime() - createdAt.getTime() >= config.maxAgeMs)
-      return null
+    if (scheduled === undefined || now.getTime() - start.getTime() >= config.maxAgeMs) return null
     // A longer Retry-After wins, but never extends the retry window.
     const delay = Math.max(scheduled, minimumDelayMs ?? 0)
     // A bounded 0-20% delay avoids synchronized retries without retrying early.
     const jitter = delay > 0 ? randomInt(Math.min(Math.floor(delay / 5), 2 ** 48 - 2) + 1) : 0
     const next = new Date(now.getTime() + delay + jitter)
-    return next.getTime() <= createdAt.getTime() + config.maxAgeMs ? next : null
+    return next.getTime() <= start.getTime() + config.maxAgeMs ? next : null
   }
 
+  /** A delivery waiting behind a pause has no window start, so only its attempts can exhaust it. */
   function exhausted(
-    delivery: Pick<DeliveryRow, 'attempt_count' | 'created_at'>,
+    delivery: Pick<DeliveryRow, 'attempt_count' | 'window_started_at'>,
     now: Date,
   ): boolean {
     return (
       delivery.attempt_count >= config.retryDelaysMs.length + 1 ||
-      now.getTime() - delivery.created_at.getTime() >= config.maxAgeMs
+      (delivery.window_started_at !== null &&
+        now.getTime() - delivery.window_started_at.getTime() >= config.maxAgeMs)
     )
   }
 
@@ -95,12 +99,12 @@ export function createWorkerStore(config: ResolvedConfig) {
         ORDER BY s.scope_key,s.endpoint_id LIMIT 100 FOR NO KEY UPDATE OF s SKIP LOCKED`)
       for (const endpoint of endpoints.rows) {
         const expired = await client.query<
-          Pick<DeliveryRow, 'id' | 'attempt_count' | 'created_at'> & {
+          Pick<DeliveryRow, 'id' | 'attempt_count' | 'window_started_at'> & {
             now: Date
             preparing: boolean
           }
         >(
-          `SELECT id::text,attempt_count,created_at,preparing,clock_timestamp() AS now
+          `SELECT id::text,attempt_count,window_started_at,preparing,clock_timestamp() AS now
           FROM ${tables.deliveries} WHERE scope_key=$1 AND endpoint_id=$2
           AND status='in_flight' AND lease_expires_at <= now()
           ORDER BY id FOR UPDATE SKIP LOCKED`,
@@ -112,7 +116,7 @@ export function createWorkerStore(config: ResolvedConfig) {
             ? exhausted(delivery, delivery.now)
               ? null
               : delivery.now
-            : retryAt(delivery.attempt_count, delivery.created_at, delivery.now)
+            : retryAt(delivery.attempt_count, delivery.window_started_at, delivery.now)
           const error = delivery.preparing
             ? 'Endpoint lookup lease expired before sending'
             : 'Worker lease expired; receiver outcome is unknown'
@@ -160,7 +164,7 @@ export function createWorkerStore(config: ResolvedConfig) {
         )
         if (capacity <= 0) continue
         const deliveries = await client.query<DeliveryRow & { now: Date }>(
-          `SELECT d.id::text,d.scope_key,d.endpoint_id,d.event_id,d.attempt_count,d.created_at,
+          `SELECT d.id::text,d.scope_key,d.endpoint_id,d.event_id,d.attempt_count,d.window_started_at,
             e.type AS event_type,e.body,e.created_at AS event_created_at,clock_timestamp() AS now
           FROM ${tables.deliveries} d JOIN ${tables.events} e ON e.id=d.event_id
           WHERE d.scope_key=$1 AND d.endpoint_id=$2 AND d.status='pending' AND d.next_attempt_at <= now()
@@ -247,7 +251,7 @@ export function createWorkerStore(config: ResolvedConfig) {
       reservations.map((reservation) => resolve(reservation, signal)),
     )
     const claims = await transaction(async (client) => {
-      const prepared: ClaimedDelivery[] = []
+      const prepared: Omit<ClaimedDelivery, 'windowStartedAt'>[] = []
       // State keys are immutable. NO KEY UPDATE serializes capacity decisions while
       // allowing publication's foreign-key checks to proceed. Use database ordering
       // for every batch, including scope/endpoint IDs with non-ASCII characters.
@@ -273,14 +277,19 @@ export function createWorkerStore(config: ResolvedConfig) {
           continue
         }
         if (!resolution.endpoint || resolution.endpoint.status !== 'active' || signal?.aborted) {
+          // A pause restarts the retry window when the endpoint is next active (ADR 0015).
+          // resolve() also reports an aborted lookup as paused, so an abort keeps the window.
+          const paused = resolution.endpoint?.status === 'paused' && !signal?.aborted
           await client.query(
             `UPDATE ${tables.deliveries} SET status='pending',preparing=false,claim_token=NULL,lease_expires_at=NULL,
-              next_attempt_at=clock_timestamp()+interval '1 second',last_error=COALESCE($3,last_error)
+              next_attempt_at=clock_timestamp()+interval '1 second',last_error=COALESCE($3,last_error),
+              window_started_at=CASE WHEN $4 THEN NULL ELSE window_started_at END
             WHERE id=$1 AND claim_token=$2 AND status='in_flight' AND preparing`,
             [
               reservation.id,
               reservation.token,
               !resolution.endpoint ? 'Endpoint lookup failed; delivery deferred' : null,
+              paused,
             ],
           )
           continue
@@ -310,7 +319,6 @@ export function createWorkerStore(config: ResolvedConfig) {
           url: resolution.endpoint.url,
           secrets: resolution.endpoint.secrets,
           attemptCount: reservation.attempt_count + 1,
-          createdAt: reservation.created_at,
           eventCreatedAt: reservation.event_created_at,
           revision: resolution.endpoint.revision ?? null,
         })
@@ -329,23 +337,29 @@ export function createWorkerStore(config: ResolvedConfig) {
       }
       if (prepared.length) {
         // All real attempts begin together, after provider reads, with a fresh send lease.
-        const started = await client.query<{ id: string }>(
+        // A delivery resumed after a pause starts its retry window here.
+        const started = await client.query<{ id: string; window_started_at: Date }>(
           `WITH claimed AS (
             UPDATE ${tables.deliveries} d SET preparing=false,attempt_count=d.attempt_count+1,
-              lease_expires_at=statement_timestamp()+($3 * interval '1 millisecond')
+              lease_expires_at=statement_timestamp()+($3 * interval '1 millisecond'),
+              window_started_at=COALESCE(d.window_started_at,clock_timestamp())
             FROM unnest($1::bigint[],$2::uuid[]) AS input(id,token)
             WHERE d.id=input.id AND d.claim_token=input.token AND d.status='in_flight' AND d.preparing
-              AND d.lease_expires_at>clock_timestamp() RETURNING d.id,d.attempt_count
+              AND d.lease_expires_at>clock_timestamp() RETURNING d.id,d.attempt_count,d.window_started_at
           ), attempts AS (
             INSERT INTO ${tables.attempts}(delivery_id,number,started_at)
             SELECT id,attempt_count,statement_timestamp() FROM claimed RETURNING delivery_id
-          ) SELECT delivery_id::text AS id FROM attempts`,
+          ) SELECT c.id::text AS id,c.window_started_at FROM claimed c
+          JOIN attempts a ON a.delivery_id=c.id`,
           [prepared.map((row) => row.id), prepared.map((row) => row.token), config.leaseMs],
         )
-        const startedIds = new Set(started.rows.map((row) => row.id))
-        return prepared.filter((row) => startedIds.has(row.id))
+        const windows = new Map(started.rows.map((row) => [row.id, row.window_started_at]))
+        return prepared.flatMap((row) => {
+          const windowStartedAt = windows.get(row.id)
+          return windowStartedAt ? [{ ...row, windowStartedAt }] : []
+        })
       }
-      return prepared
+      return []
     })
     return { claims, errors: resolutions.flatMap((row) => (row.endpoint ? [] : [row.error])) }
   }
@@ -378,7 +392,12 @@ export function createWorkerStore(config: ResolvedConfig) {
         outcome.status < 300
       const next =
         !succeeded && outcome.retryable
-          ? retryAt(claim.attemptCount, claim.createdAt, current.rows[0].now, outcome.retryAfterMs)
+          ? retryAt(
+              claim.attemptCount,
+              claim.windowStartedAt,
+              current.rows[0].now,
+              outcome.retryAfterMs,
+            )
           : null
       const completion = succeeded ? 'succeeded' : next ? 'retried' : 'failed'
       const attemptOutcome = outcome.abandoned

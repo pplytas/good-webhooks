@@ -49,6 +49,7 @@ export interface DeliveryOptions<E extends EventDefinitions> {
   source: EndpointSource
   retry?: {
     delaysMs?: readonly number[]
+    /** Stop retrying a delivery this long after it was created or last resumed after a pause. */
     maxAgeMs?: number
     /** Wait at least as long as a 429 or 503 response's Retry-After header asks. Defaults to true. */
     respectRetryAfter?: boolean
@@ -232,6 +233,7 @@ export interface ClaimedDelivery {
   /** Endpoint revision the attempt was prepared with, or null when the source reports none. */
   revision: string | null
   attemptCount: number
-  createdAt: Date
+  /** Start of the retry window: creation, or the first claim after a pause (ADR 0015). */
+  windowStartedAt: Date
   eventCreatedAt: Date
 }

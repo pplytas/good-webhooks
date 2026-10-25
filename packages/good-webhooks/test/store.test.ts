@@ -247,7 +247,7 @@ describe('atomic publication', () => {
     }
     const { claims } = await createWorkerStore(testConfig({ maxAgeMs: 1000 })).claim()
     expect(claims).toHaveLength(1)
-    expect(claims[0]!.createdAt.getTime()).toBeGreaterThanOrEqual(
+    expect(claims[0]!.windowStartedAt.getTime()).toBeGreaterThanOrEqual(
       claims[0]!.eventCreatedAt.getTime(),
     )
   })

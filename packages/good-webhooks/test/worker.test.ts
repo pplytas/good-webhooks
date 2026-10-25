@@ -500,7 +500,9 @@ describe('worker delivery durability', () => {
     const {
       claims: [claim],
     } = await storage.claim()
-    await pool.query("UPDATE public.webhook_deliveries SET created_at=now()-interval '2 minutes'")
+    await pool.query(
+      "UPDATE public.webhook_deliveries SET window_started_at=now()-interval '2 minutes'",
+    )
     await expire(claim!)
     expect((await createWorker(testConfig()).runOnce()).claimed).toBe(0)
     expect(requests).toBe(0)

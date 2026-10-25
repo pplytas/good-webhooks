@@ -29,7 +29,7 @@ const claim: ClaimedDelivery = {
   url: 'https://example.com/hook',
   secrets: [generateSecret()],
   attemptCount: 1,
-  createdAt: new Date(),
+  windowStartedAt: new Date(),
   eventCreatedAt: new Date(),
 }
 const config: ResolvedConfig = {
