@@ -1,5 +1,9 @@
 import { randomInt } from 'node:crypto'
 
+/** A delivery waiting behind a pause has no window start, so its age never expires (ADR 0015). */
+const windowExpired = (windowStartedAt: Date | null, now: Date, maxAgeMs: number) =>
+  windowStartedAt !== null && now.getTime() - windowStartedAt.getTime() >= maxAgeMs
+
 /**
  * The retry-schedule decision, extracted from the worker store so it can be
  * exercised database-free. `computeRetryAt` returns the next attempt time, or
@@ -19,11 +23,7 @@ export function computeRetryAt(input: {
 }): Date | null {
   const start = input.windowStartedAt ?? input.now
   const scheduled = input.delaysMs[input.attemptCount - 1]
-  if (
-    scheduled === undefined ||
-    (input.windowStartedAt !== null &&
-      input.now.getTime() - input.windowStartedAt.getTime() >= input.maxAgeMs)
-  )
+  if (scheduled === undefined || windowExpired(input.windowStartedAt, input.now, input.maxAgeMs))
     return null
   // A longer Retry-After wins, but never extends the retry window.
   const delay = Math.max(scheduled, input.minimumDelayMs ?? 0)
@@ -44,7 +44,6 @@ export function isRetryExhausted(input: {
 }): boolean {
   return (
     input.attemptCount >= input.delaysMs.length + 1 ||
-    (input.windowStartedAt !== null &&
-      input.now.getTime() - input.windowStartedAt.getTime() >= input.maxAgeMs)
+    windowExpired(input.windowStartedAt, input.now, input.maxAgeMs)
   )
 }

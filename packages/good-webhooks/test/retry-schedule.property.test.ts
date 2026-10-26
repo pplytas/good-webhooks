@@ -30,9 +30,10 @@ describe('parseRetryAfter properties', () => {
     fc.assert(
       fc.property(
         fc.integer({ min: 0, max: 10 * MAX_RETRY_AFTER_MS }),
+        fc.nat(3),
         fc.integer({ min: 0, max: MAX_EPOCH_MS }),
-        (seconds, now) => {
-          const text = `${seconds}`.padStart(1 + (seconds % 3), '0')
+        (seconds, pad, now) => {
+          const text = '0'.repeat(pad) + seconds
           const wait = parseRetryAfter(text, now)
           expect(wait).toBe(Math.min(seconds * 1000, MAX_RETRY_AFTER_MS))
         },
@@ -96,6 +97,22 @@ describe('parseRetryAfter properties', () => {
       ),
     )
   })
+
+  it('returns null for negative and fractional delta-seconds', () => {
+    const negative = fc.integer({ min: -1_000_000_000, max: -1 }).map(String)
+    const fractional = fc
+      .tuple(fc.nat(1_000_000_000), fc.integer({ min: 1, max: 999 }))
+      .map(([whole, frac]) => `${whole}.${String(frac).padStart(3, '0')}`)
+    fc.assert(
+      fc.property(
+        fc.oneof(negative, fractional),
+        fc.integer({ min: 0, max: MAX_EPOCH_MS }),
+        (text, now) => {
+          expect(parseRetryAfter(text, now)).toBeNull()
+        },
+      ),
+    )
+  })
 })
 
 describe('retry schedule properties', () => {
@@ -110,7 +127,7 @@ describe('retry schedule properties', () => {
       fc.property(fc.array(validDelay, { minLength: 1, maxLength: 20 }), (delays) => {
         const snapshot = [...delays]
         const resolved = resolve(delays)
-        delays[0] = 1
+        delays[0] = delays[0] === 1 ? 2 : 1
         expect(resolved.retryDelaysMs).toEqual(snapshot)
       }),
     )
@@ -237,8 +254,7 @@ describe('retry decision properties', () => {
           })
           if (next !== null) {
             const waited = next.getTime() - NOW
-            expect(waited).toBeGreaterThanOrEqual(delay)
-            expect(waited).toBeLessThanOrEqual(delay + Math.floor(delay / 5))
+            expect(waited).toBe(delay + Math.floor(delay / 5))
           }
         },
       ),
