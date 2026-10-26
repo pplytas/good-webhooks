@@ -170,12 +170,16 @@ describe('retry decision properties', () => {
             maxAgeMs: window,
           } as const
           const scheduled = delays[attemptCount - 1]
-          const expectAt = (delay: number) =>
-            age < window && NOW + delay <= NOW - age + window ? new Date(NOW + delay) : null
+          const expectAt = (delay: number | undefined) =>
+            delay !== undefined && age < window && NOW + delay <= NOW - age + window
+              ? new Date(NOW + delay)
+              : null
           expect(computeRetryAt({ ...base, randomInt: noJitter })).toEqual(expectAt(scheduled))
           expect(
             computeRetryAt({ ...base, minimumDelayMs: minimum ?? null, randomInt: noJitter }),
-          ).toEqual(expectAt(Math.max(scheduled, minimum ?? 0)))
+          ).toEqual(
+            expectAt(scheduled === undefined ? undefined : Math.max(scheduled, minimum ?? 0)),
+          )
         },
       ),
     )
@@ -191,8 +195,8 @@ describe('retry decision properties', () => {
         (delays, window, minimum, extra) => {
           const attemptCount = 1 + ((delays.length + extra) % (delays.length + 1))
           const scheduled = delays[attemptCount - 1]
-          const expectAt = (delay: number) =>
-            NOW + delay <= NOW + window ? new Date(NOW + delay) : null
+          const expectAt = (delay: number | undefined) =>
+            delay !== undefined && NOW + delay <= NOW + window ? new Date(NOW + delay) : null
           const base = {
             attemptCount,
             windowStartedAt: null,
@@ -203,7 +207,9 @@ describe('retry decision properties', () => {
           expect(computeRetryAt({ ...base, randomInt: noJitter })).toEqual(expectAt(scheduled))
           expect(
             computeRetryAt({ ...base, minimumDelayMs: minimum ?? null, randomInt: noJitter }),
-          ).toEqual(expectAt(Math.max(scheduled, minimum ?? 0)))
+          ).toEqual(
+            expectAt(scheduled === undefined ? undefined : Math.max(scheduled, minimum ?? 0)),
+          )
         },
       ),
     )
@@ -219,7 +225,7 @@ describe('retry decision properties', () => {
         fc.nat(3),
         (delays, age, window, minimum, extra) => {
           const attemptCount = 1 + (extra % delays.length)
-          const delay = Math.max(delays[attemptCount - 1], minimum ?? 0)
+          const delay = Math.max(delays[attemptCount - 1]!, minimum ?? 0)
           const next = computeRetryAt({
             attemptCount,
             windowStartedAt: new Date(NOW - age),
