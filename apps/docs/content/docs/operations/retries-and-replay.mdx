@@ -71,8 +71,16 @@ Failed deliveries are already kept as history, so there is no separate list to m
 
 ```ts
 const failed = await organization.deliveries.list({ endpointId, status: 'failed' })
-// Inspect failed.items, then replay everything that failed since the incident started.
-const page = await organization.deliveries.replayMany({ endpointId, since: incidentStart })
+// Inspect failed.items, then replay every page that failed since the incident started.
+let before: string | undefined
+do {
+  const page = await organization.deliveries.replayMany({
+    endpointId,
+    since: incidentStart,
+    before,
+  })
+  before = page.nextCursor ?? undefined
+} while (before)
 ```
 
 Each replay gets a new delivery ID and retry budget and keeps the event ID, as a single [replay](#replay) does.

@@ -38,7 +38,7 @@ By default a delivery gets up to eight attempts over about 28 hours, so a receiv
 | ------- | --- | --- | --- | ---- | --- | --- | ---- | ---- |
 | Waits   | now | 5 s | 5 m | 30 m | 2 h | 5 h | 10 h | 10 h |
 
-Change it with `retry: { delaysMs, maxAgeMs }` on `createWebhooks()` or `createDelivery()`. A `429` or `503` with a longer `Retry-After` header waits that long instead, within `retry.maxAgeMs` (48 hours by default). The retry window counts from the delivery's creation, or from its first attempt after a pause, so a delivery held behind a paused endpoint gets its full window again after the resume. `retentionMs` still bounds it. Every retry keeps the event ID and body and gets a fresh timestamp and signature.
+Change it with `retry: { delaysMs, maxAgeMs }` on `createWebhooks()` or `createDelivery()`. A `429` or `503` with a longer `Retry-After` header waits that long instead, within `retry.maxAgeMs` (48 hours by default). The retry window counts from the delivery's creation, or from its first attempt after a pause, so a delivery held behind a paused endpoint gets its full window again after the resume. A running worker clears the window when it finds the endpoint paused, so a delivery that no worker looks at during the pause ages as it would without one. `retentionMs` still bounds it. Every retry keeps the event ID and body and gets a fresh timestamp and signature.
 
 ### Automatic pauses
 
