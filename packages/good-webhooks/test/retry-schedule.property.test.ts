@@ -16,12 +16,12 @@ const source: EndpointSource = {
   resolveEndpoint: vi.fn(async () => ({ status: 'deleted' as const })),
 }
 
-function resolve(delaysMs: readonly number[]) {
+function resolve(delaysMs: number[]) {
   return resolveConfig({
     database,
     source,
     events: { 'order.created': z.object({ id: z.string() }) },
-    retry: { delaysMs: [...delaysMs] },
+    retry: { delaysMs },
   })
 }
 
@@ -125,10 +125,11 @@ describe('retry schedule properties', () => {
   it('accepts every schedule of up to 20 positive day-scale delays and copies it', () => {
     fc.assert(
       fc.property(fc.array(validDelay, { minLength: 1, maxLength: 20 }), (delays) => {
-        const snapshot = [...delays]
         const resolved = resolve(delays)
+        const snapshot = [...delays]
         delays[0] = delays[0] === 1 ? 2 : 1
         expect(resolved.retryDelaysMs).toEqual(snapshot)
+        expect(Object.isFrozen(resolved.retryDelaysMs)).toBe(true)
       }),
     )
   })
