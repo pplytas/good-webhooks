@@ -159,7 +159,7 @@ describe('retry decision properties', () => {
         ageMs,
         windowMs,
         minimumDelayMs,
-        fc.nat(4),
+        fc.nat(),
         (delays, age, window, minimum, extra) => {
           const attemptCount = 1 + ((delays.length + extra) % (delays.length + 1))
           const base = {
@@ -191,7 +191,7 @@ describe('retry decision properties', () => {
         delaysMs,
         windowMs,
         minimumDelayMs,
-        fc.nat(4),
+        fc.nat(),
         (delays, window, minimum, extra) => {
           const attemptCount = 1 + ((delays.length + extra) % (delays.length + 1))
           const scheduled = delays[attemptCount - 1]
@@ -222,7 +222,7 @@ describe('retry decision properties', () => {
         ageMs,
         windowMs,
         minimumDelayMs,
-        fc.nat(3),
+        fc.nat(),
         (delays, age, window, minimum, extra) => {
           const attemptCount = 1 + (extra % delays.length)
           const delay = Math.max(delays[attemptCount - 1]!, minimum ?? 0)
@@ -247,7 +247,7 @@ describe('retry decision properties', () => {
 
   it('marks a delivery exhausted exactly when attempts run out or the window closes', () => {
     fc.assert(
-      fc.property(delaysMs, ageMs, windowMs, fc.nat(4), (delays, age, window, extra) => {
+      fc.property(delaysMs, ageMs, windowMs, fc.nat(), (delays, age, window, extra) => {
         const attemptCount = 1 + ((delays.length + extra) % (delays.length + 2))
         expect(
           isRetryExhausted({
@@ -264,7 +264,7 @@ describe('retry decision properties', () => {
 
   it('never expires a paused delivery by age', () => {
     fc.assert(
-      fc.property(delaysMs, windowMs, fc.nat(4), (delays, age, extra) => {
+      fc.property(delaysMs, windowMs, fc.nat(), (delays, age, extra) => {
         const attemptCount = 1 + ((delays.length + extra) % (delays.length + 2))
         expect(
           isRetryExhausted({
