@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  Build webhook delivery into your TypeScript application.
+  Outbound webhooks for TypeScript apps, stored in your own PostgreSQL: transactional publish, Standard Webhooks signing, retries, and endpoint management.
 </p>
 
 <p align="center">

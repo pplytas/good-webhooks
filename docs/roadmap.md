@@ -50,7 +50,7 @@ No API change. Each item is cheap and either fixes the funnel or removes a 1.0 b
 | Docs: a threat table in the security concept page (asset, attack, defence, test), linked from `SECURITY.md`                                                                                                                        | The page already describes secrets, signing, the timestamp window, DNS pinning, and retention; 1.0 wants it in reviewable form                    |
 | CI: `attw --pack` and `publint` on the tarball; TypeScript 6.0 in the matrix                                                                                                                                                       | Declared range includes 6.0 but CI checks 5.9.3 and 7.0 only                                                                                      |
 | Repo: Dependabot or Renovate, CodeQL, OpenSSF Scorecard workflow, `SECURITY.md` response targets (initial response within 14 days, medium or higher fixed within 60 days), GitHub Discussions on, topics raised from 4 to about 12 | Verified gaps; each takes under an hour                                                                                                           |
-| Announce 0.5.0's breaking interface changes in the 0.4.1 release notes                                                                                                                                                             | Stability policy                                                                                                                                  |
+| Skipped: announcing 0.5.0's breaking interface changes one release ahead                                                                                                                                                           | 0.5.0 was ready before any patch shipped, and there were no known users                                                                           |
 
 ### 0.5.0, early December 2026: recover deliveries, settle the interfaces
 
@@ -131,7 +131,7 @@ The launch waits for its own gate (a zero-signup demo, the tutorial, and the com
 ### First two weeks (about 30 hours)
 
 1. Repo switches: topics to about 12, Discussions on, four to six real `good first issue` items, social preview checked.
-2. npm keywords and description in a 0.4.1 patch.
+2. npm keywords and description in 0.5.0.
 3. A measurement baseline: weekly snapshot of GitHub referrers (the API keeps 14 days), weekly count of public dependents, `?ref=` on every posted link, and six fixed prompts run in Claude Code, Cursor, Codex, and ChatGPT to record whether the library is recommended. Repeat the prompts after the content lands.
 4. Free listings: Context7 (not indexed today), skills.sh (install the skill once and confirm it lists), the official MCP registry for the docs MCP server, the Zod ecosystem page (docs already use Zod 4), the Fumadocs showcase thread, awesome-webhooks. Open an issue on the Standard Webhooks repo before a README PR; merge is not guaranteed because TypeScript has an official verify package.
 5. GitHub Sponsors profile (prerequisite for Neon's open source program).

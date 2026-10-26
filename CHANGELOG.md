@@ -2,7 +2,7 @@
 
 ## 0.5.0 (2026-10-25)
 
-Bulk replay recovers the deliveries a receiver lost, a pause no longer fails the deliveries queued behind it, and the interfaces that hosts implement take their final shape before `1.0`. `0.4.1` announced these changes, and this release follows the [0.x minor rules](apps/docs/content/docs/operations/compatibility.mdx#releases). Storage moves to schema version `6`. [Issue #89](https://github.com/pplytas/good-webhooks/issues/89) tracked the work, the [roadmap](docs/roadmap.md) plans it, and [ADR 0015](docs/adr/0015-pause-resets-delivery-window.md) records the pause decision.
+Bulk replay recovers the deliveries a receiver lost, a pause no longer fails the deliveries queued behind it, and the interfaces that hosts implement take their final shape before `1.0`. This breaking minor was not announced one release ahead as the [0.x minor rules](apps/docs/content/docs/operations/compatibility.mdx#releases) ask, because `0.5.0` was ready before any patch shipped and the project had no known users at the time. Storage moves to schema version `6`. [Issue #89](https://github.com/pplytas/good-webhooks/issues/89) tracked the work, the [roadmap](docs/roadmap.md) plans it, and [ADR 0015](docs/adr/0015-pause-resets-delivery-window.md) records the pause decision.
 
 ### Upgrade
 
@@ -26,6 +26,14 @@ Bulk replay recovers the deliveries a receiver lost, a pause no longer fails the
 - **OpenTelemetry recipe.** [`examples/operations/otel.ts`](packages/good-webhooks/examples/operations/otel.ts) maps `onAttempt` to `good_webhooks.attempt.duration` (a histogram in seconds, with HTTP client bucket advice), `good_webhooks.attempts`, and `good_webhooks.attempt.responses`, and `onEndpointPaused` to `good_webhooks.endpoint.pauses`. It depends only on `@opentelemetry/api`, a devDependency here, so installing `good-webhooks` adds no dependency. See the [OpenTelemetry page](apps/docs/content/docs/operations/opentelemetry.mdx).
 - `getPostgresUpgrade()` accepts `from: 5`. Shipped upgrade files never change, so `migrations/upgrades/006-*.sql` adds the new step.
 - CI rehearses the upgrade from `0.4.0` storage with a pending backlog.
+
+### Docs and repository
+
+- The npm listing now says what the package is: outbound webhooks for TypeScript apps, stored in your own PostgreSQL. The description, the keywords (`outbound-webhooks`, `webhook-delivery`, `webhook-sender`, `transactional-outbox`, `outbox-pattern`, `standard-schema`), and the npm README tagline changed.
+- The npm README links the hosted [Playground](https://playground.good-webhooks.dev) ([#88](https://github.com/pplytas/good-webhooks/pull/88)).
+- Docs: a [serverless and cron page](apps/docs/content/docs/operations/serverless.mdx) for `runOnce()` on Vercel cron, Railway cron, and AWS Lambda ([#94](https://github.com/pplytas/good-webhooks/pull/94)), a Fastify tab in the [receiving guide](apps/docs/content/docs/guides/receive.mdx) ([#93](https://github.com/pplytas/good-webhooks/pull/93)), advice on [out-of-order events](apps/docs/content/docs/concepts/delivery-guarantees.mdx) ([#91](https://github.com/pplytas/good-webhooks/pull/91)), and a [threat table](apps/docs/content/docs/concepts/security.mdx#threats-and-defences) that cites the test behind each defence ([#95](https://github.com/pplytas/good-webhooks/pull/95)).
+- [`SECURITY.md`](SECURITY.md) states response targets: an initial response within 14 days, and a fix for medium or higher severity within 60 days of confirmation ([#95](https://github.com/pplytas/good-webhooks/pull/95)).
+- CI checks the packed archive with `attw` and `publint` and type-checks consumers on TypeScript 6.0 as well as 5.9.3 and 7.0 ([#96](https://github.com/pplytas/good-webhooks/pull/96)). Dependabot, CodeQL, and OpenSSF Scorecard run on the repository ([#92](https://github.com/pplytas/good-webhooks/pull/92)).
 
 ### Coming in 0.6.0
 
