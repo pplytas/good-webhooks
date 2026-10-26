@@ -302,7 +302,7 @@ element('receiver-mode').addEventListener(
       notice(
         mode === 'reject'
           ? 'Warehouse returns HTTP 503. Place an order to watch retries.'
-          : 'Warehouse accepts orders again. Replay the failed deliveries to recover them.',
+          : 'Warehouse accepts orders again. Replay the failed deliveries.',
       )
     }),
 )
