@@ -2,39 +2,54 @@
 
 ## 0.5.0 (2026-10-26)
 
-Breaking minor. Schema `6`. Tracked in [#89](https://github.com/pplytas/good-webhooks/issues/89).
+Breaking minor on schema `6`, tracked in [#89](https://github.com/pplytas/good-webhooks/issues/89).
 
 ### Upgrade
 
-1. Run `getPostgresUpgrade({ from: 5 })` or `migrations/upgrades/006-all.sql`. Older schemas and separate namespaces: see [migrations](apps/docs/content/docs/operations/migrations.mdx). The step locks the deliveries table while it backfills. Prune first.
-2. Better Auth: run your Better Auth migration. It adds `encryptedHeaders`.
-3. Restart producers. Then restart workers.
-4. Custom `ManagementRepository`: `create` now takes `{ limit }`. `StoredEndpoint` gains `encryptedHeaders`. Store it as is.
+1. Run `getPostgresUpgrade({ from: 5 })` or `migrations/upgrades/006-all.sql`.
+   - Older schemas and separate namespaces: see [migrations](apps/docs/content/docs/operations/migrations.mdx).
+   - The step locks the deliveries table while it backfills, so prune first.
+2. Better Auth: run your Better Auth migration for the new `encryptedHeaders` field.
+3. Restart producers, then workers.
+4. Custom `ManagementRepository`: `create` now takes `{ limit }`.
+5. Custom `ManagementRepository`: store `StoredEndpoint.encryptedHeaders` as is.
 
 ### Breaking
 
 - `check()` refuses schema `5`.
-- A pause resets the retry window. Paused deliveries keep their full `retry.maxAgeMs` after resume. A worker must run during the pause. [ADR 0015](docs/adr/0015-pause-resets-delivery-window.md).
-- `ManagementRepository.create` and `StoredEndpoint` changed shape. See upgrade step 4. Built-in management needs no change.
+- A pause resets the retry window ([ADR 0015](docs/adr/0015-pause-resets-delivery-window.md)).
+  - Paused deliveries keep their full `retry.maxAgeMs` after resume.
+  - A worker must run during the pause.
+- `ManagementRepository.create` and `StoredEndpoint` changed shape (upgrade steps 4 and 5).
+- Built-in management needs no change.
 
 ### Added
 
-- `deliveries.replayMany()`. Replays one page of an endpoint's failed deliveries. Returns `{ replayed, skipped, nextCursor }`. [Docs](apps/docs/content/docs/operations/retries-and-replay.mdx#bulk-replay).
-- `StoredEndpoint.encryptedHeaders` and `EndpointResolution.headers`. Stored only. Sent from `0.6.0`.
-- [OpenTelemetry recipe](packages/good-webhooks/examples/operations/otel.ts). No new dependency.
-- `getPostgresUpgrade({ from: 5 })`. CI rehearses the upgrade.
+- `deliveries.replayMany()` replays one page of an endpoint's failed deliveries ([docs](apps/docs/content/docs/operations/retries-and-replay.mdx#bulk-replay)).
+  - Returns `{ replayed, skipped, nextCursor }`.
+- `StoredEndpoint.encryptedHeaders` and `EndpointResolution.headers`, stored only until `0.6.0`.
+- [OpenTelemetry recipe](packages/good-webhooks/examples/operations/otel.ts) with no new dependency.
+- `getPostgresUpgrade({ from: 5 })`, rehearsed in CI.
 
 ### Docs and repository
 
-- New pages: [serverless and cron](apps/docs/content/docs/operations/serverless.mdx), [out-of-order events](apps/docs/content/docs/concepts/delivery-guarantees.mdx), [threat table](apps/docs/content/docs/concepts/security.mdx#threats-and-defences). Fastify tab in [receiving](apps/docs/content/docs/guides/receive.mdx).
+- New page: [serverless and cron](apps/docs/content/docs/operations/serverless.mdx).
+- New page: [out-of-order events](apps/docs/content/docs/concepts/delivery-guarantees.mdx).
+- New page: [threat table](apps/docs/content/docs/concepts/security.mdx#threats-and-defences).
+- Fastify tab in [receiving](apps/docs/content/docs/guides/receive.mdx).
 - [`SECURITY.md`](SECURITY.md) states response targets.
-- CI runs `attw` and `publint`. Consumers type-check on TypeScript 5.9, 6.0, and 7.0.
+- CI runs `attw` and `publint`.
+- Consumers type-check on TypeScript 5.9, 6.0, and 7.0.
 - Dependabot, CodeQL, and Scorecard enabled.
 - Sharper npm description and keywords.
 
 ### Next: 0.6.0
 
-No SQL. Headers sent on every attempt. `deliveries.stats()`. `describeEvents()`. [Roadmap](docs/roadmap.md#060-january-2027-endpoint-owners-see-and-operate).
+- No SQL.
+- Headers sent on every attempt.
+- `deliveries.stats()`.
+- `describeEvents()`.
+- [Roadmap](docs/roadmap.md#060-january-2027-endpoint-owners-see-and-operate).
 
 ## 0.4.0 (2026-10-18)
 
