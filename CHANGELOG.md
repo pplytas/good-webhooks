@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.5.0 (2026-10-25)
+## 0.5.0 (2026-10-26)
 
 Bulk replay recovers the deliveries a receiver lost, a pause no longer fails the deliveries queued behind it, and the interfaces that hosts implement take their final shape before `1.0`. This breaking minor was not announced one release ahead as the [0.x minor rules](apps/docs/content/docs/operations/compatibility.mdx#releases) ask, because `0.5.0` was ready before any patch shipped and the project had no known users at the time. Storage moves to schema version `6`. [Issue #89](https://github.com/pplytas/good-webhooks/issues/89) tracked the work, the [roadmap](docs/roadmap.md) plans it, and [ADR 0015](docs/adr/0015-pause-resets-delivery-window.md) records the pause decision.
 
