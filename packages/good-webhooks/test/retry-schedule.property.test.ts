@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import fc from 'fast-check'
 import { z } from 'zod'
 import { resolveConfig } from '../src/config.js'
+import { computeRetryAt, isRetryExhausted } from '../src/retry.js'
 import { parseRetryAfter } from '../src/transport.js'
 import type { EndpointSource } from '../src/management/types.js'
 import type { Database } from '../src/types.js'
@@ -134,6 +135,140 @@ describe('retry schedule properties', () => {
     fc.assert(
       fc.property(fc.array(validDelay, { minLength: 21, maxLength: 30 }), (delays) => {
         expect(() => resolve(delays)).toThrow(/retry\.delaysMs/)
+      }),
+    )
+  })
+})
+
+describe('retry decision properties', () => {
+  const NOW = 1_700_000_000_000
+  const delaysMs = fc.array(fc.integer({ min: 1, max: 86_400_000 }), {
+    minLength: 1,
+    maxLength: 20,
+  })
+  const ageMs = fc.integer({ min: 0, max: 40 * 86_400_000 })
+  const windowMs = fc.integer({ min: 1, max: 40 * 86_400_000 })
+  const minimumDelayMs = fc.option(fc.integer({ min: 0, max: 172_800_000 }), { nil: undefined })
+  const noJitter = () => 0
+  const topJitter = (exclusiveMax: number) => exclusiveMax - 1
+
+  it('without jitter, schedules exactly max(scheduled, Retry-After) or null when the window closes', () => {
+    fc.assert(
+      fc.property(
+        delaysMs,
+        ageMs,
+        windowMs,
+        minimumDelayMs,
+        fc.nat(4),
+        (delays, age, window, minimum, extra) => {
+          const attemptCount = 1 + ((delays.length + extra) % (delays.length + 1))
+          const base = {
+            attemptCount,
+            windowStartedAt: new Date(NOW - age),
+            now: new Date(NOW),
+            delaysMs: delays,
+            maxAgeMs: window,
+          } as const
+          const scheduled = delays[attemptCount - 1]
+          const expectAt = (delay: number) =>
+            age < window && NOW + delay <= NOW - age + window ? new Date(NOW + delay) : null
+          expect(computeRetryAt({ ...base, randomInt: noJitter })).toEqual(expectAt(scheduled))
+          expect(
+            computeRetryAt({ ...base, minimumDelayMs: minimum ?? null, randomInt: noJitter }),
+          ).toEqual(expectAt(Math.max(scheduled, minimum ?? 0)))
+        },
+      ),
+    )
+  })
+
+  it('starts a paused delivery window at the current time', () => {
+    fc.assert(
+      fc.property(
+        delaysMs,
+        windowMs,
+        minimumDelayMs,
+        fc.nat(4),
+        (delays, window, minimum, extra) => {
+          const attemptCount = 1 + ((delays.length + extra) % (delays.length + 1))
+          const scheduled = delays[attemptCount - 1]
+          const expectAt = (delay: number) =>
+            NOW + delay <= NOW + window ? new Date(NOW + delay) : null
+          const base = {
+            attemptCount,
+            windowStartedAt: null,
+            now: new Date(NOW),
+            delaysMs: delays,
+            maxAgeMs: window,
+          } as const
+          expect(computeRetryAt({ ...base, randomInt: noJitter })).toEqual(expectAt(scheduled))
+          expect(
+            computeRetryAt({ ...base, minimumDelayMs: minimum ?? null, randomInt: noJitter }),
+          ).toEqual(expectAt(Math.max(scheduled, minimum ?? 0)))
+        },
+      ),
+    )
+  })
+
+  it('keeps the delay as a floor and jitter within 0–20% of it', () => {
+    fc.assert(
+      fc.property(
+        delaysMs,
+        ageMs,
+        windowMs,
+        minimumDelayMs,
+        fc.nat(3),
+        (delays, age, window, minimum, extra) => {
+          const attemptCount = 1 + (extra % delays.length)
+          const delay = Math.max(delays[attemptCount - 1], minimum ?? 0)
+          const next = computeRetryAt({
+            attemptCount,
+            windowStartedAt: new Date(NOW - age),
+            now: new Date(NOW),
+            delaysMs: delays,
+            maxAgeMs: window,
+            minimumDelayMs: minimum ?? null,
+            randomInt: topJitter,
+          })
+          if (next !== null) {
+            const waited = next.getTime() - NOW
+            expect(waited).toBeGreaterThanOrEqual(delay)
+            expect(waited).toBeLessThanOrEqual(delay + Math.floor(delay / 5))
+          }
+        },
+      ),
+    )
+  })
+
+  it('marks a delivery exhausted exactly when attempts run out or the window closes', () => {
+    fc.assert(
+      fc.property(delaysMs, ageMs, windowMs, fc.nat(4), (delays, age, window, extra) => {
+        const attemptCount = 1 + ((delays.length + extra) % (delays.length + 2))
+        expect(
+          isRetryExhausted({
+            attemptCount,
+            windowStartedAt: new Date(NOW - age),
+            now: new Date(NOW),
+            delaysMs: delays,
+            maxAgeMs: window,
+          }),
+        ).toBe(attemptCount >= delays.length + 1 || age >= window)
+      }),
+    )
+  })
+
+  it('never expires a paused delivery by age', () => {
+    fc.assert(
+      fc.property(delaysMs, windowMs, fc.nat(4), (delays, age, extra) => {
+        const attemptCount = 1 + ((delays.length + extra) % (delays.length + 2))
+        expect(
+          isRetryExhausted({
+            attemptCount,
+            windowStartedAt: null,
+            now: new Date(NOW),
+            delaysMs: delays,
+            maxAgeMs: age,
+          }),
+        ).toBe(attemptCount >= delays.length + 1)
       }),
     )
   })

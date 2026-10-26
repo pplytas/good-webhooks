@@ -1,5 +1,6 @@
-import { randomInt, randomUUID } from 'node:crypto'
+import { randomUUID } from 'node:crypto'
 import { signWebhook } from './crypto.js'
+import { computeRetryAt, isRetryExhausted } from './retry.js'
 import { scopeFromKey } from './scope.js'
 import { postgresTables } from './postgres-schema.js'
 import type { AutomaticPauseReason, EndpointResolution } from './management/types.js'
@@ -70,37 +71,33 @@ export function createWorkerStore(config: ResolvedConfig) {
     }
   }
 
-  /** A delivery waiting behind a pause has no window start, so its age never expires (ADR 0015). */
-  function windowExpired(windowStartedAt: Date | null, now: Date): boolean {
-    return windowStartedAt !== null && now.getTime() - windowStartedAt.getTime() >= config.maxAgeMs
-  }
-
   function retryAt(
     attemptCount: number,
     windowStartedAt: Date | null,
     now: Date,
     minimumDelayMs: number | null = null,
   ): Date | null {
-    // A missing window start means the window starts now.
-    const start = windowStartedAt ?? now
-    const scheduled = config.retryDelaysMs[attemptCount - 1]
-    if (scheduled === undefined || windowExpired(windowStartedAt, now)) return null
-    // A longer Retry-After wins, but never extends the retry window.
-    const delay = Math.max(scheduled, minimumDelayMs ?? 0)
-    // A bounded 0-20% delay avoids synchronized retries without retrying early.
-    const jitter = delay > 0 ? randomInt(Math.min(Math.floor(delay / 5), 2 ** 48 - 2) + 1) : 0
-    const next = new Date(now.getTime() + delay + jitter)
-    return next.getTime() <= start.getTime() + config.maxAgeMs ? next : null
+    return computeRetryAt({
+      attemptCount,
+      windowStartedAt,
+      now,
+      delaysMs: config.retryDelaysMs,
+      maxAgeMs: config.maxAgeMs,
+      minimumDelayMs,
+    })
   }
 
   function exhausted(
     delivery: Pick<DeliveryRow, 'attempt_count' | 'window_started_at'>,
     now: Date,
   ): boolean {
-    return (
-      delivery.attempt_count >= config.retryDelaysMs.length + 1 ||
-      windowExpired(delivery.window_started_at, now)
-    )
+    return isRetryExhausted({
+      attemptCount: delivery.attempt_count,
+      windowStartedAt: delivery.window_started_at,
+      now,
+      delaysMs: config.retryDelaysMs,
+      maxAgeMs: config.maxAgeMs,
+    })
   }
 
   async function recoverExpired(): Promise<void> {
