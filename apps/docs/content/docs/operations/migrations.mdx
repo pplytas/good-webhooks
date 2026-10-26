@@ -82,7 +82,7 @@ import { getPostgresUpgrade } from 'good-webhooks/migrations'
 const sql = getPostgresUpgrade({ from: 5 }) // both components in 'public'
 ```
 
-The shipped equivalent is `good-webhooks/migrations/upgrades/006-all.sql`. From an older version, `from: 3` or `from: 4` chains the shipped steps, the same SQL as `004-all.sql`, `005-all.sql`, and `006-all.sql` in order. Separate namespaces take `component` with their own `schema`. The SQL checks the recorded version first, so applying it twice or against the wrong version rolls back.
+The shipped equivalent is `good-webhooks/migrations/upgrades/006-all.sql`. From an older version, `from: 3` or `from: 4` applies each published step from that version in order, up to `6`. Separate namespaces take `component` with their own `schema`. The SQL checks the recorded version first, so applying it twice or against the wrong version rolls back.
 
 The 5 to 6 step fills `webhook_deliveries.window_started_at` from `created_at` for every existing delivery, under the lock its `ALTER TABLE` takes. Producers and workers that touch the deliveries table wait until it commits, for a time that grows with the table's size, which `retentionMs` bounds. Existing deliveries keep the age they already had.
 

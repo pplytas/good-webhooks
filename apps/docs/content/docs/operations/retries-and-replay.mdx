@@ -75,7 +75,7 @@ const failed = await organization.deliveries.list({ endpointId, status: 'failed'
 const page = await organization.deliveries.replayMany({ endpointId, since: incidentStart })
 ```
 
-Each replay gets a new delivery ID and retry budget, and keeps the event ID, so a [deduplicating receiver](/docs/guides/receive#process-each-event-once) ignores events it already processed.
+Each replay gets a new delivery ID and retry budget and keeps the event ID, as a single [replay](#replay) does.
 
 ## Clean up history
 

@@ -174,11 +174,11 @@ if (detail.replayOf === null) await delivery.deliveries.replay(detail.id)
 
 ### replayMany
 
-`replayMany` replays one page of an endpoint's original deliveries in one transaction, newest delivery IDs first. Each eligible delivery follows `replay`'s rules; an ineligible one is skipped instead of failing the call. See [bulk replay](/docs/operations/retries-and-replay#bulk-replay).
+`replayMany` replays one page of an endpoint's original deliveries in one transaction, newest delivery IDs first. Each eligible delivery follows `replay`'s rules, and an ineligible one is skipped instead of failing the call. See [bulk replay](/docs/operations/retries-and-replay#bulk-replay).
 
 | `ReplayManyInput` field | Contract                                                                         |
 | ----------------------- | -------------------------------------------------------------------------------- |
-| `endpointId`            | Required. Only original deliveries to this endpoint; replays are never examined. |
+| `endpointId`            | Required. Only original deliveries to this endpoint. Replays are never examined. |
 | `status`                | `'failed'` (default) or `'succeeded'`.                                           |
 | `since`                 | `Date`. Only deliveries with `createdAt` at or after it.                         |
 | `until`                 | `Date`. Only deliveries with `createdAt` before it. Not earlier than `since`.    |
