@@ -95,7 +95,7 @@ Receivers built with `parseWebhook()` accept test events without listing them. S
 
 ## Automatic pauses
 
-The worker pauses an endpoint when every attempt to it has failed for five days, or when it answers `410 Gone`. Nothing is deleted. Subscriptions and queued deliveries stay, and `resume` works as usual once the receiver works again. `pauseReason` tells the two kinds of pause apart:
+The worker pauses an endpoint when every attempt to it has failed for five days, or when it answers `410 Gone`. Nothing is deleted. Subscriptions and queued deliveries stay, and `resume` works as usual once the receiver works again. Keep at least one worker running during a pause: the retry-window reset is recorded when a worker sees the paused endpoint. `pauseReason` tells the two kinds of pause apart:
 
 | `pauseReason` | Meaning                                       |
 | ------------- | --------------------------------------------- |

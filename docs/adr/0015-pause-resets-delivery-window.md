@@ -10,4 +10,6 @@ From schema version 6 each delivery records `window_started_at`. It starts at th
 
 We rejected two alternatives. Accumulating the exact paused time needs two columns and a rule nobody can state in one sentence. Cancelling queued deliveries on pause and relying on bulk replay would punish owner pauses, which are often minutes long, and would make every resume a two-step chore. The reset is more generous than an exact clock by at most one retry window, which is acceptable.
 
+The reset is recorded only when a running worker finds the endpoint paused while the delivery is due. If no worker runs during the pause, or the delivery never comes due during it, the window is not cleared, and a delivery already older than `retry.maxAgeMs` fails at the first claim after the resume, as before. Recording the pause in delivery storage from management itself would need management to touch delivery rows, which the components keep apart, so that is left for later.
+
 Accepted on 25 October 2026 for `0.5.0`.
