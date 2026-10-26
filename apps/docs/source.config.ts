@@ -1,7 +1,7 @@
 import path from 'node:path'
 import { defineConfig, defineDocs } from 'fumadocs-mdx/config'
 import { createGenerator, createProject, remarkAutoTypeTable } from 'fumadocs-typescript'
-import { stringifyComponent } from './lib/markdown-export'
+import { remarkMarkdownExport } from './lib/markdown-export'
 
 // Keep in sync with components/landing/code.tsx. Verified for 4.5:1 on every code surface.
 const codeThemes = {
@@ -11,7 +11,7 @@ const codeThemes = {
 
 export const docs = defineDocs({
   dir: 'content/docs',
-  docs: { postprocess: { includeProcessedMarkdown: { stringify: stringifyComponent } } },
+  docs: { postprocess: { includeProcessedMarkdown: true } },
 })
 
 function remarkTypeTables(): ReturnType<typeof remarkAutoTypeTable> {
@@ -54,6 +54,6 @@ function remarkTypeTables(): ReturnType<typeof remarkAutoTypeTable> {
 export default defineConfig({
   mdxOptions: {
     rehypeCodeOptions: { themes: codeThemes },
-    remarkPlugins: [remarkTypeTables],
+    remarkPlugins: [remarkTypeTables, remarkMarkdownExport],
   },
 })

@@ -1,8 +1,10 @@
-import type { LLMsOptions } from 'fumadocs-core/mdx-plugins/remark-llms'
+import { replaceSource, type Stringifier } from 'fumadocs-core/mdx-plugins/stringifier'
 
-type Stringify = NonNullable<LLMsOptions['stringify']>
-type State = Parameters<Stringify>[2]
-type Info = Parameters<Stringify>[3]
+// mdast and vfile are not direct dependencies; take their types from the stringifier API.
+type File = Parameters<typeof replaceSource>[0]
+type Nodes = Parameters<typeof replaceSource>[1]
+type Root = Extract<Nodes, { type: 'root' }>
+
 type Attribute = {
   type: string
   name?: string
@@ -12,41 +14,62 @@ type Element = {
   type: 'mdxJsxFlowElement' | 'mdxJsxTextElement'
   name: string | null
   attributes: Attribute[]
-  children: { type: string }[]
+  children: Nodes[]
+}
+
+function isElement(node: Nodes): node is Nodes & Element {
+  return node.type === 'mdxJsxFlowElement' || node.type === 'mdxJsxTextElement'
 }
 
 /**
  * Markdown forms for the MDX components the docs use, so the `.md` exports, `llms-full.txt`,
  * and "Copy Markdown" carry plain Markdown instead of JSX: tab labels, card links, callout
  * titles, diagram text, and type tables survive as text an agent can read.
+ *
+ * Fumadocs generates that Markdown from the authored source (`remarkLLMs`), and this plugin
+ * registers a replacement for each component through `replaceSource()`. `remarkAutoTypeTable`
+ * turns each `<auto-type-table>` into generated `TypeTable` elements without a source position,
+ * so the authored node (now a nested root) is replaced with their tables instead.
  */
-export const stringifyComponent: Stringify = (input, _parent, state, info) => {
-  if (input.type !== 'mdxJsxFlowElement' && input.type !== 'mdxJsxTextElement') return
-  const node = input as unknown as Element
-  switch (node.name) {
-    case 'Tabs':
-      return tabs(node, state, info)
-    case 'Cards':
-      return cards(node)
-    case 'Callout':
-      return callout(node, state, info)
-    case 'Flow':
-      return flow(node, state, info)
-    case 'TypeTable':
-      return typeTable(node)
-    case 'Steps':
-    case 'Step':
-    case 'Accordions':
-      return flowContent(node, state, info)
-    case 'AgentPrompt':
-      return ''
-    case 'Accordion':
-      return `**${attribute(node, 'title') ?? ''}**\n\n${flowContent(node, state, info)}`
+export function remarkMarkdownExport(): (tree: Root, file: File) => void {
+  return (tree, file) => {
+    const visit = (nodes: Nodes[]) => {
+      for (const node of nodes) {
+        if (isElement(node)) {
+          const markdown = replacement(node)
+          if (markdown) replaceSource(file, node, markdown)
+        } else if (node.type === 'root') {
+          const tables = node.children
+            .filter(isElement)
+            .filter((child) => child.name === 'TypeTable')
+          if (tables.length) replaceSource(file, node, tables.map(typeTable).join('\n\n'))
+        }
+        if ('children' in node) visit(node.children as Nodes[])
+      }
+    }
+    visit(tree.children)
   }
 }
 
-function flowContent(node: Element, state: State, info: Info): string {
-  return state.containerFlow(node as never, info)
+function replacement(node: Element): ((s: Stringifier) => string) | undefined {
+  switch (node.name) {
+    case 'Tabs':
+      return (s) => tabs(node, s)
+    case 'Cards':
+      return () => cards(node)
+    case 'Callout':
+      return (s) => callout(node, s)
+    case 'Flow':
+      return (s) => flow(node, s)
+    case 'Steps':
+    case 'Step':
+    case 'Accordions':
+      return (s) => s.inner(node as Nodes)
+    case 'AgentPrompt':
+      return () => ''
+    case 'Accordion':
+      return (s) => `**${attribute(node, 'title') ?? ''}**\n\n${s.inner(node as Nodes)}`
+  }
 }
 
 function attribute(node: Element, name: string): string | undefined {
@@ -59,10 +82,8 @@ function attribute(node: Element, name: string): string | undefined {
 
 function childElements(node: Element, name: string): Element[] {
   return node.children.filter(
-    (child): child is Element =>
-      (child.type === 'mdxJsxFlowElement' || child.type === 'mdxJsxTextElement') &&
-      (child as Element).name === name,
-  ) as Element[]
+    (child): child is Nodes & Element => isElement(child) && child.name === name,
+  )
 }
 
 /** `items={['A', 'B']}` is an expression; read the string literals without evaluating it. */
@@ -72,12 +93,12 @@ function stringList(source: string | undefined): string[] {
   )
 }
 
-function tabs(node: Element, state: State, info: Info): string {
+function tabs(node: Element, s: Stringifier): string {
   const labels = stringList(attribute(node, 'items'))
   return childElements(node, 'Tab')
     .map((tab, index) => {
       const label = attribute(tab, 'value') ?? labels[index] ?? `Option ${index + 1}`
-      return `**${label}**\n\n${flowContent(tab, state, info)}`
+      return `**${label}**\n\n${s.inner(tab as Nodes)}`
     })
     .join('\n\n')
 }
@@ -103,10 +124,10 @@ const calloutLabels: Record<string, string> = {
   info: 'Note',
 }
 
-function callout(node: Element, state: State, info: Info): string {
+function callout(node: Element, s: Stringifier): string {
   const label = calloutLabels[attribute(node, 'type') ?? 'info'] ?? 'Note'
   const title = attribute(node, 'title')
-  const body = flowContent(node, state, info)
+  const body = s.inner(node as Nodes)
   const lead = `**${label}${title ? `: ${title}` : ''}.**`
   return `${lead} ${body}`
     .split('\n')
@@ -114,15 +135,12 @@ function callout(node: Element, state: State, info: Info): string {
     .join('\n')
 }
 
-function flow(node: Element, state: State, info: Info): string {
+function flow(node: Element, s: Stringifier): string {
   const title = attribute(node, 'title')
   const steps = childElements(node, 'FlowStep').map((step, index) => {
     const name = attribute(step, 'title') ?? ''
     const actor = attribute(step, 'actor')
-    const body = state.containerPhrasing(
-      { type: 'paragraph', children: step.children } as never,
-      info,
-    )
+    const body = s.inner(step as Nodes).replace(/\s*\n\s*/g, ' ')
     return `${index + 1}. **${name}**${actor ? ` (${actor})` : ''}: ${body.trim()}`
   })
   return [title ? `${title}:\n\n` : '', steps.join('\n')].join('')
@@ -137,14 +155,14 @@ type TypeEntry = {
   tags?: { name: string; text: string }[]
 }
 
-function typeTable(node: Element): string | undefined {
+function typeTable(node: Element): string {
   const raw = attribute(node, 'type')
-  if (!raw) return
+  if (!raw) return ''
   let parsed: { name?: string; entries?: TypeEntry[] }
   try {
     parsed = JSON.parse(raw)
   } catch {
-    return
+    return ''
   }
   const cell = (value: string) => value.replace(/\|/g, '\\|').replace(/\n+/g, ' ').trim()
   const rows = (parsed.entries ?? []).map((entry) => {
