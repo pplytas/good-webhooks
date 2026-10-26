@@ -21,6 +21,7 @@ export async function migrate(config: Config) {
       '002-good-webhooks-alpha.2.sql',
       '003-good-webhooks-schema-4.sql',
       '004-good-webhooks-schema-5.sql',
+      '005-good-webhooks-schema-6.sql',
     ]) {
       const source = await readFile(new URL(`../migrations/${name}`, import.meta.url), 'utf8')
       const checksum = createHash('sha256').update(source).digest('hex')

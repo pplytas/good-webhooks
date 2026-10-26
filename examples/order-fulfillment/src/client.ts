@@ -60,6 +60,8 @@ let busy = false
 let refreshing = false
 let productSignature = ''
 let requestKey = crypto.randomUUID()
+// When the warehouse was set to reject in this page. Bulk replay starts from here.
+let outageStartedAt: Date | undefined
 const product = element<HTMLSelectElement>('product')
 const quantity = element<HTMLInputElement>('quantity')
 const form = element<HTMLFormElement>('order-form')
@@ -117,6 +119,8 @@ function setBusy(value: boolean) {
     element<HTMLButtonElement | HTMLSelectElement>(id).disabled = value
   for (const id of ['place-order', 'rollback'])
     element<HTMLButtonElement>(id).disabled = value || !state?.endpoint
+  element<HTMLButtonElement>('replay-failed').disabled =
+    value || state?.endpoint?.status !== 'active'
 }
 
 async function action(operation: () => Promise<void>) {
@@ -294,10 +298,27 @@ element('receiver-mode').addEventListener(
     void action(async () => {
       const mode = element<HTMLSelectElement>('receiver-mode').value
       await api('/api/receiver', { mode })
+      if (mode === 'reject') outageStartedAt = new Date()
       notice(
         mode === 'reject'
           ? 'Warehouse returns HTTP 503. Place an order to watch retries.'
-          : 'Warehouse accepts orders again. Replay a failed delivery to recover it.',
+          : 'Warehouse accepts orders again. Replay the failed deliveries to recover them.',
+      )
+    }),
+)
+element('replay-failed').addEventListener(
+  'click',
+  () =>
+    void action(async () => {
+      // Without a recorded outage in this page, fall back to the last hour.
+      const since = outageStartedAt ?? new Date(Date.now() - 60 * 60 * 1000)
+      const result = await api<{ replayed: number; skipped: number }>(
+        '/api/deliveries/replay-failed',
+        { since: since.toISOString() },
+      )
+      selected = undefined
+      notice(
+        `Replayed ${result.replayed} failed ${result.replayed === 1 ? 'delivery' : 'deliveries'} since ${time(since)}.${result.skipped ? ` Skipped ${result.skipped} with a replay already queued or outside retention.` : ''}`,
       )
     }),
 )

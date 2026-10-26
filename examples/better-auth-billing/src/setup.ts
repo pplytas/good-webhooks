@@ -51,18 +51,20 @@ export async function migrate(pool: Pool) {
     )
     if (done.rowCount) {
       const version = done.rows[0].value
-      if (version === '2') return
-      if (version !== '1') throw new Error('Unknown billing schema version')
-      // Version 1 databases were set up on good-webhooks delivery schema 4.
-      await client.query(getPostgresUpgrade({ component: 'delivery', from: 4 }))
+      if (version === '3') return
+      // Version 1 databases were set up on good-webhooks delivery schema 4, and
+      // version 2 databases on schema 5. Both upgrades end at schema 6.
+      const from = version === '1' ? 4 : version === '2' ? 5 : undefined
+      if (!from) throw new Error('Unknown billing schema version')
+      await client.query(getPostgresUpgrade({ component: 'delivery', from }))
       await client.query(
-        "UPDATE billing_example_metadata SET value = '2' WHERE name = 'schema-version'",
+        "UPDATE billing_example_metadata SET value = '3' WHERE name = 'schema-version'",
       )
       return
     }
     await client.query(getPostgresMigration({ component: 'delivery' }))
     await client.query(readFileSync(new URL('./schema.sql', import.meta.url), 'utf8'))
-    await client.query("INSERT INTO billing_example_metadata VALUES ('schema-version', '2')")
+    await client.query("INSERT INTO billing_example_metadata VALUES ('schema-version', '3')")
   })
 }
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

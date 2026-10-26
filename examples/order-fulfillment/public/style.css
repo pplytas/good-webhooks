@@ -298,6 +298,9 @@ select:hover {
   padding-top: 21px;
   border-top: 1px solid var(--line);
 }
+.receiver-control button {
+  margin-top: 14px;
+}
 .receiver-totals {
   display: flex;
   gap: 24px;

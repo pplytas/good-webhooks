@@ -1,6 +1,6 @@
 # Northstar Supply
 
-A small shop admin and warehouse receiver built with the published `good-webhooks@0.4.0` package. Place an order, watch its delivery, take the warehouse offline, and replay an event without creating a second shipment.
+A small shop admin and warehouse receiver built with the published `good-webhooks@0.5.0` package. Place an order, watch its delivery, take the warehouse offline, and replay an event without creating a second shipment.
 
 This is an independent npm application. It has its own lockfile and does not use the repository's package source or pnpm workspace. You can copy this directory elsewhere and run it.
 
@@ -31,10 +31,11 @@ If the default ports are occupied, change `APP_PORT` and `RECEIVER_PORT` in `.en
 3. Open a delivery to see the actual attempt count, response code, recorded response body, and next scheduled attempt.
 4. Set the warehouse to reject requests, then place another order. It returns `503`. The worker makes one initial attempt and up to three retries, with delays of 1, 3, and 6 seconds. Wait roughly 12 seconds for the delivery to fail. These short delays are explicit demo configuration in `src/runtime.ts`.
 5. Restore the warehouse and replay the failed original delivery. The new delivery has a different delivery ID and retains the event ID. The warehouse creates one shipment.
-6. Replay an already successful original delivery. The warehouse returns success, increments its duplicate counter, and keeps the existing shipment. A replay itself cannot be replayed. Select the original delivery again.
-7. Use the rollback option when placing an order. The API deliberately rolls back after preparing publication. Neither the order nor its delivery appears. Retrying that request key without rollback can succeed.
-8. Pause the endpoint and place an order. It still selects the subscribed warehouse, but stays pending without an HTTP attempt. Resume the endpoint and the worker delivers the retained event.
-9. Stop and restart the processes with Ctrl+C and `npm run dev`. Existing data and keys remain. For an explicit queue test, run the app and receiver separately, place an order while no worker runs, then start the worker.
+6. Set the warehouse to reject again and place two or three orders. After they fail, restore the warehouse and click **Replay failed deliveries**. The app's `POST /api/deliveries/replay-failed` route calls `webhooks.deliveries.replayMany()` for the endpoint's failed original deliveries created since you switched the warehouse to `503`, or in the last hour after a page reload, and follows `nextCursor` until it is `null`. The warehouse creates one shipment per order. A finished replay does not block another, so a second click sends the same events again and the warehouse counts them as duplicates.
+7. Replay an already successful original delivery. The warehouse returns success, increments its duplicate counter, and keeps the existing shipment. A replay itself cannot be replayed. Select the original delivery again.
+8. Use the rollback option when placing an order. The API deliberately rolls back after preparing publication. Neither the order nor its delivery appears. Retrying that request key without rollback can succeed.
+9. Pause the endpoint and place an order. It still selects the subscribed warehouse, but stays pending without an HTTP attempt. Resume the endpoint and the worker delivers the retained event.
+10. Stop and restart the processes with Ctrl+C and `npm run dev`. Existing data and keys remain. For an explicit queue test, run the app and receiver separately, place an order while no worker runs, then start the worker.
 
 The dashboard shows the latest 50 orders, deliveries, and shipments. Its receiver counters cover all retained receipts. It polls actual persisted state through the public delivery APIs and app-owned tables. It does not simulate delivery status.
 
@@ -67,7 +68,7 @@ TEST_DATABASE_URL='postgres://user:password@127.0.0.1:5432/test_database' npm te
 
 Each run creates a random schema, applies the migrations, launches real HTTP app, receiver, and worker processes on free ports, and removes only that run's schema. Tests never truncate or reset existing application tables. The database role needs permission to create and drop its own schema.
 
-Coverage includes input and origin checks, concurrent connection and order idempotency, server prices, atomic rollback, delivery with a separate worker, actual signed requests, invalid signatures, retry exhaustion, replay, deduplication after receiver restart, paused delivery, worker restart, and clean SIGTERM shutdown.
+Coverage includes input and origin checks, concurrent connection and order idempotency, server prices, atomic rollback, delivery with a separate worker, actual signed requests, invalid signatures, retry exhaustion, replay, bulk replay after an outage, deduplication after receiver restart, paused delivery, worker restart, and clean SIGTERM shutdown.
 
 ## How it fits together
 
@@ -81,7 +82,7 @@ Shop HTTP request
 
 `src/application.ts` owns the business transaction and local administration API. `src/worker.ts` owns delivery execution. `src/receiver-app.ts` owns signature verification and durable receiver idempotency. They share an event schema and this example's database for convenience. Real external receivers would own their database, secret transfer, and deployment independently.
 
-The `001-app.sql` migration creates business and receiver tables. `002-good-webhooks-alpha.2.sql` is the combined SQL emitted by the package's public `getPostgresMigration({ schema: 'northstar' })` API at schema version 3, `003-good-webhooks-schema-4.sql` is the upgrade emitted by `getPostgresUpgrade({ from: 3 })` when the pin moved to `0.1.0-beta.2`, and `004-good-webhooks-schema-5.sql` is the one emitted by `getPostgresUpgrade({ from: 4 })` for `0.2.0`. Existing databases upgrade in place; fresh databases apply them all in order. Setup commits each migration ledger update in the same transaction as its SQL. Runtime entrypoints never apply migrations. Follow the package's migration guidance before changing its pinned version.
+The `001-app.sql` migration creates business and receiver tables. `002-good-webhooks-alpha.2.sql` is the combined SQL emitted by the package's public `getPostgresMigration({ schema: 'northstar' })` API at schema version 3, `003-good-webhooks-schema-4.sql` is the upgrade emitted by `getPostgresUpgrade({ from: 3 })` when the pin moved to `0.1.0-beta.2`, `004-good-webhooks-schema-5.sql` is the one emitted by `getPostgresUpgrade({ from: 4 })` for `0.2.0`, and `005-good-webhooks-schema-6.sql` is the one emitted by `getPostgresUpgrade({ from: 5 })` for `0.5.0`. Existing databases upgrade in place; fresh databases apply them all in order. Setup commits each migration ledger update in the same transaction as its SQL. Runtime entrypoints never apply migrations. Follow the package's migration guidance before changing its pinned version.
 
 Publication idempotency and business idempotency have different jobs. This app permanently associates each order request key with its normalized customer, SKU, and quantity. Repeating the same request returns its order; changing the request with the same key returns `409`. The webhook publisher independently deduplicates its publication key. Warehouse receipts independently deduplicate the received event ID.
 

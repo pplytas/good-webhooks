@@ -1,11 +1,11 @@
 # Complete consumer integrations
 
-These applications install `good-webhooks@0.4.0` from npm. They use independent package manifests and lockfiles outside the repository's pnpm workspace. You can copy either directory into another project without building the library.
+These applications install `good-webhooks@0.5.0` from npm. They use independent package manifests and lockfiles outside the repository's pnpm workspace. You can copy either directory into another project without building the library.
 
-| Application                                          | What it demonstrates                                                                                       | Local address           |
-| ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- | ----------------------- |
-| [Northstar Supply](order-fulfillment/README.md)      | Atomic order publication, signed warehouse delivery, retries, replay, and shipment deduplication           | `http://127.0.0.1:4311` |
-| [Better Auth billing](better-auth-billing/README.md) | Authenticated endpoint management, user isolation, transactional invoice events, and receiver verification | `http://127.0.0.1:4312` |
+| Application                                          | What it demonstrates                                                                                          | Local address           |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- | ----------------------- |
+| [Northstar Supply](order-fulfillment/README.md)      | Atomic order publication, signed warehouse delivery, retries, replay, bulk replay, and shipment deduplication | `http://127.0.0.1:4311` |
+| [Better Auth billing](better-auth-billing/README.md) | Authenticated endpoint management, user isolation, transactional invoice events, and receiver verification    | `http://127.0.0.1:4312` |
 
 Use Node.js 24, npm, and Docker with Compose. Each application has its own database and ports, so both can run together. In the chosen directory:
 

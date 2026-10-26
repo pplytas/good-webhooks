@@ -185,6 +185,27 @@ export function createApplication(runtime: Runtime) {
   app.post('/api/deliveries/:id/replay', async (request, response) => {
     response.status(201).json(await webhooks.deliveries.replay(request.params.id))
   })
+  app.post('/api/deliveries/replay-failed', async (request, response) => {
+    const { since } = z.object({ since: z.iso.datetime() }).strict().parse(request.body)
+    const endpointId = await configuredEndpointId()
+    if (!endpointId) throw new HttpError(409, 'NOT_CONNECTED', 'Connect the warehouse first.')
+    // Bulk replay works in pages, newest first. Follow the cursor until it is null.
+    let replayed = 0
+    let skipped = 0
+    let before: string | undefined
+    do {
+      const page = await webhooks.deliveries.replayMany({
+        endpointId,
+        status: 'failed',
+        since: new Date(since),
+        before,
+      })
+      replayed += page.replayed
+      skipped += page.skipped
+      before = page.nextCursor ?? undefined
+    } while (before)
+    response.json({ replayed, skipped })
+  })
   app.post('/api/receiver', async (request, response) => {
     const { mode } = z
       .object({ mode: z.enum(['healthy', 'reject']) })

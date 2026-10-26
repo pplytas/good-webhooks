@@ -111,9 +111,13 @@
               <option value="reject">Return 503 to simulate an outage</option>
             </select>
             <p class="help">
-              During an outage, the worker retries. Restore the receiver and replay a failed
-              delivery to recover it.
+              During an outage, the worker retries. Restore the receiver, then replay every delivery
+              that failed since you switched it to 503, or in the last hour if you did not switch it
+              on this page.
             </p>
+            <button id="replay-failed" class="secondary" type="button" disabled>
+              Replay failed deliveries
+            </button>
           </div>
           <div class="receiver-totals">
             <span><strong id="accepted">0</strong> shipments accepted</span

@@ -375,6 +375,65 @@ test(
         },
       )
       await context.test(
+        'bulk replay sends every delivery that failed during an outage',
+        async () => {
+          await request('/api/receiver', { mode: 'reject' })
+          const eventIds = new Set<string>()
+          for (const customer of ['Outage One', 'Outage Two', 'Outage Three']) {
+            eventIds.add((await request('/api/orders', order(customer), 201)).publication.eventId)
+          }
+          const outage = (value: State) =>
+            value.deliveries.filter((delivery) => eventIds.has(delivery.eventId))
+          const failed = await until(
+            state,
+            (value) =>
+              outage(value).length === 3 &&
+              outage(value).every((delivery) => delivery.status === 'failed'),
+            'outage deliveries did not exhaust retries',
+          )
+          assert.equal(failed.shipments.length, 5)
+          // The outage starts at the first failed delivery, as the database recorded it.
+          const since = outage(failed)
+            .map((delivery) => new Date(delivery.createdAt))
+            .reduce((first, value) => (value < first ? value : first))
+            .toISOString()
+          await request('/api/deliveries/replay-failed', { since: 'yesterday' }, 400)
+          await request('/api/endpoint', { status: 'paused' })
+          const paused = await request('/api/deliveries/replay-failed', { since }, 409)
+          assert.equal(paused.code, 'INVALID_STATE')
+          await request('/api/endpoint', { status: 'active' })
+          await request('/api/receiver', { mode: 'healthy' })
+
+          assert.deepEqual(await request('/api/deliveries/replay-failed', { since }), {
+            replayed: 3,
+            skipped: 0,
+          })
+          const recovered = await until(
+            state,
+            (value) =>
+              value.shipments.length === 8 &&
+              outage(value).filter(
+                (delivery) => delivery.replayOf && delivery.status === 'succeeded',
+              ).length === 3,
+            'bulk replay did not deliver',
+          )
+          assert.equal(recovered.receiver.duplicates, 1)
+
+          // A finished replay does not block another, so a second bulk replay sends the
+          // events again. The warehouse recognizes each event and creates no shipment.
+          assert.deepEqual(await request('/api/deliveries/replay-failed', { since }), {
+            replayed: 3,
+            skipped: 0,
+          })
+          const repeated = await until(
+            state,
+            (value) => value.receiver.duplicates === 4,
+            'second bulk replay did not deliver',
+          )
+          assert.equal(repeated.shipments.length, 8)
+        },
+      )
+      await context.test(
         'new orders remain first in delivery history beyond nine deliveries',
         async () => {
           let newestEventId = ''
