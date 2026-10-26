@@ -6,7 +6,7 @@ Breaking minor. Schema `6`. Tracked in [#89](https://github.com/pplytas/good-web
 
 ### Upgrade
 
-1. Run `getPostgresUpgrade({ from: 5 })` or `migrations/upgrades/006-all.sql`. It locks the deliveries table while it backfills. Prune first.
+1. Run `getPostgresUpgrade({ from: 5 })` or `migrations/upgrades/006-all.sql`. Older schemas and separate namespaces: see [migrations](apps/docs/content/docs/operations/migrations.mdx). The step locks the deliveries table while it backfills. Prune first.
 2. Better Auth: run your Better Auth migration. It adds `encryptedHeaders`.
 3. Restart producers. Then restart workers.
 4. Custom `ManagementRepository`: `create` now takes `{ limit }`. `StoredEndpoint` gains `encryptedHeaders`. Store it as is.
