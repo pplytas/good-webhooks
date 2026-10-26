@@ -2,37 +2,38 @@
 
 ## 0.5.0 (2026-10-26)
 
-Bulk replay, pauses that no longer fail the deliveries queued behind them, and the final shape of the interfaces hosts implement before `1.0`. Storage moves to schema `6`. This breaking minor shipped without the one-release notice the [0.x rules](apps/docs/content/docs/operations/compatibility.mdx#releases) ask for, because the project had no known users. Tracked in [#89](https://github.com/pplytas/good-webhooks/issues/89); the pause decision is [ADR 0015](docs/adr/0015-pause-resets-delivery-window.md).
+Bulk replay recovers lost deliveries. A pause no longer fails the deliveries queued behind it. The interfaces hosts implement take their final shape before `1.0`. Storage moves to schema `6`. This breaking minor shipped without the usual one-release notice, because the project had no known users. Tracked in [#89](https://github.com/pplytas/good-webhooks/issues/89). The pause decision is [ADR 0015](docs/adr/0015-pause-resets-delivery-window.md).
 
 ### Upgrade
 
-1. Run `getPostgresUpgrade({ from: 5 })` or `migrations/upgrades/006-all.sql`. The delivery step backfills every row under a table lock, so prune a large table first. `0.4.x` processes keep working until they restart.
-2. Better Auth management: run your Better Auth migration for the new optional `encryptedHeaders` field before deploying.
-3. Restart producers, then workers ([rollout order](apps/docs/content/docs/operations/migrations.mdx#rollout-order)).
-4. Custom `ManagementRepository`: `create(scope, endpoint, { limit })` replaces the bare `limit`, and `StoredEndpoint` gains `encryptedHeaders`. Store it and return it unchanged.
+1. Run `getPostgresUpgrade({ from: 5 })` or `migrations/upgrades/006-all.sql`. The delivery step backfills every row under a table lock. Prune a large table first. `0.4.x` processes keep working until they restart.
+2. Better Auth management: run your Better Auth migration before deploying. It adds the optional `encryptedHeaders` field.
+3. Restart producers, then workers. See the [rollout order](apps/docs/content/docs/operations/migrations.mdx#rollout-order).
+4. Custom `ManagementRepository`: `create(scope, endpoint, { limit })` replaces the bare `limit`. `StoredEndpoint` gains `encryptedHeaders`. Store it and return it unchanged.
 
 ### Breaking
 
-- **Schema `6` required.** Adds `webhook_deliveries.window_started_at` and `webhook_endpoints.encrypted_headers`. `check()` refuses version `5` and names the upgrade.
-- **A pause resets the retry window.** Deliveries that wait behind a paused endpoint keep their full `retry.maxAgeMs` after the resume instead of failing at the first claim. The reset needs a worker running during the pause. Attempt counts, delays, and `retentionMs` don't change.
-- **Host interfaces.** `ManagementRepository.create` takes an options object and `StoredEndpoint` requires `encryptedHeaders` (upgrade step 4). The built-in PostgreSQL and Better Auth management need no code change.
+- **Schema `6` required.** It adds `webhook_deliveries.window_started_at` and `webhook_endpoints.encrypted_headers`. `check()` refuses version `5` and names the upgrade.
+- **A pause resets the retry window.** Deliveries behind a paused endpoint keep their full `retry.maxAgeMs` after the resume. Before, they failed at the first claim. The reset needs a worker running during the pause. Attempt counts, delays, and `retentionMs` don't change.
+- **Host interfaces.** `ManagementRepository.create` takes an options object. `StoredEndpoint` requires `encryptedHeaders`. See upgrade step 4. The built-in PostgreSQL and Better Auth management need no code change.
 
 ### Added
 
-- `deliveries.replayMany({ endpointId, status?, since?, until?, limit?, before? })` replays one page of an endpoint's failed (or succeeded) original deliveries in one transaction and returns `{ replayed, skipped, nextCursor }`. Pass `nextCursor` as `before` to continue. See [bulk replay](apps/docs/content/docs/operations/retries-and-replay.mdx#bulk-replay).
-- `StoredEndpoint.encryptedHeaders` and an optional `headers` field on active `EndpointResolution` results. Stored and validated, not sent, until `0.6.0`.
-- [OpenTelemetry recipe](packages/good-webhooks/examples/operations/otel.ts) for attempt duration, counts, responses, and pauses. No new dependency.
-- `getPostgresUpgrade({ from: 5 })`, and CI rehearses the upgrade from `0.4.0` storage with a pending backlog.
+- `deliveries.replayMany({ endpointId, status?, since?, until?, limit?, before? })`. It replays one page of an endpoint's failed (or succeeded) original deliveries in one transaction. It returns `{ replayed, skipped, nextCursor }`. Pass `nextCursor` as `before` to continue. See [bulk replay](apps/docs/content/docs/operations/retries-and-replay.mdx#bulk-replay).
+- `StoredEndpoint.encryptedHeaders`, and an optional `headers` field on active `EndpointResolution` results. Both are stored and validated. Nothing is sent until `0.6.0`.
+- An [OpenTelemetry recipe](packages/good-webhooks/examples/operations/otel.ts) for attempt duration, counts, responses, and pauses. It adds no dependency.
+- `getPostgresUpgrade({ from: 5 })`. CI rehearses the upgrade from `0.4.0` storage with a pending backlog.
 
 ### Docs and repository
 
-- New pages: [serverless and cron](apps/docs/content/docs/operations/serverless.mdx), a Fastify tab in [receiving](apps/docs/content/docs/guides/receive.mdx), [out-of-order events](apps/docs/content/docs/concepts/delivery-guarantees.mdx), and a [threat table](apps/docs/content/docs/concepts/security.mdx#threats-and-defences) naming the test behind each defence.
-- [`SECURITY.md`](SECURITY.md) states response targets. CI checks the packed archive with `attw` and `publint` and type-checks consumers on TypeScript 5.9, 6.0, and 7.0. Dependabot, CodeQL, and OpenSSF Scorecard run on the repository.
-- Sharper npm description, keywords, and README tagline, with a link to the [Playground](https://playground.good-webhooks.dev).
+- New pages: [serverless and cron](apps/docs/content/docs/operations/serverless.mdx), a Fastify tab in [receiving](apps/docs/content/docs/guides/receive.mdx), [out-of-order events](apps/docs/content/docs/concepts/delivery-guarantees.mdx), and a [threat table](apps/docs/content/docs/concepts/security.mdx#threats-and-defences) that names the test behind each defence.
+- [`SECURITY.md`](SECURITY.md) states response targets.
+- CI checks the packed archive with `attw` and `publint`. It type-checks consumers on TypeScript 5.9, 6.0, and 7.0. Dependabot, CodeQL, and OpenSSF Scorecard run on the repository.
+- Sharper npm description, keywords, and README tagline. The README links the [Playground](https://playground.good-webhooks.dev).
 
 ### Coming in 0.6.0
 
-Code only, no SQL: endpoint headers sent on every attempt, `deliveries.stats()`, and `describeEvents()`. See the [roadmap](docs/roadmap.md#060-january-2027-endpoint-owners-see-and-operate).
+Code only, no SQL. Endpoint headers are sent on every attempt. `deliveries.stats()` and `describeEvents()` arrive. See the [roadmap](docs/roadmap.md#060-january-2027-endpoint-owners-see-and-operate).
 
 ## 0.4.0 (2026-10-18)
 
