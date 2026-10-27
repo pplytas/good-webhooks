@@ -93,7 +93,70 @@ function unwrap<T>(result: { data: T | null; error: { message?: string } | null 
 }
 ```
 
-The snippets below also use the example's small helpers from `src/client.ts`: `$` selects an element, `action` runs a handler and shows its error, `api` calls the app's own routes, and `updateMarkup` writes HTML.
+The Vanilla JS snippets below also use the example's small helpers from `src/client.ts`: `$` selects an element, `action` runs a handler and shows its error, `api` calls the app's own routes, and `updateMarkup` writes HTML.
+
+The React snippets keep the same page in one `Endpoints` component in `src/endpoints.tsx`. It imports `auth`, `api`, `unwrap`, and the `Workspace` type from a `src/client.ts` that exports them, keeps the page state in hooks, and its `run` function plays the part of `action`:
+
+<Tabs groupId="ui-framework" persist items={['React', 'Vanilla JS']}>
+<Tab>
+
+```tsx title="src/endpoints.tsx"
+import { useEffect, useState } from 'react'
+import type { WebhookEndpointDTO } from 'good-webhooks/better-auth'
+import { api, auth, unwrap, type Workspace } from './client.ts'
+import { eventTypes } from './event-types.ts'
+
+type Endpoint = WebhookEndpointDTO<(typeof eventTypes)[number]>
+
+export function Endpoints() {
+  const [workspace, setWorkspace] = useState<Workspace | null>(null)
+  const [endpoints, setEndpoints] = useState<Endpoint[]>([])
+  const [pendingSecret, setPendingSecret] = useState<{ endpointId: string; secret: string } | null>(
+    null,
+  )
+  const [message, setMessage] = useState('')
+
+  // Runs a handler and shows its error, like the example's `action` without its busy guard.
+  async function run(work: () => Promise<void>) {
+    try {
+      await work()
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Request failed')
+    }
+  }
+
+  // The handlers below go here.
+
+  return (
+    <>
+      <p>{message}</p>
+      {/* The JSX below goes here. */}
+    </>
+  )
+}
+```
+
+</Tab>
+<Tab>
+
+```ts title="src/client.ts"
+async function action(work: () => Promise<void>) {
+  if (busy) return
+  busy = true
+  // ...
+  try {
+    await work()
+  } catch (error) {
+    message(error instanceof Error ? error.message : 'Request failed', true)
+  } finally {
+    busy = false
+    // ...
+  }
+}
+```
+
+</Tab>
+</Tabs>
 
 </Step>
 <Step>
@@ -101,7 +164,46 @@ The snippets below also use the example's small helpers from `src/client.ts`: `$
 
 The endpoint form has a description, two event checkboxes, and an optional gateway API key. On submit, the client creates the endpoint and adds the key as an `x-api-key` header when the user filled it in:
 
+<Tabs groupId="ui-framework" persist items={['React', 'Vanilla JS']}>
+<Tab>
+
+```tsx title="src/endpoints.tsx"
+// In Endpoints():
+async function create(form: FormData) {
+  const apiKey = String(form.get('apiKey') ?? '').trim()
+  const result = unwrap(
+    await auth.goodWebhooks.create({
+      description: String(form.get('description')),
+      url: `${workspace!.receiverOrigin}/webhooks/${crypto.randomUUID()}`,
+      eventTypes: eventTypes.filter((type) => form.has(type)),
+      ...(apiKey ? { headers: { 'x-api-key': apiKey } } : {}), // [!code highlight]
+    }),
+  )
+  // ...
+}
+```
+
+```tsx title="src/endpoints.tsx"
+// In the JSX:
+<form action={(form) => run(() => create(form))}>
+  <input name="description" placeholder="Endpoint name" required />
+  <input name="apiKey" placeholder="Gateway API key (optional)" />
+  {eventTypes.map((type) => (
+    <label key={type}>
+      <input type="checkbox" name={type} defaultChecked /> {type}
+    </label>
+  ))}
+  <button>Create endpoint</button>
+</form>
+```
+
+</Tab>
+<Tab>
+
 ```ts title="src/client.ts"
+const selected = eventTypes.filter((type) =>
+  form.has(type === 'invoice.created' ? 'created' : 'paid'),
+)
 const apiKey = String(form.get('apiKey') ?? '').trim()
 const result = unwrap(
   await auth.goodWebhooks.create({
@@ -112,6 +214,9 @@ const result = unwrap(
   }),
 )
 ```
+
+</Tab>
+</Tabs>
 
 The headers go out on every delivery attempt, every retry, and every test event. The plugin stores them encrypted, like the signing secret. An endpoint has at most 20 headers, and 2 KiB in total as JSON. The [management reference](/docs/reference/management#endpoint-headers) has the full rules.
 
@@ -134,15 +239,60 @@ In the browser, `unwrap` throws that message and the page shows it.
 <Step>
 ### Show the signing secret once
 
-The create result carries the signing secret. The client keeps it in `pendingSecret` and reveals the `#secret-panel`:
+The create result carries the signing secret. The client keeps it in `pendingSecret` and reveals the secret panel:
+
+<Tabs groupId="ui-framework" persist items={['React', 'Vanilla JS']}>
+<Tab>
+
+```tsx title="src/endpoints.tsx"
+// At the end of create():
+setPendingSecret({ endpointId: result.endpoint.id, secret: result.secret })
+await refresh()
+```
+
+```tsx title="src/endpoints.tsx"
+// In the JSX:
+<>
+  {pendingSecret && (
+    <div>
+      <input readOnly value={pendingSecret.secret} />
+      <button onClick={() => void run(connectReceiver)}>Transfer to local receiver</button>
+    </div>
+  )}
+</>
+```
+
+</Tab>
+<Tab>
 
 ```ts title="src/client.ts"
 pendingSecret = { endpointId: result.endpoint.id, secret: result.secret }
 $<HTMLInputElement>('#signing-secret').value = result.secret
 $('#secret-panel').hidden = false
+await refresh()
 ```
 
+</Tab>
+</Tabs>
+
 The **Transfer to local receiver** button posts the secret to the example's receiver and hides the panel:
+
+<Tabs groupId="ui-framework" persist items={['React', 'Vanilla JS']}>
+<Tab>
+
+```tsx title="src/endpoints.tsx"
+// In Endpoints():
+async function connectReceiver() {
+  if (!pendingSecret) return
+  await api('/receivers/connect', pendingSecret)
+  setPendingSecret(null)
+  setMessage('Receiver connected. Create an invoice to send its first event.')
+  await refresh()
+}
+```
+
+</Tab>
+<Tab>
 
 ```ts title="src/client.ts"
 $('#connect-receiver').addEventListener(
@@ -160,6 +310,9 @@ $('#connect-receiver').addEventListener(
 )
 ```
 
+</Tab>
+</Tabs>
+
 Only the create and rotate responses carry the secret. Lists and other reads never do. In a real app, the owner pastes the secret into their receiver's configuration. The example's transfer route exists only because the example also owns the receiver.
 
 To replace a secret, call `auth.goodWebhooks.rotateSecret({ id })`. It returns a new secret, and the old one stays valid for a grace period, 24 hours by default. See the [route reference](/docs/reference/better-auth#authenticated-routes).
@@ -169,6 +322,27 @@ To replace a secret, call `auth.goodWebhooks.rotateSecret({ id })`. It returns a
 ### List the owner's endpoints
 
 `refresh()` loads the app's own data and the owner's endpoints together:
+
+<Tabs groupId="ui-framework" persist items={['React', 'Vanilla JS']}>
+<Tab>
+
+```tsx title="src/endpoints.tsx"
+// In Endpoints():
+async function refresh() {
+  const [state, endpointResult] = await Promise.all([
+    api<Workspace>('/workspace'),
+    auth.goodWebhooks.list({}),
+  ])
+  setWorkspace(state)
+  setEndpoints(unwrap(endpointResult))
+}
+useEffect(() => {
+  void run(refresh)
+}, [])
+```
+
+</Tab>
+<Tab>
 
 ```ts title="src/client.ts"
 const [state, endpointResult] = await Promise.all([
@@ -180,7 +354,47 @@ endpoints = unwrap(endpointResult)
 render()
 ```
 
-`render()` writes one card per endpoint. Trimmed and wrapped, the card shows the description, URL, event types, headers, status, and actions:
+</Tab>
+</Tabs>
+
+The page writes one card per endpoint. Trimmed and wrapped, the card shows the description, URL, event types, headers, status, and actions:
+
+<Tabs groupId="ui-framework" persist items={['React', 'Vanilla JS']}>
+<Tab>
+
+```tsx title="src/endpoints.tsx"
+// In the JSX:
+<>
+  {endpoints.length ? (
+    endpoints.map((endpoint) => (
+      <article key={endpoint.id}>
+        <strong>{endpoint.description || 'Invoice endpoint'}</strong>{' '}
+        {endpoint.status.replaceAll('_', ' ')}
+        <p>{endpoint.url}</p>
+        <p>{endpoint.eventTypes.join(', ')}</p>
+        {Object.entries(endpoint.headers).map(([name, value]) => (
+          <p key={name}>
+            {name}: {value}
+          </p>
+        ))}
+        <button
+          onClick={() =>
+            void run(() => operate(endpoint.id, endpoint.status === 'paused' ? 'resume' : 'pause'))
+          }
+        >
+          {endpoint.status === 'paused' ? 'Resume' : 'Pause'}
+        </button>
+        <button onClick={() => void run(() => operate(endpoint.id, 'remove'))}>Remove</button>
+      </article>
+    ))
+  ) : (
+    <p>Create your first endpoint to receive invoice events.</p>
+  )}
+</>
+```
+
+</Tab>
+<Tab>
 
 ```ts title="src/client.ts"
 const headerLines = (headers: Record<string, string>) =>
@@ -211,13 +425,38 @@ updateMarkup(
 )
 ```
 
+</Tab>
+</Tabs>
+
 An omitted `scope` means the signed-in user. `headers` is always present, `{}` when there are none. It comes back to the owner who set it. Another user sees none of it: the example's test proves that their list is empty and their `get` returns 404.
 
 </Step>
 <Step>
 ### Pause, resume, and delete
 
-The buttons carry the endpoint ID and the operation. One click handler on `#workspace` calls the matching method:
+Each button names the endpoint ID and the operation, and one handler calls the matching method:
+
+<Tabs groupId="ui-framework" persist items={['React', 'Vanilla JS']}>
+<Tab>
+
+```tsx title="src/endpoints.tsx"
+// In Endpoints():
+async function operate(id: string, operation: 'pause' | 'resume' | 'remove') {
+  if (operation === 'pause') unwrap(await auth.goodWebhooks.pause({ id }))
+  if (operation === 'resume') unwrap(await auth.goodWebhooks.resume({ id }))
+  if (operation === 'remove') {
+    unwrap(await auth.goodWebhooks.remove({ id }))
+    // ...
+  }
+  setMessage(
+    `Endpoint ${operation === 'pause' ? 'paused' : operation === 'resume' ? 'resumed' : 'removed'}.`,
+  )
+  await refresh()
+}
+```
+
+</Tab>
+<Tab>
 
 ```ts title="src/client.ts"
 $('#workspace').addEventListener('click', (event) => {
@@ -239,6 +478,9 @@ $('#workspace').addEventListener('click', (event) => {
   })
 })
 ```
+
+</Tab>
+</Tabs>
 
 A pause holds new deliveries as pending. A resume sends them. After a removal, new events no longer select that endpoint. The example's test "pause holds delivery, resume sends it, and removal stops future selection" checks all three.
 
@@ -336,6 +578,30 @@ app.get('/api/workspace', async (_req, res) => {
 
 The client writes one line under the delivery history heading:
 
+<Tabs groupId="ui-framework" persist items={['React', 'Vanilla JS']}>
+<Tab>
+
+```tsx title="src/endpoints.tsx"
+function Stats({ stats }: { stats: Workspace['stats'] }) {
+  const { deliveries: counts, attemptsLastHour } = stats
+  const attempts = Object.values(attemptsLastHour).reduce((sum, count) => sum + count, 0)
+  return (
+    <p>
+      {counts.succeeded} succeeded, {counts.failed} failed, {counts.pending} pending. {attempts}{' '}
+      {attempts === 1 ? 'attempt' : 'attempts'} in the last hour.
+    </p>
+  )
+}
+```
+
+```tsx title="src/endpoints.tsx"
+// In the JSX of Endpoints():
+<>{workspace && <Stats stats={workspace.stats} />}</>
+```
+
+</Tab>
+<Tab>
+
 ```ts title="src/client.ts"
 const { deliveries: counts, attemptsLastHour } = state.stats
 const attempts = Object.values(attemptsLastHour).reduce((sum, count) => sum + count, 0)
@@ -344,6 +610,9 @@ updateMarkup(
   `${counts.succeeded} succeeded, ${counts.failed} failed, ${counts.pending} pending. ${attempts} ${attempts === 1 ? 'attempt' : 'attempts'} in the last hour.`,
 )
 ```
+
+</Tab>
+</Tabs>
 
 `deliveries.stats()` returns counts by status, the age of the oldest pending delivery, and the last hour's attempts by outcome. See [stats](/docs/reference/delivery#stats).
 
