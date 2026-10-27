@@ -121,7 +121,7 @@ export function createWorker(config: ResolvedConfig) {
       abandoned: true,
     }
     if (signal?.aborted) return { status: null, responseBody: '', ...stopped }
-    const headers = signWebhook({
+    const signature = signWebhook({
       id: claim.eventId,
       timestamp: Math.floor(Date.now() / 1000),
       body: claim.body,
@@ -130,7 +130,8 @@ export function createWorker(config: ResolvedConfig) {
     const response = await sendWebhook({
       url: claim.url,
       body: claim.body,
-      headers,
+      // Signature headers win; reserved endpoint header names are refused before this point.
+      headers: { ...claim.headers, ...signature },
       timeoutMs: config.timeoutMs,
       maxResponseBytes: config.maxResponseBytes,
       allowLocalhost: config.allowLocalhost,

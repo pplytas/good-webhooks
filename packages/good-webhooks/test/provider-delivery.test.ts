@@ -554,20 +554,40 @@ describe('delivery with an independent management provider', () => {
     expect((await rows())[0]).toMatchObject({ status: 'pending', attempt_count: 0 })
   })
 
-  it('accepts endpoint headers from a custom source without sending them yet', async () => {
+  it('sends endpoint headers from a custom source on every attempt', async () => {
     const target = await receiver()
     const source = provider()
     source.resolveEndpoint = async () => ({
       ...active(),
       url: target.url,
-      headers: { 'x-endpoint-header': 'value' },
+      headers: { 'X-Endpoint-Header': 'value', authorization: 'Bearer token' },
     })
     const app = engine(source)
     await app.publish(event)
     expect(await app.worker.runOnce()).toMatchObject({ claimed: 1, succeeded: 1 })
     expect(target.received).toHaveLength(1)
-    expect(target.received[0]!.headers).not.toHaveProperty('x-endpoint-header')
+    const { body, headers } = target.received[0]!
+    expect(headers).toMatchObject({
+      'x-endpoint-header': 'value',
+      authorization: 'Bearer token',
+      'content-type': 'application/json',
+    })
+    expect(() => verifyWebhook({ body, headers, secret })).not.toThrow()
   })
+
+  for (const name of ['webhook-signature', 'Webhook-Id', 'Content-Type', 'user-agent', 'Host'])
+    it(`treats a reserved endpoint header ${name} from a custom source as a lookup failure`, async () => {
+      const source = provider()
+      source.resolveEndpoint = async () => ({ ...active(), headers: { [name]: 'spoofed' } })
+      const app = engine(source)
+      await app.publish(event)
+      const error = await app.worker.runOnce().catch((reason: unknown) => reason)
+      expect(error).toBeInstanceOf(AggregateError)
+      expect((error as AggregateError).errors[0]).toMatchObject({
+        message: 'Endpoint source returned a reserved endpoint header name.',
+      })
+      expect((await rows())[0]).toMatchObject({ status: 'pending', attempt_count: 0 })
+    })
 
   for (const headers of ['x', { a: 1 }, ['a'], null])
     it(`treats endpoint headers ${JSON.stringify(headers)} as a lookup failure`, async () => {

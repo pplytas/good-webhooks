@@ -81,6 +81,25 @@ function start(method: 'run' | 'runOnce', controller: AbortController, shutdownG
   return { worker, pending: worker[method](options) }
 }
 
+describe('worker attempts', () => {
+  it('sends endpoint headers under the signature headers, which always win', async () => {
+    store.claim.mockResolvedValueOnce({
+      claims: [
+        {
+          ...claim,
+          // Validation refuses these names earlier; the merge order is the last line of defence.
+          headers: { 'x-api-key': 'key-1', 'webhook-id': 'spoofed', 'webhook-signature': 'v1,x' },
+        },
+      ],
+      errors: [],
+    })
+    await createWorker(config).runOnce()
+    const { headers } = vi.mocked(sendWebhook).mock.calls[0]![0]
+    expect(headers).toMatchObject({ 'x-api-key': 'key-1', 'webhook-id': claim.eventId })
+    expect(headers['webhook-signature']).toMatch(/^v1,[A-Za-z0-9+/]{43}=$/)
+  })
+})
+
 describe('worker shutdown deadlines', () => {
   it.each(['run', 'runOnce'] as const)(
     '%s finishes an active attempt and cancels its shutdown timer',

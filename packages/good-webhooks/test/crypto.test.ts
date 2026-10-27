@@ -2,7 +2,9 @@ import { createHmac } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
 import {
   decryptSecret,
+  decryptValue,
   encryptSecret,
+  encryptValue,
   generateEncryptionKey,
   generateSecret,
   parseEncryptionKey,
@@ -253,6 +255,28 @@ describe('secret encryption', () => {
       }
     }
     expect(() => decryptSecret(encrypted, parseEncryptionKey(generateEncryptionKey()))).toThrow()
+  })
+
+  it('encrypts endpoint header blobs up to the largest allowed set, and keeps secret checks', () => {
+    const key = parseEncryptionKey(generateEncryptionKey())
+    const largest = JSON.stringify(
+      Object.fromEntries(
+        Array.from({ length: 20 }, (_, index) => [
+          `x-${'n'.repeat(96)}${index}`,
+          'é"'.repeat(1024),
+        ]),
+      ),
+    )
+    const encrypted = encryptValue(largest, key)
+    expect(decryptValue(encrypted, key)).toBe(largest)
+    expect(() => decryptValue(encrypted, parseEncryptionKey(generateEncryptionKey()))).toThrowError(
+      expect.objectContaining({ code: 'INVALID_CONFIG' }),
+    )
+    // A header blob never passes as a signing secret.
+    expect(() => decryptSecret(encryptValue('{"a":"b"}', key), key)).toThrowError(
+      expect.objectContaining({ code: 'INVALID_CONFIG' }),
+    )
+    expect(decryptValue(encryptSecret(secret, key), key)).toBe(secret)
   })
 
   it('validates key encoding and copies input keys', () => {

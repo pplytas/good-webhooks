@@ -34,17 +34,20 @@ export interface GoodWebhooksOptions<EventTypes extends readonly string[] = read
 
 export type WebhookEndpointDTO<EventType extends string = string> = Omit<
   ManagedEndpoint,
-  'createdAt' | 'updatedAt' | 'eventTypes'
+  'createdAt' | 'updatedAt' | 'eventTypes' | 'headers'
 > & {
   createdAt: string
   updatedAt: string
   eventTypes: EventType[]
+  /** Extra request headers, returned to the owner who set them. `{}` when there are none. */
+  headers: Record<string, string>
 }
 
 function toDTO<EventType extends string>(endpoint: ManagedEndpoint): WebhookEndpointDTO<EventType> {
   return {
     ...endpoint,
     eventTypes: endpoint.eventTypes as EventType[],
+    headers: endpoint.headers ?? {},
     createdAt: endpoint.createdAt.toISOString(),
     updatedAt: endpoint.updatedAt.toISOString(),
   }
@@ -94,12 +97,15 @@ export function goodWebhooks<const EventTypes extends readonly string[]>(
     url: z.string(),
     description: z.string().optional(),
     eventTypes: z.array(eventType).min(1).max(100),
+    // Management validates names, values, and limits, and reports INVALID_INPUT.
+    headers: z.record(z.string(), z.string()).optional(),
   }
   const createBody = base.extend(config)
   const updateBody = target.extend({
     url: config.url.optional(),
     description: z.string().nullable().optional(),
     eventTypes: config.eventTypes.optional(),
+    headers: z.record(z.string(), z.string()).nullable().optional(),
   })
 
   function route<
@@ -187,6 +193,7 @@ export function goodWebhooks<const EventTypes extends readonly string[]>(
             url: body.url,
             eventTypes: body.eventTypes,
             ...(body.description === undefined ? {} : { description: body.description }),
+            ...(body.headers === undefined ? {} : { headers: body.headers }),
           })
           return { endpoint: toDTO<EventType>(result.endpoint), secret: result.secret }
         },
@@ -210,6 +217,7 @@ export function goodWebhooks<const EventTypes extends readonly string[]>(
               ...(body.url === undefined ? {} : { url: body.url }),
               ...(body.description === undefined ? {} : { description: body.description }),
               ...(body.eventTypes === undefined ? {} : { eventTypes: body.eventTypes }),
+              ...(body.headers === undefined ? {} : { headers: body.headers }),
             }),
           ),
       ),

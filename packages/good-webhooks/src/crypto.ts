@@ -58,12 +58,15 @@ export function parseEncryptionKey(value: string | Uint8Array): Uint8Array {
   return bytes
 }
 
-export function encryptSecret(secret: string, key: Uint8Array): string {
-  signingKey(secret)
+/** Bounds stored ciphertext. Endpoint headers (at most 20 names and 2,048-character values) fit well inside. */
+const MAX_CIPHERTEXT_LENGTH = 262_144
+
+/** Encrypt any stored endpoint value (signing secret or header blob) with AES-256-GCM. */
+export function encryptValue(value: string, key: Uint8Array): string {
   const nonce = randomBytes(12)
   const cipher = createCipheriv('aes-256-gcm', parseEncryptionKey(key), nonce)
   cipher.setAAD(ENCRYPTION_CONTEXT)
-  const ciphertext = Buffer.concat([cipher.update(secret, 'utf8'), cipher.final()])
+  const ciphertext = Buffer.concat([cipher.update(value, 'utf8'), cipher.final()])
   return [
     'v1',
     nonce.toString('base64'),
@@ -72,10 +75,12 @@ export function encryptSecret(secret: string, key: Uint8Array): string {
   ].join('.')
 }
 
-export function decryptSecret(ciphertext: string, key: Uint8Array): string {
+/** Decrypt a value from encryptValue(). Fails with INVALID_CONFIG without echoing the input. */
+export function decryptValue(ciphertext: string, key: Uint8Array): string {
   const encryptionKey = parseEncryptionKey(key)
   try {
-    if (typeof ciphertext !== 'string' || ciphertext.length > 512) throw new Error()
+    if (typeof ciphertext !== 'string' || ciphertext.length > MAX_CIPHERTEXT_LENGTH)
+      throw new Error()
     const [version, nonceText, tagText, encryptedText, extra] = ciphertext.split('.')
     if (version !== 'v1' || !nonceText || !tagText || !encryptedText || extra !== undefined)
       throw new Error()
@@ -86,7 +91,25 @@ export function decryptSecret(ciphertext: string, key: Uint8Array): string {
     const decipher = createDecipheriv('aes-256-gcm', encryptionKey, nonce)
     decipher.setAAD(ENCRYPTION_CONTEXT)
     decipher.setAuthTag(tag)
-    const secret = Buffer.concat([decipher.update(encrypted), decipher.final()]).toString('utf8')
+    return Buffer.concat([decipher.update(encrypted), decipher.final()]).toString('utf8')
+  } catch {
+    throw new WebhookError(
+      'INVALID_CONFIG',
+      'A stored endpoint value could not be decrypted. Check the encryption key and stored value.',
+    )
+  }
+}
+
+export function encryptSecret(secret: string, key: Uint8Array): string {
+  signingKey(secret)
+  return encryptValue(secret, key)
+}
+
+export function decryptSecret(ciphertext: string, key: Uint8Array): string {
+  const encryptionKey = parseEncryptionKey(key)
+  try {
+    if (typeof ciphertext !== 'string' || ciphertext.length > 512) throw new Error()
+    const secret = decryptValue(ciphertext, encryptionKey)
     signingKey(secret)
     return secret
   } catch {

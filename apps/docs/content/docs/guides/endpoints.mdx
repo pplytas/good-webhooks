@@ -72,13 +72,39 @@ await organization.endpoints.remove(id)
 
 | Method         | Effect                                                                                                                  |
 | -------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `update`       | Changes the URL, description, or subscriptions. A new URL is checked again                                              |
+| `update`       | Changes the URL, description, subscriptions, or `headers`. A new URL is checked again                                   |
 | `pause`        | Keeps subscriptions and queued deliveries. The worker holds them until resume, then sends them with a full retry window |
 | `resume`       | Checks the URL again, then queued deliveries send                                                                       |
 | `rotateSecret` | Returns a new signing secret. Both sign requests during the overlap (default and max 24 h)                              |
 | `remove`       | Permanent. Clears stored secrets, cancels queued deliveries, and keeps a deleted record                                 |
 
 These calls return as soon as the record changes. A request already being sent can still arrive after a pause or remove. See [endpoint changes while work is queued](/docs/concepts/delivery-guarantees#endpoint-changes-while-work-is-queued).
+
+## Send extra headers
+
+Some receivers sit behind an API gateway that checks its own header, such as an API key, before the request reaches their code. Give the endpoint that header, and every request to it carries it:
+
+```ts
+const { endpoint } = await organization.endpoints.create({
+  url: 'https://receiver.example/webhooks',
+  eventTypes: ['invoice.paid'],
+  headers: { 'x-api-key': apiKeyFromOwner },
+})
+
+// Replaces the whole set.
+await organization.endpoints.update(endpoint.id, {
+  headers: { authorization: `Bearer ${tokenFromOwner}` },
+})
+
+// Removes every header.
+await organization.endpoints.update(endpoint.id, { headers: null })
+```
+
+The headers go out on every delivery attempt, every retry, and every [test event](#send-a-test-event). The signature headers are added after them. An update with `headers` replaces the whole set; `null` or `{}` removes them. Updates that leave out `headers` keep them.
+
+Names starting with `webhook-` are reserved for the signature, and so are `content-type`, `user-agent`, and hop-by-hop names such as `host` or `connection`. These are rejected in any case with `INVALID_INPUT`. An endpoint has at most 20 headers. Each name is an HTTP token of up to 100 characters, and each value has 1 to 2,048 characters with no line breaks or other control characters except tab. The [management reference](/docs/reference/management#endpoint-headers) has the full rules.
+
+Headers are stored encrypted with the same storage key as the signing secret, since they often hold credentials. Unlike the signing secret, reads return them: `get`, `list`, and every other result include `headers`, `{}` when there are none. The owner set them, so they may see them again. `remove` clears them with the secrets.
 
 ## Send a test event
 

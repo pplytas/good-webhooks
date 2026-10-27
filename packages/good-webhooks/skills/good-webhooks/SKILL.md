@@ -109,7 +109,10 @@ const customer = webhooks.forScope({ type: 'organization', id: organizationId })
 const { endpoint, secret } = await customer.endpoints.create({
   url: 'https://receiver.example/webhooks',
   eventTypes: ['invoice.paid'],
+  headers: { 'x-api-key': '…' }, // optional, encrypted, sent on every attempt and test event
 })
+// headers: max 20; webhook-*, content-type, user-agent and hop-by-hop names are rejected
+// update(id, { headers }) replaces the set; headers: null clears it
 // update(id, patch) · pause(id) · resume(id) · rotateSecret(id, { graceMs }) · remove(id)
 // sendTestEvent(id): one signed test request, returns { ok, responseStatus, responseBody, error }
 // endpoint.pauseReason: 'owner' after pause(), 'failing' or 'gone' after an automatic pause

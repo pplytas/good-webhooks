@@ -75,19 +75,19 @@ All direct calls are trusted server operations. They do not authorize the caller
 | `create(scope, input)`              | `Promise<ManagedEndpointWithSecret>`. Creates an active endpoint and returns `{ endpoint, secret }`.                                                 |
 | `list(scope)`                       | `Promise<ManagedEndpoint[]>`. Returns every nondeleted endpoint in the scope.                                                                        |
 | `get(scope, id)`                    | `Promise<ManagedEndpoint>`. Returns an endpoint, including its deleted state.                                                                        |
-| `update(scope, id, patch)`          | `Promise<ManagedEndpoint>`. Changes the supplied mutable fields.                                                                                     |
+| `update(scope, id, patch)`          | `Promise<ManagedEndpoint>`. Changes the supplied mutable fields. `headers` replaces the whole set.                                                   |
 | `pause(scope, id)`                  | `Promise<ManagedEndpoint>`. Changes the status to `'paused'` with `pauseReason: 'owner'`.                                                            |
 | `resume(scope, id)`                 | `Promise<ManagedEndpoint>`. Validates the current URL, changes status to `'active'`, and clears `pauseReason`. Also resumes automatic pauses.        |
-| `remove(scope, id)`                 | `Promise<ManagedEndpoint>`. Sets status to `'deleted'` and clears signing secrets. Removing an already deleted record is idempotent.                 |
+| `remove(scope, id)`                 | `Promise<ManagedEndpoint>`. Sets status to `'deleted'` and clears signing secrets and headers. Removing an already deleted record is idempotent.     |
 | `rotateSecret(scope, id, options?)` | `Promise<ManagedEndpointWithSecret>`. Changes the signing secret. `options.graceMs` defaults to 86,400,000 and accepts 0 through 86,400,000.         |
 | `sendTestEvent(scope, id)`          | `Promise<TestEventResult>`. Signs and sends one [test event](#test-events) to an active or paused endpoint. Deleted endpoints throw `INVALID_STATE`. |
 | `removeScope(scope)`                | `Promise<void>`. Deletes the scope's currently registered endpoints.                                                                                 |
-| `reencrypt(scope)`                  | `Promise<number>`. Rewrites live signing-secret ciphertext using the current storage encryption key and returns the count.                           |
+| `reencrypt(scope)`                  | `Promise<number>`. Rewrites live signing-secret and header ciphertext using the current storage encryption key and returns the count.                |
 | `source`                            | Trusted sender reads. See [EndpointSource](#endpointsource).                                                                                         |
 
 ### Test events
 
-`sendTestEvent` sends `{ id, type: 'good-webhooks.test', occurredAt, data: { endpointId } }` with a new `id` each time, signed like a delivery: with the current secret, plus the previous one during a rotation overlap. The destination is checked the same way, and redirects are not followed. It waits at most 10 seconds and keeps the first 4 KiB of the response. It writes nothing, retries nothing, and leaves automatic pauses alone. The request leaves from the calling process.
+`sendTestEvent` sends `{ id, type: 'good-webhooks.test', occurredAt, data: { endpointId } }` with a new `id` each time, signed like a delivery: with the current secret, plus the previous one during a rotation overlap. It sends the endpoint's headers too. The destination is checked the same way, and redirects are not followed. It waits at most 10 seconds and keeps the first 4 KiB of the response. It writes nothing, retries nothing, and leaves automatic pauses alone. The request leaves from the calling process.
 
 ```ts
 interface TestEventResult {
@@ -104,7 +104,7 @@ A receiver failure is a result with `ok: false`, never a thrown error. An unsafe
 
 ### Inputs and limits
 
-`CreateManagedEndpoint` has `url`, optional `description`, and `eventTypes`. `UpdateManagedEndpoint` makes those fields optional and accepts `description: null` to clear the description.
+`CreateManagedEndpoint` has `url`, optional `description`, `eventTypes`, and optional `headers`. `UpdateManagedEndpoint` makes those fields optional, accepts `description: null` to clear the description, and accepts `headers: null` or `{}` to remove every header.
 
 | Value        | Limit                                                                                              |
 | ------------ | -------------------------------------------------------------------------------------------------- |
@@ -114,12 +114,26 @@ A receiver failure is a result with `ok: false`, never a thrown error. An unsafe
 | URL          | At most 2,048 characters. Must pass the configured destination validation, otherwise `UNSAFE_URL`. |
 | Description  | At most 2,000 characters, no null bytes.                                                           |
 | `eventTypes` | 1 through 100 configured event names. Duplicates are collapsed.                                    |
+| `headers`    | A plain object of at most 20 headers. See [endpoint headers](#endpoint-headers).                   |
 | Endpoints    | At most 1,000 nondeleted endpoints per scope, or fewer with `maxEndpoints`.                        |
 | `graceMs`    | Integer from 0 through 86,400,000. Default 86,400,000.                                             |
 
+### Endpoint headers
+
+`headers` adds request headers to every attempt and test event, for example a key an API gateway checks. Validation runs before any storage call and throws `INVALID_INPUT`:
+
+| Rule     | Limit                                                                                                                        |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| Count    | At most 20 headers.                                                                                                          |
+| Name     | 1 through 100 characters, an RFC 9110 token. Two names that differ only in case are rejected.                                |
+| Value    | A string of 1 through 2,048 characters. No control characters other than tab, and no characters above `U+00FF`.              |
+| Reserved | Names starting with `webhook-`, plus `content-type`, `user-agent`, and the hop-by-hop names the transport sets, in any case. |
+
+The hop-by-hop names are `host`, `content-length`, `connection`, `transfer-encoding`, `upgrade`, `expect`, `proxy-authorization`, `proxy-connection`, `trailer`, and `te`. Management stores the set as one encrypted JSON value, or nothing when it is empty.
+
 ### Results
 
-`ManagedEndpoint` is the shared `Endpoint` shape: `id`, `url`, nullable `description`, `eventTypes`, `status`, `pauseReason`, `createdAt`, and `updatedAt`. `pauseReason` is `'owner'` for a manual pause, `'failing'` or `'gone'` for an [automatic pause](/docs/reference/delivery#automatic-pauses), and `null` when the endpoint isn't paused or was paused before schema version 5. It is optional in the type so custom implementations keep compiling. Timestamps are `Date` values. Ordinary results contain neither plaintext signing secrets nor ciphertext. Only `create` and `rotateSecret` return the new `secret`.
+`ManagedEndpoint` is the shared `Endpoint` shape: `id`, `url`, nullable `description`, `eventTypes`, `status`, `pauseReason`, `headers`, `createdAt`, and `updatedAt`. `pauseReason` is `'owner'` for a manual pause, `'failing'` or `'gone'` for an [automatic pause](/docs/reference/delivery#automatic-pauses), and `null` when the endpoint isn't paused or was paused before schema version 5. It is optional in the type so custom implementations keep compiling. `headers` is optional in the type for the same reason; `createManagement` always returns it, `{}` when there are none. Headers come back to the owner who set them, while the signing secret stays write-once. Timestamps are `Date` values. Ordinary results contain neither plaintext signing secrets nor ciphertext. Only `create` and `rotateSecret` return the new `secret`.
 
 ### Errors
 
@@ -134,7 +148,7 @@ A receiver failure is a result with `ok: false`, never a thrown error. An unsafe
 <Accordions>
 <Accordion title="Lifecycle rules for deleted endpoints and rotation">
 
-Deleted endpoints cannot be updated, paused, resumed, or rotated. A second rotation during an active overlap fails unless `graceMs: 0` explicitly replaces all current signing material. Re-encryption preserves signing values and includes paused endpoints.
+Deleted endpoints cannot be updated, paused, resumed, or rotated. A second rotation during an active overlap fails unless `graceMs: 0` explicitly replaces all current signing material. Re-encryption preserves signing values and headers, and includes paused endpoints.
 
 Conflicting updates retry with revision checks and eventually produce `INVALID_STATE` if the record keeps changing. See [key rotation](/docs/operations/key-rotation) for both rotation procedures.
 
@@ -205,7 +219,7 @@ The sender calls `matchRecipients` once at publication and `resolveEndpoint` bef
 
 `revision` is optional and opaque. It must change whenever the endpoint changes, including on resume, so the worker can tell that earlier failures no longer describe it. Without it, a resumed endpoint that fails again is paused at once, and only a success starts a new period. The built-in sources report the record's revision.
 
-`headers` is optional. A source may return endpoint headers as a plain object of string values. The worker validates them but does not send them yet. A value that is not a plain object of strings defers the delivery like a failed lookup, without using up an attempt. The built-in sources return none.
+`headers` is optional. A source may return endpoint headers as a plain object of string values, and the worker sends them on the attempt. The signature headers always win. A value that is not a plain object of strings, or that uses a [reserved name](#endpoint-headers), defers the delivery like a failed lookup, without using up an attempt. The built-in sources return the decrypted headers only when an endpoint has some.
 
 `EndpointSource` grows only by optional methods and optional resolution fields, and new inputs arrive in a trailing options object, so a source written today keeps compiling.
 
@@ -293,7 +307,7 @@ interface ManagementRepository {
 
 Repository errors propagate. [`createPostgresManagementRepository`](/docs/reference/postgres#createpostgresmanagementrepository) is the built-in implementation.
 
-`StoredEndpoint` adds `revision`, `encryptedSecret`, nullable `previousEncryptedSecret`, nullable `previousSecretExpiresAt`, and nullable `encryptedHeaders` to the endpoint shape. `encryptedHeaders` holds endpoint headers as one encrypted string. `create` writes `null` and `remove` clears it. Store it and return it unchanged, and never drop it. Store `pauseReason` too: `create` records and `pause`, `resume`, and `remove` patches include it. A repository that passes records straight to an ORM needs a column for each field. Fields added later are optional, a repository stores every field it receives, and new methods are optional. `StoredEndpointPatch` is a partial stored record without `id`, `createdAt`, or `revision`. Stored records must never be sent to clients.
+`StoredEndpoint` adds `revision`, `encryptedSecret`, nullable `previousEncryptedSecret`, nullable `previousSecretExpiresAt`, and nullable `encryptedHeaders` to the endpoint shape. `encryptedHeaders` holds endpoint headers as one encrypted JSON string, or `null` when there are none. `create` and a `headers` update write it, `remove` clears it, and `reencrypt` rewrites it. It has no plaintext counterpart on the stored record. Store it and return it unchanged, and never drop it. Store `pauseReason` too: `create` records and `pause`, `resume`, and `remove` patches include it. A repository that passes records straight to an ORM needs a column for each field. Fields added later are optional, a repository stores every field it receives, and new methods are optional. `StoredEndpointPatch` is a partial stored record without `id`, `createdAt`, or `revision`. Stored records must never be sent to clients.
 
 ## SecretCipher
 
@@ -304,4 +318,4 @@ interface SecretCipher {
 }
 ```
 
-The cipher encrypts receiver-facing signing secrets at rest. A cipher that supports storage encryption key rotation writes with the current key and reads the retained keys until re-encryption finishes.
+The cipher encrypts receiver-facing signing secrets and the endpoint header JSON at rest. A cipher that supports storage encryption key rotation writes with the current key and reads the retained keys until re-encryption finishes.

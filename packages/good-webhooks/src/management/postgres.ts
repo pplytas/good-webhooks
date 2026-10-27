@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { decryptSecret, encryptSecret, parseEncryptionKey } from '../crypto.js'
+import { decryptValue, encryptValue, parseEncryptionKey } from '../crypto.js'
 import { WebhookError } from '../errors.js'
 import { postgresTables, resolvePostgresSchema } from '../postgres-schema.js'
 import { assertPostgresSchemaVersion } from '../schema-version.js'
@@ -175,15 +175,16 @@ export function createPostgresManagement(options: PostgresManagementOptions): Po
     allowLocalhost,
     validateUrl: (url) => validateResolvedUrl(url, allowLocalhost),
     ...(options.maxEndpoints === undefined ? {} : { maxEndpoints: options.maxEndpoints }),
+    // Encrypts signing secrets and endpoint header blobs alike. Signing validates secrets on use.
     cipher: {
-      async encrypt(secret) {
-        return encryptSecret(secret, encryptionKey)
+      async encrypt(value) {
+        return encryptValue(value, encryptionKey)
       },
       async decrypt(ciphertext) {
         let failure: unknown
         for (const candidate of decryptionKeys) {
           try {
-            return decryptSecret(ciphertext, candidate)
+            return decryptValue(ciphertext, candidate)
           } catch (error) {
             failure = error
           }

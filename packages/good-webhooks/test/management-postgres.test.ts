@@ -66,33 +66,60 @@ describe('standalone PostgreSQL management', () => {
     ).rejects.toMatchObject({ code: '23514' })
   })
 
-  it('round trips encrypted endpoint headers and keeps them out of client results', async () => {
+  it('round trips encrypted endpoint headers on create and update, and clears them on remove', async () => {
     const management = create()
     const repository = createPostgresManagementRepository(pool)
-    const { endpoint } = await management.create(null, input)
-    const stored = (await repository.get(null, endpoint.id))!
-    expect(stored.encryptedHeaders).toBeNull()
-    const updated = await repository.update(null, endpoint.id, stored.revision, {
-      encryptedHeaders: 'blob',
-    })
-    expect(updated?.encryptedHeaders).toBe('blob')
-    expect((await repository.get(null, endpoint.id))?.encryptedHeaders).toBe('blob')
-    expect((await repository.list(null))[0]?.encryptedHeaders).toBe('blob')
-    // Management operations leave the blob alone and never return it.
-    expect(await management.pause(null, endpoint.id)).not.toHaveProperty('encryptedHeaders')
-    await management.rotateSecret(null, endpoint.id, { graceMs: 0 })
-    expect(await management.reencrypt(null)).toBe(1)
-    expect((await repository.get(null, endpoint.id))?.encryptedHeaders).toBe('blob')
+    const headers = { 'X-Api-Key': 'plaintext-key-1' }
+    const { endpoint } = await management.create(null, { ...input, headers })
+    expect(endpoint.headers).toEqual(headers)
+    const raw = async (id: string) =>
+      (
+        await pool.query<{ encrypted_headers: string | null }>(
+          'SELECT encrypted_headers FROM public.webhook_endpoints WHERE id=$1',
+          [id],
+        )
+      ).rows[0]!.encrypted_headers
+    const stored = await raw(endpoint.id)
+    expect(typeof stored).toBe('string')
+    expect(stored).not.toContain('plaintext-key-1')
+    expect((await repository.get(null, endpoint.id))?.encryptedHeaders).toBe(stored)
+    expect((await repository.list(null))[0]?.encryptedHeaders).toBe(stored)
+    expect((await management.get(null, endpoint.id)).headers).toEqual(headers)
+    expect((await management.list(null))[0]?.headers).toEqual(headers)
     expect(await management.get(null, endpoint.id)).not.toHaveProperty('encryptedHeaders')
-    const { id: _id, ...record } = stored
-    const copy = await repository.create(
-      null,
-      { ...record, encryptedHeaders: 'other' },
-      { limit: 1000 },
-    )
-    expect((await repository.get(null, copy.id))?.encryptedHeaders).toBe('other')
-    await management.remove(null, copy.id)
-    expect((await repository.get(null, copy.id))?.encryptedHeaders).toBeNull()
+    expect(await management.source.resolveEndpoint(null, endpoint.id)).toMatchObject({
+      status: 'active',
+      headers,
+    })
+
+    // Other changes keep the blob; a headers update replaces it.
+    await management.pause(null, endpoint.id)
+    await management.update(null, endpoint.id, { description: 'changed' })
+    expect(await raw(endpoint.id)).toBe(stored)
+    const replaced = await management.update(null, endpoint.id, {
+      headers: { authorization: 'Bearer plaintext-token' },
+    })
+    expect(replaced.headers).toEqual({ authorization: 'Bearer plaintext-token' })
+    expect(await raw(endpoint.id)).not.toContain('plaintext-token')
+    expect((await management.get(null, endpoint.id)).headers).toEqual({
+      authorization: 'Bearer plaintext-token',
+    })
+    expect((await management.update(null, endpoint.id, { headers: null })).headers).toEqual({})
+    expect(await raw(endpoint.id)).toBeNull()
+
+    await management.update(null, endpoint.id, { headers })
+    expect(await raw(endpoint.id)).not.toBeNull()
+    expect((await management.remove(null, endpoint.id)).headers).toEqual({})
+    expect(await raw(endpoint.id)).toBeNull()
+  })
+
+  it('stores null for an endpoint without headers and returns an empty object', async () => {
+    const management = create()
+    const { endpoint } = await management.create(null, input)
+    expect(endpoint.headers).toEqual({})
+    const repository = createPostgresManagementRepository(pool)
+    expect((await repository.get(null, endpoint.id))?.encryptedHeaders).toBeNull()
+    expect(await management.source.resolveEndpoint(null, endpoint.id)).not.toHaveProperty('headers')
   })
 
   it('applies a per-scope endpoint limit under concurrent creation', async () => {
@@ -200,17 +227,22 @@ describe('standalone PostgreSQL management', () => {
     expect(await management.get(null, endpoint.id)).toMatchObject({ status: 'deleted' })
   })
 
-  it('rewrites both signing secrets under a replacement storage key', async () => {
+  it('rewrites both signing secrets and the headers under a replacement storage key', async () => {
     const initial = create()
-    const first = await initial.create(null, input)
+    const headers = { 'x-api-key': 'key-1' }
+    const first = await initial.create(null, { ...input, headers })
     const second = await initial.rotateSecret(null, first.endpoint.id)
     const replacementKey = new Uint8Array(32).fill(8)
     const migration = create(replacementKey, [encryptionKey])
     expect(await migration.reencrypt(null)).toBe(1)
     expect(
       await create(replacementKey).source.resolveEndpoint(null, first.endpoint.id),
-    ).toMatchObject({ secrets: [second.secret, first.secret] })
+    ).toMatchObject({ secrets: [second.secret, first.secret], headers })
+    expect((await create(replacementKey).get(null, first.endpoint.id)).headers).toEqual(headers)
     await expect(initial.source.resolveEndpoint(null, first.endpoint.id)).rejects.toMatchObject({
+      code: 'INVALID_CONFIG',
+    })
+    await expect(initial.get(null, first.endpoint.id)).rejects.toMatchObject({
       code: 'INVALID_CONFIG',
     })
   })

@@ -1,6 +1,7 @@
 import { WebhookError } from '../errors.js'
 import { scopeKey } from '../scope.js'
 import { isApplicationEventName } from '../event-names.js'
+import { validateEndpointHeaders } from './headers.js'
 import { sendTestEvent } from './test-event.js'
 import { parseEndpointUrl } from './url.js'
 import type {
@@ -48,17 +49,8 @@ function description(value: string | null | undefined): string | null {
   return value
 }
 
-function dto(row: StoredEndpoint): ManagedEndpoint {
-  return Object.freeze({
-    id: row.id,
-    url: row.url,
-    description: row.description,
-    eventTypes: Object.freeze([...row.eventTypes]) as string[],
-    status: row.status,
-    pauseReason: row.status === 'paused' ? (row.pauseReason ?? null) : null,
-    createdAt: new Date(row.createdAt),
-    updatedAt: new Date(row.updatedAt),
-  })
+function headersInput(value: Record<string, string> | null | undefined): Record<string, string> {
+  return value === undefined || value === null ? {} : validateEndpointHeaders(value)
 }
 
 function generateSecret(): string {
@@ -122,6 +114,30 @@ export function createManagement(options: ManagementOptions): EndpointManagement
         `maxEndpoints must return an integer from 0 to ${MAX_ENDPOINTS}.`,
       )
     return limit
+  }
+
+  /** One encrypted JSON blob, or null when there are no headers. */
+  async function encryptHeaders(headers: Record<string, string>): Promise<string | null> {
+    return Object.keys(headers).length === 0 ? null : cipher.encrypt(JSON.stringify(headers))
+  }
+
+  async function decryptHeaders(row: StoredEndpoint): Promise<Record<string, string>> {
+    if (row.encryptedHeaders === null || row.encryptedHeaders === undefined) return {}
+    return JSON.parse(await cipher.decrypt(row.encryptedHeaders)) as Record<string, string>
+  }
+
+  async function dto(row: StoredEndpoint): Promise<ManagedEndpoint> {
+    return Object.freeze({
+      id: row.id,
+      url: row.url,
+      description: row.description,
+      eventTypes: Object.freeze([...row.eventTypes]) as string[],
+      status: row.status,
+      pauseReason: row.status === 'paused' ? (row.pauseReason ?? null) : null,
+      headers: Object.freeze(await decryptHeaders(row)),
+      createdAt: new Date(row.createdAt),
+      updatedAt: new Date(row.updatedAt),
+    })
   }
 
   async function requireOwner(scope: ManagementScope): Promise<void> {
@@ -210,7 +226,14 @@ export function createManagement(options: ManagementOptions): EndpointManagement
         if (!row || row.status === 'deleted') return { status: 'deleted' }
         if (row.status === 'paused') return { status: 'paused' }
         const secrets = await liveSecrets(row)
-        return { status: 'active', url: row.url, secrets, revision: String(row.revision) }
+        const headers = await decryptHeaders(row)
+        return {
+          status: 'active',
+          url: row.url,
+          secrets,
+          revision: String(row.revision),
+          ...(Object.keys(headers).length === 0 ? {} : { headers }),
+        }
       },
       async pause(inputScope, id, input) {
         const scope = snapshotScope(inputScope)
@@ -244,11 +267,13 @@ export function createManagement(options: ManagementOptions): EndpointManagement
       const url = input.url
       const subscriptions = eventTypes(input.eventTypes)
       const desc = description(input.description)
+      const headers = headersInput(input.headers)
       await requireOwner(scope)
       await safeUrl(url)
       const limit = await endpointLimit(scope)
       const secret = generateSecret()
       const encryptedSecret = await cipher.encrypt(secret)
+      const encryptedHeaders = await encryptHeaders(headers)
       const now = new Date()
       const row = await repository.create(
         scope,
@@ -261,7 +286,7 @@ export function createManagement(options: ManagementOptions): EndpointManagement
           encryptedSecret,
           previousEncryptedSecret: null,
           previousSecretExpiresAt: null,
-          encryptedHeaders: null,
+          encryptedHeaders,
           revision: 0,
           createdAt: now,
           updatedAt: now,
@@ -273,12 +298,13 @@ export function createManagement(options: ManagementOptions): EndpointManagement
         await remove(scope, row.id)
         throw new WebhookError('NOT_FOUND', 'Endpoint owner no longer exists.')
       }
-      return { endpoint: dto(row), secret }
+      return { endpoint: await dto(row), secret }
     },
     async list(inputScope) {
       const scope = snapshotScope(inputScope)
       await requireOwner(scope)
-      return (await repository.list(scope)).filter((row) => row.status !== 'deleted').map(dto)
+      const rows = await repository.list(scope)
+      return Promise.all(rows.filter((row) => row.status !== 'deleted').map(dto))
     },
     async get(inputScope, id) {
       const scope = snapshotScope(inputScope)
@@ -294,8 +320,11 @@ export function createManagement(options: ManagementOptions): EndpointManagement
       if (input.url !== undefined) patch.url = input.url
       if (input.description !== undefined) patch.description = description(input.description)
       if (input.eventTypes !== undefined) patch.eventTypes = eventTypes(input.eventTypes)
+      const headers = input.headers === undefined ? undefined : headersInput(input.headers)
       await requireOwner(scope)
       if (patch.url !== undefined) await safeUrl(patch.url)
+      // The new set replaces the old one; an empty set stores null.
+      if (headers !== undefined) patch.encryptedHeaders = await encryptHeaders(headers)
       return dto(await edit(scope, id, () => patch))
     },
     async pause(inputScope, id) {
@@ -347,7 +376,7 @@ export function createManagement(options: ManagementOptions): EndpointManagement
           previousSecretExpiresAt: graceMs > 0 ? new Date(Date.now() + graceMs) : null,
         }
       })
-      return { endpoint: dto(row), secret }
+      return { endpoint: await dto(row), secret }
     },
     async sendTestEvent(inputScope, id) {
       const scope = snapshotScope(inputScope)
@@ -361,6 +390,7 @@ export function createManagement(options: ManagementOptions): EndpointManagement
         endpointId: row.id,
         url: row.url,
         secrets: await liveSecrets(row),
+        headers: await decryptHeaders(row),
         allowLocalhost,
       })
     },
@@ -372,7 +402,6 @@ export function createManagement(options: ManagementOptions): EndpointManagement
       const scope = snapshotScope(inputScope)
       await requireOwner(scope)
       let rewritten = 0
-      // Secrets only. Endpoint headers get re-encrypted here once 0.6.0 writes them.
       for (const row of await repository.list(scope)) {
         const updated = await edit(
           scope,
@@ -388,6 +417,7 @@ export function createManagement(options: ManagementOptions): EndpointManagement
                 ? await cipher.encrypt(await cipher.decrypt(current.previousEncryptedSecret!))
                 : null,
               previousSecretExpiresAt: retainPrevious ? current.previousSecretExpiresAt : null,
+              encryptedHeaders: await encryptHeaders(await decryptHeaders(current)),
             }
           },
           true,

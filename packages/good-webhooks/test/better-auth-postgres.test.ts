@@ -86,6 +86,7 @@ for (const configuration of cases) {
       options: `-c search_path=${decoySchema}`,
     })
     const received: string[] = []
+    const apiKeys: (string | string[] | undefined)[] = []
     let signingSecret = ''
     const receiver = createServer(async (request, response) => {
       try {
@@ -94,6 +95,7 @@ for (const configuration of cases) {
         const body = Buffer.concat(chunks)
         verifyWebhook({ body, headers: request.headers, secret: signingSecret })
         received.push(body.toString())
+        apiKeys.push(request.headers['x-api-key'])
         response.writeHead(204).end()
       } catch {
         response.writeHead(400).end()
@@ -168,9 +170,24 @@ for (const configuration of cases) {
       const address = receiver.address() as { port: number }
       const created = await appAuth.api.createWebhookEndpoint({
         headers,
-        body: { url: `http://127.0.0.1:${address.port}/hook`, eventTypes: ['invoice.paid'] },
+        body: {
+          url: `http://127.0.0.1:${address.port}/hook`,
+          eventTypes: ['invoice.paid'],
+          headers: { 'X-Api-Key': 'key-1' },
+        },
       })
       signingSecret = created.secret
+      expect(created.endpoint.headers).toEqual({ 'X-Api-Key': 'key-1' })
+      const storedHeaders = async () =>
+        (
+          await pool.query<{ encryptedHeaders: string | null }>(
+            `SELECT "encryptedHeaders" FROM ${quote(managementSchema)}."webhookEndpoint" WHERE id=$1`,
+            [created.endpoint.id],
+          )
+        ).rows[0]!.encryptedHeaders
+      const encrypted = await storedHeaders()
+      expect(typeof encrypted).toBe('string')
+      expect(encrypted).not.toContain('key-1')
       // A fresh BA context supplies the worker's trusted provider, without an HTTP listener or session.
       const management = await createBetterAuthManagement(createAuth())
       const engine = createDelivery({
@@ -192,9 +209,33 @@ for (const configuration of cases) {
       expect((await engine.worker.runOnce()).succeeded).toBe(1)
       expect(received).toHaveLength(1)
       expect(JSON.parse(received[0]!).data).toEqual({ invoiceId: 'invoice-1' })
+      expect(apiKeys).toEqual(['key-1'])
       const [delivery] = (await scoped.deliveries.list()).items
       expect(delivery!.endpointId).toBe(created.endpoint.id)
       expect((await scoped.deliveries.get(delivery!.id)).attempts).toHaveLength(1)
+
+      // Header updates replace or clear the PostgreSQL column; removal clears it.
+      const replaced = await appAuth.api.updateWebhookEndpoint({
+        headers,
+        body: { id: created.endpoint.id, headers: { 'x-api-key': 'key-2' } },
+      })
+      expect(replaced.headers).toEqual({ 'x-api-key': 'key-2' })
+      expect(await storedHeaders()).not.toBe(encrypted)
+      expect(
+        await management.source.resolveEndpoint({ type: 'user', id: user.id }, created.endpoint.id),
+      ).toMatchObject({ headers: { 'x-api-key': 'key-2' } })
+      await appAuth.api.updateWebhookEndpoint({
+        headers,
+        body: { id: created.endpoint.id, headers: {} },
+      })
+      expect(await storedHeaders()).toBeNull()
+      await appAuth.api.updateWebhookEndpoint({
+        headers,
+        body: { id: created.endpoint.id, headers: { 'x-api-key': 'key-3' } },
+      })
+      expect(await storedHeaders()).not.toBeNull()
+      await appAuth.api.removeWebhookEndpoint({ headers, body: { id: created.endpoint.id } })
+      expect(await storedHeaders()).toBeNull()
       for (const table of allTables) {
         const result = await pool.query(
           `SELECT count(*)::integer AS count FROM ${quote(decoySchema)}.${quote(table)}`,

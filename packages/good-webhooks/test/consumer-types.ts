@@ -26,6 +26,24 @@ function consumerTypes(request: IncomingMessage) {
   const scoped: WebhookClient<typeof appEvents> = app.forScope(owner)
   app.publish({ type: 'order.created', data: { id: 'o1', total: 1 } })
   app.endpoints.create({ url: 'https://example.com/hook', eventTypes: ['order.created'] })
+  app.endpoints
+    .create({
+      url: 'https://example.com/hook',
+      eventTypes: ['order.created'],
+      headers: { 'x-api-key': 'test-only' },
+    })
+    .then(({ endpoint }) => {
+      const headers: Record<string, string> | undefined = endpoint.headers
+      void headers
+    })
+  scoped.endpoints.update('opaque-endpoint-id', { headers: { authorization: 'Bearer test-only' } })
+  scoped.endpoints.update('opaque-endpoint-id', { headers: null })
+  app.endpoints.create({
+    url: 'https://example.com/hook',
+    eventTypes: ['order.created'],
+    // @ts-expect-error endpoint header values are strings
+    headers: { 'x-retries': 3 },
+  })
   app.deliverySettings.set('opaque-endpoint-id', { maxInFlight: 4 })
   scoped.deliverySettings.get('opaque-endpoint-id')
   app.endpoints.create({

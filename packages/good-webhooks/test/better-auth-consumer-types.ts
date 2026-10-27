@@ -18,6 +18,21 @@ async function betterAuthConsumerTypes(headers: Headers) {
   const browserResult = await client.goodWebhooks.create(body)
   const clientDate: string | undefined = browserResult.data?.endpoint.createdAt
   await auth.api.updateWebhookEndpoint({ headers, body: { id: 'endpoint', description: null } })
+  const endpointHeaders = { 'x-api-key': 'test-only' }
+  const withHeaders = await auth.api.createWebhookEndpoint({
+    headers,
+    body: { ...body, headers: endpointHeaders },
+  })
+  const serverHeaders: Record<string, string> = withHeaders.endpoint.headers
+  const updatedHeaders: Record<string, string> = (
+    await auth.api.updateWebhookEndpoint({ headers, body: { id: 'endpoint', headers: null } })
+  ).headers
+  const clientCreated = await client.goodWebhooks.create({ ...body, headers: endpointHeaders })
+  const clientHeaders: Record<string, string> | undefined = clientCreated.data?.endpoint.headers
+  const clientUpdated = await client.goodWebhooks.update({ id: 'endpoint', headers: {} })
+  const clientUpdatedHeaders: Record<string, string> | undefined = clientUpdated.data?.headers
+  // @ts-expect-error Endpoint header values are strings.
+  await client.goodWebhooks.create({ ...body, headers: { 'x-retries': 3 } })
   await client.goodWebhooks.rotateSecret({ id: 'endpoint', graceMs: 0 })
   const tested = await client.goodWebhooks.sendTestEvent({ id: 'endpoint' })
   const testStatus: number | null | undefined = tested.data?.responseStatus
@@ -43,5 +58,6 @@ async function betterAuthConsumerTypes(headers: Headers) {
     'invoice.created',
   )
   void [date, event, clientDate, secret, testStatus, testOk]
+  void [serverHeaders, updatedHeaders, clientHeaders, clientUpdatedHeaders]
 }
 void betterAuthConsumerTypes

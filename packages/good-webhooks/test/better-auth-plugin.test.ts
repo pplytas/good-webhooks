@@ -231,6 +231,92 @@ describe('Better Auth endpoint management plugin', () => {
     })
   })
 
+  it('accepts, returns, replaces, and clears endpoint headers through the routes', async () => {
+    const { auth, user, call, management, database } = await setup()
+    const alice = await user()
+    const scope = { type: 'user', id: alice.id }
+    const headers = { 'X-Api-Key': 'plaintext-key-1' }
+    const created = await auth.api.createWebhookEndpoint({
+      headers: alice.headers,
+      body: { ...input, headers },
+    })
+    const id = created.endpoint.id
+    expect(created.endpoint.headers).toEqual(headers)
+    const raw = () =>
+      database.prepare('SELECT encryptedHeaders FROM webhookEndpoint WHERE id=?').get(id)!
+        .encryptedHeaders as string | null
+    expect(typeof raw()).toBe('string')
+    expect(raw()).not.toContain('plaintext-key-1')
+    expect((await (await call('get', { id }, alice.headers)).json()).headers).toEqual(headers)
+    expect(
+      (await auth.api.listWebhookEndpoints({ headers: alice.headers, body: {} }))[0]?.headers,
+    ).toEqual(headers)
+    expect(await management.source.resolveEndpoint(scope, id)).toMatchObject({
+      status: 'active',
+      headers,
+    })
+
+    const updated = await call(
+      'update',
+      { id, headers: { authorization: 'Bearer t' } },
+      alice.headers,
+    )
+    expect(updated.status).toBe(200)
+    expect((await updated.json()).headers).toEqual({ authorization: 'Bearer t' })
+    const unchanged = await auth.api.updateWebhookEndpoint({
+      headers: alice.headers,
+      body: { id, description: 'changed' },
+    })
+    expect(unchanged.headers).toEqual({ authorization: 'Bearer t' })
+    const cleared = await auth.api.updateWebhookEndpoint({
+      headers: alice.headers,
+      body: { id, headers: null },
+    })
+    expect(cleared.headers).toEqual({})
+    expect(raw()).toBeNull()
+    expect(await management.source.resolveEndpoint(scope, id)).not.toHaveProperty('headers')
+
+    for (const body of [
+      { ...input, headers: { 'webhook-id': 'spoofed' } },
+      { ...input, headers: { 'X-A': '1', 'x-a': '2' } },
+      { ...input, headers: { 'x-a': 'line\r\nbreak' } },
+      { ...input, headers: { 'x-a': 1 } },
+      { ...input, headers: ['x-a'] },
+    ]) {
+      const response = await call('create', body, alice.headers)
+      expect(response.status).toBe(400)
+    }
+    const reserved = await call('update', { id, headers: { 'Content-Type': 'x' } }, alice.headers)
+    expect(reserved.status).toBe(400)
+    expect(await reserved.json()).toMatchObject({ code: 'INVALID_INPUT' })
+
+    await auth.api.updateWebhookEndpoint({ headers: alice.headers, body: { id, headers } })
+    expect(raw()).not.toBeNull()
+    const removed = await auth.api.removeWebhookEndpoint({ headers: alice.headers, body: { id } })
+    expect(removed.headers).toEqual({})
+    expect(raw()).toBeNull()
+  })
+
+  it('sends endpoint headers with a test event', async () => {
+    const received: Record<string, string | string[] | undefined>[] = []
+    const { url } = await startReceiver((request, response) => {
+      received.push(request.headers)
+      response.writeHead(204).end()
+    })
+    const { auth, user } = await setup({ allowLocalhost: true })
+    const alice = await user()
+    const created = await auth.api.createWebhookEndpoint({
+      headers: alice.headers,
+      body: { ...input, url, headers: { 'X-Api-Key': 'key-1' } },
+    })
+    const result = await auth.api.sendWebhookEndpointTestEvent({
+      headers: alice.headers,
+      body: { id: created.endpoint.id },
+    })
+    expect(result.ok).toBe(true)
+    expect(received[0]).toMatchObject({ 'x-api-key': 'key-1', 'webhook-id': result.eventId })
+  })
+
   it('rejects revoked sessions even when a valid cookie cache remains', async () => {
     const { auth, context, user } = await setup()
     const alice = await user()
@@ -479,9 +565,19 @@ describe('Better Auth endpoint management plugin', () => {
       },
     })
     const description = '2026-10-07T12:00:00.000Z'
-    const result = await client.goodWebhooks.create({ ...input, description })
+    const result = await client.goodWebhooks.create({
+      ...input,
+      description,
+      headers: { 'x-api-key': '2026-10-07T12:00:00.000Z' },
+    })
     expect(result.error).toBeNull()
     expect(result.data?.endpoint.description).toBe(description)
+    expect(result.data?.endpoint.headers).toEqual({ 'x-api-key': description })
+    const updated = await client.goodWebhooks.update({
+      id: result.data!.endpoint.id,
+      headers: null,
+    })
+    expect(updated.data?.headers).toEqual({})
     expect(typeof result.data?.endpoint.createdAt).toBe('string')
     const list = await client.goodWebhooks.list({})
     expect(list.data?.[0]?.description).toBe(description)
@@ -493,7 +589,11 @@ describe('Better Auth endpoint management plugin', () => {
   it('initializes an independent worker provider and rewrites storage encryption without rotating signing secrets', async () => {
     const { auth, user, database } = await setup()
     const alice = await user()
-    const created = await auth.api.createWebhookEndpoint({ headers: alice.headers, body: input })
+    const endpointHeaders = { 'x-api-key': 'key-1' }
+    const created = await auth.api.createWebhookEndpoint({
+      headers: alice.headers,
+      body: { ...input, headers: endpointHeaders },
+    })
     const rotated = await auth.api.rotateWebhookEndpointSecret({
       headers: alice.headers,
       body: { id: created.endpoint.id },
@@ -512,15 +612,18 @@ describe('Better Auth endpoint management plugin', () => {
       status: 'active',
       url: input.url,
       secrets: [rotated.secret, created.secret],
-
+      headers: endpointHeaders,
       revision: expect.any(String),
     })
     expect(await worker.reencrypt(scope)).toBe(1)
     const raw = database
-      .prepare('SELECT encryptedSecret, previousEncryptedSecret FROM webhookEndpoint')
+      .prepare(
+        'SELECT encryptedSecret, previousEncryptedSecret, encryptedHeaders FROM webhookEndpoint',
+      )
       .get()!
     expect(raw.encryptedSecret).toMatch(/^\$ba\$2\$/)
     expect(raw.previousEncryptedSecret).toMatch(/^\$ba\$2\$/)
+    expect(raw.encryptedHeaders).toMatch(/^\$ba\$2\$/)
     const retiredAuth = betterAuth({
       ...auth.options,
       secrets: [{ version: 2, value: 'a-new-storage-encryption-key-for-the-worker-test' }],

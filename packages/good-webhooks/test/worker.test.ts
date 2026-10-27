@@ -169,6 +169,47 @@ describe('worker delivery durability', () => {
     ])
   })
 
+  it('sends the endpoint headers on every attempt, signed like any delivery', async () => {
+    const requests: { body: string; headers: IncomingMessage['headers'] }[] = []
+    const url = await receiver((request, response) => {
+      let body = ''
+      request.setEncoding('utf8')
+      request.on('data', (chunk: string) => {
+        body += chunk
+      })
+      request.on('end', () => {
+        requests.push({ body, headers: request.headers })
+        response.statusCode = requests.length === 1 ? 500 : 200
+        response.end()
+      })
+    })
+    const store = createStore()
+    const { endpoint, secret } = await store.createEndpoint('scope-a', {
+      url,
+      eventTypes: ['test.sent'],
+      headers: { 'X-Api-Key': 'key-1', authorization: 'Bearer token' },
+    })
+    await store.publish('scope-a', { type: 'test.sent', data: {} })
+    const worker = createWorker(testConfig())
+    expect(await worker.runOnce()).toMatchObject({ retried: 1 })
+    await due()
+    expect(await worker.runOnce()).toMatchObject({ succeeded: 1 })
+    expect(requests).toHaveLength(2)
+    for (const request of requests) {
+      expect(request.headers).toMatchObject({
+        'x-api-key': 'key-1',
+        authorization: 'Bearer token',
+        'content-type': 'application/json',
+      })
+      verifyWebhook({ body: request.body, headers: request.headers, secret })
+    }
+    // A cleared set stops the headers on the next attempt.
+    await store.updateEndpoint('scope-a', endpoint.id, { headers: null })
+    await store.publish('scope-a', { type: 'test.sent', data: {} })
+    expect(await worker.runOnce()).toMatchObject({ succeeded: 1 })
+    expect(requests[2]!.headers).not.toHaveProperty('x-api-key')
+  })
+
   it('enforces an endpoint cap across competing workers and rejects overlapping batches', async () => {
     let active = 0
     let peak = 0

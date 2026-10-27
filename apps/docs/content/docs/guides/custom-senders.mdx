@@ -24,7 +24,9 @@ import type { EndpointSource } from 'good-webhooks/management'
 // }
 ```
 
-`scope` is `null` for application scope or `{ type, id }`. The source returns plaintext signing secrets, so keep it in trusted server code. The built-in sources return no `headers`.
+`scope` is `null` for application scope or `{ type, id }`. The source returns plaintext signing secrets, so keep it in trusted server code. The built-in sources return the endpoint's decrypted `headers` when it has some. Send them with each attempt, under the signature headers.
+
+A custom source may return `headers` too, and the built-in worker sends them on every attempt. It refuses [reserved names](/docs/reference/management#endpoint-headers) (`webhook-*`, `content-type`, `user-agent`, and hop-by-hop names) and defers the delivery like a failed lookup.
 
 <Steps>
 <Step>
@@ -56,6 +58,7 @@ Do this for retries too. The URL and secrets from publish time may be stale.
 ### Sign and send safely
 
 - Sign with the [Standard Webhooks](https://github.com/standard-webhooks/standard-webhooks/blob/main/spec/standard-webhooks.md) format, once per secret in `secrets`, so receivers keep working during a rotation. The new secret comes first.
+- Add the resolution's `headers`, if any, before the signature headers, so the signature headers win.
 - Keep the event ID and body identical across retries and replays.
 - Before each connection, resolve the hostname, reject private and otherwise unsafe addresses, connect to the checked address with TLS hostname checks, and refuse redirects.
 

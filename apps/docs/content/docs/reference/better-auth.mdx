@@ -51,11 +51,11 @@ Returns the `good-webhooks` Better Auth server plugin. It adds one management mo
 
 ### Storage model
 
-Schema field names are `scopeKey`, `allocationKey`, `creationToken`, `url`, `description`, `eventTypes`, `additionalEventTypes`, `status`, `pauseReason`, `encryptedSecret`, `previousEncryptedSecret`, `previousSecretExpiresAt`, `encryptedHeaders`, `revision`, `createdAt`, and `updatedAt`. `encryptedHeaders` is an optional string, never accepted as input or returned. It is reserved for endpoint headers and stays empty until a later release writes it.
+Schema field names are `scopeKey`, `allocationKey`, `creationToken`, `url`, `description`, `eventTypes`, `additionalEventTypes`, `status`, `pauseReason`, `encryptedSecret`, `previousEncryptedSecret`, `previousSecretExpiresAt`, `encryptedHeaders`, `revision`, `createdAt`, and `updatedAt`. `encryptedHeaders` is an optional string, never accepted as input or returned. It holds the endpoint headers as one encrypted value, and is empty when there are none.
 
 The plugin declares a unique `allocationKey` index for the per-scope endpoint limit. Generated fields and indexes are part of the storage contract. The host runs Better Auth's migration or schema-generation workflow. Standalone `management.sql` does not create this model.
 
-Signing secrets are encrypted with the auth instance's secret configuration. Unlike the [PostgreSQL provider](/docs/reference/postgres#destination-checks), this provider does not resolve hostnames at registration. The worker still checks each destination before connecting.
+Signing secrets and endpoint headers are encrypted with the auth instance's secret configuration. Unlike the [PostgreSQL provider](/docs/reference/postgres#destination-checks), this provider does not resolve hostnames at registration. The worker still checks each destination before connecting.
 
 ## Authenticated routes
 
@@ -72,23 +72,23 @@ export async function createEndpoint(request: Request) {
 
 Each route lives under Better Auth's configured base path. Every route uses sensitive session middleware and disables response storage. Server calls use `auth.api.<method>({ body, headers })` with the caller's session headers. Browsers use the [client plugin](#client-plugin).
 
-| Server method                  | POST path                        | Body besides `scope?`                       | Result                 | Action   |
-| ------------------------------ | -------------------------------- | ------------------------------------------- | ---------------------- | -------- |
-| `createWebhookEndpoint`        | `/good-webhooks/create`          | `url`, `eventTypes`, `description?`         | `{ endpoint, secret }` | `create` |
-| `listWebhookEndpoints`         | `/good-webhooks/list`            | None                                        | `WebhookEndpointDTO[]` | `read`   |
-| `getWebhookEndpoint`           | `/good-webhooks/get`             | `id`                                        | `WebhookEndpointDTO`   | `read`   |
-| `updateWebhookEndpoint`        | `/good-webhooks/update`          | `id`, `url?`, `description?`, `eventTypes?` | `WebhookEndpointDTO`   | `update` |
-| `pauseWebhookEndpoint`         | `/good-webhooks/pause`           | `id`                                        | `WebhookEndpointDTO`   | `update` |
-| `resumeWebhookEndpoint`        | `/good-webhooks/resume`          | `id`                                        | `WebhookEndpointDTO`   | `update` |
-| `removeWebhookEndpoint`        | `/good-webhooks/remove`          | `id`                                        | `WebhookEndpointDTO`   | `delete` |
-| `rotateWebhookEndpointSecret`  | `/good-webhooks/rotate-secret`   | `id`, `graceMs?`                            | `{ endpoint, secret }` | `update` |
-| `sendWebhookEndpointTestEvent` | `/good-webhooks/send-test-event` | `id`                                        | `TestEventResult`      | `update` |
+| Server method                  | POST path                        | Body besides `scope?`                                   | Result                 | Action   |
+| ------------------------------ | -------------------------------- | ------------------------------------------------------- | ---------------------- | -------- |
+| `createWebhookEndpoint`        | `/good-webhooks/create`          | `url`, `eventTypes`, `description?`, `headers?`         | `{ endpoint, secret }` | `create` |
+| `listWebhookEndpoints`         | `/good-webhooks/list`            | None                                                    | `WebhookEndpointDTO[]` | `read`   |
+| `getWebhookEndpoint`           | `/good-webhooks/get`             | `id`                                                    | `WebhookEndpointDTO`   | `read`   |
+| `updateWebhookEndpoint`        | `/good-webhooks/update`          | `id`, `url?`, `description?`, `eventTypes?`, `headers?` | `WebhookEndpointDTO`   | `update` |
+| `pauseWebhookEndpoint`         | `/good-webhooks/pause`           | `id`                                                    | `WebhookEndpointDTO`   | `update` |
+| `resumeWebhookEndpoint`        | `/good-webhooks/resume`          | `id`                                                    | `WebhookEndpointDTO`   | `update` |
+| `removeWebhookEndpoint`        | `/good-webhooks/remove`          | `id`                                                    | `WebhookEndpointDTO`   | `delete` |
+| `rotateWebhookEndpointSecret`  | `/good-webhooks/rotate-secret`   | `id`, `graceMs?`                                        | `{ endpoint, secret }` | `update` |
+| `sendWebhookEndpointTestEvent` | `/good-webhooks/send-test-event` | `id`                                                    | `TestEventResult`      | `update` |
 
-`scope` accepts `{ type, id }`, `null`, or omission. Bodies reject unknown fields. Creation and updates use the [management input limits](/docs/reference/management#inputs-and-limits). An update accepts `description: null` to clear the value. Rotation accepts an integer `graceMs` from 0 through 86,400,000, defaulting to 86,400,000.
+`scope` accepts `{ type, id }`, `null`, or omission. Bodies reject unknown fields. Creation and updates use the [management input limits](/docs/reference/management#inputs-and-limits). An update accepts `description: null` to clear the value, and `headers: null` or `{}` to remove every header. A new `headers` object replaces the whole set. Rotation accepts an integer `graceMs` from 0 through 86,400,000, defaulting to 86,400,000.
 
 The test event route returns the receiver's answer with status 200 even when the receiver fails; see [test events](/docs/reference/management#test-events). Each call makes your server send a request, so the plugin rate-limits the route to 10 requests per 60 seconds. Better Auth applies plugin rate limits only when its rate limiter is on, which by default means production. Your own `rateLimit.customRules` replace plugin rules for the paths they match, and the first matching key wins, so a wildcard such as `'/good-webhooks/*'` also replaces this limit. List `'/good-webhooks/send-test-event'` before it to keep one.
 
-`WebhookEndpointDTO<EventType>` contains `id`, `url`, nullable `description`, `eventTypes`, `status`, `createdAt`, and `updatedAt`. Its timestamps are ISO strings, unlike trusted provider results, which contain `Date` values. Ordinary route results contain no signing material. Creation and rotation return the new secret separately.
+`WebhookEndpointDTO<EventType>` contains `id`, `url`, nullable `description`, `eventTypes`, `status`, `headers`, `createdAt`, and `updatedAt`. `headers` is always present, `{}` when there are none, and returns the values the owner set. Its timestamps are ISO strings, unlike trusted provider results, which contain `Date` values. Ordinary route results contain no signing material. Creation and rotation return the new secret separately.
 
 ## Scope authorization
 

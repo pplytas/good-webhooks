@@ -23,9 +23,9 @@ export type EndpointResolution =
       /** Changes whenever the endpoint changes. Automatic pauses use it to ignore stale failures. */
       revision?: string
       /**
-       * Endpoint headers for every attempt. Custom sources may omit it. The worker validates
-       * them but does not send them yet; sending, and the built-in sources returning them,
-       * arrive in a later release.
+       * Endpoint headers the worker sends on every attempt, under the signature headers.
+       * Custom sources may omit it. Reserved names (`webhook-*`, `content-type`, `user-agent`,
+       * and hop-by-hop names) make the lookup fail.
        */
       headers?: Record<string, string>
     }
@@ -70,7 +70,7 @@ export interface EndpointManagement {
   /** Sign and send one test event to an active or paused endpoint. Records nothing. */
   sendTestEvent(scope: ManagementScope, id: string): Promise<TestEventResult>
   removeScope(scope: ManagementScope): Promise<void>
-  /** Re-encrypt live endpoint secrets with the current storage key, preserving signing values. */
+  /** Re-encrypt live endpoint secrets and headers with the current storage key, preserving their values. */
   reencrypt(scope: ManagementScope): Promise<number>
 }
 
@@ -78,12 +78,15 @@ export interface EndpointManagement {
  * Persistence contract for management providers. Never expose stored records to clients.
  * Growth rule: fields added later are optional, and a repository stores every field it receives.
  */
-export interface StoredEndpoint extends ManagedEndpoint {
+export interface StoredEndpoint extends Omit<ManagedEndpoint, 'headers'> {
   revision: number
   encryptedSecret: string
   previousEncryptedSecret: string | null
   previousSecretExpiresAt: Date | null
-  /** Endpoint headers as one encrypted JSON blob, or null. Store it and return it unchanged; never drop it. */
+  /**
+   * Endpoint headers as one encrypted JSON blob, or null when there are none. Plaintext headers
+   * never reach the repository. Store it and return it unchanged; never drop it.
+   */
   encryptedHeaders: string | null
 }
 export type StoredEndpointPatch = Partial<Omit<StoredEndpoint, 'id' | 'createdAt' | 'revision'>>

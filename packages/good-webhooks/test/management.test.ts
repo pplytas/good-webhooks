@@ -1,3 +1,4 @@
+import type { IncomingHttpHeaders } from 'node:http'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createManagement } from '../src/management/index.js'
 import { parseWebhook } from '../src/verify.js'
@@ -149,14 +150,25 @@ describe('portable endpoint management', () => {
     expect(await repository.get(null, endpoint.id)).toMatchObject({ encryptedHeaders: null })
   })
 
-  it('never changes or returns encrypted endpoint headers until the endpoint is removed', async () => {
+  it('encrypts endpoint headers, returns them to the owner, and replaces or clears them', async () => {
     vi.useFakeTimers({ now: new Date('2026-10-07T00:00:00Z') })
     const { management, repository } = setup()
-    const { endpoint } = await management.create(null, input)
-    const stored = (await repository.get(null, endpoint.id))!
-    await repository.update(null, endpoint.id, stored.revision, { encryptedHeaders: 'blob' })
+    const headers = { 'X-Api-Key': 'key-1', authorization: 'Bearer token' }
+    const { endpoint } = await management.create(null, { ...input, headers })
+    expect(endpoint.headers).toEqual(headers)
+    expect(Object.isFrozen(endpoint.headers)).toBe(true)
+    expect((await repository.get(null, endpoint.id))?.encryptedHeaders).toBe(
+      `encrypted:${JSON.stringify(headers)}`,
+    )
+    expect(await management.source.resolveEndpoint(null, endpoint.id)).toEqual({
+      status: 'active',
+      url: input.url,
+      secrets: [expect.any(String)],
+      revision: '0',
+      headers,
+    })
     repository.patches.length = 0
-    const results: object[] = [
+    const results = [
       await management.get(null, endpoint.id),
       ...(await management.list(null)),
       await management.update(null, endpoint.id, { description: 'changed' }),
@@ -164,17 +176,42 @@ describe('portable endpoint management', () => {
       await management.resume(null, endpoint.id),
       (await management.rotateSecret(null, endpoint.id, { graceMs: 1000 })).endpoint,
     ]
-    expect(await management.reencrypt(null)).toBe(1)
-    expect((await repository.get(null, endpoint.id))?.encryptedHeaders).toBe('blob')
-    // The built-in source returns no endpoint headers until a later release.
-    expect(await management.source.resolveEndpoint(null, endpoint.id)).not.toHaveProperty('headers')
-    expect(repository.patches).toHaveLength(5)
+    for (const result of results) {
+      expect(result.headers).toEqual(headers)
+      expect(result).not.toHaveProperty('encryptedHeaders')
+    }
+    // Changes that do not name headers leave the stored blob alone.
+    expect(repository.patches).toHaveLength(4)
     for (const patch of repository.patches) expect(patch).not.toHaveProperty('encryptedHeaders')
-    expect((await repository.get(null, endpoint.id))?.encryptedHeaders).toBe('blob')
+
+    // An update replaces the whole set.
+    const replaced = await management.update(null, endpoint.id, { headers: { 'x-other': '2' } })
+    expect(replaced.headers).toEqual({ 'x-other': '2' })
+    expect(await management.source.resolveEndpoint(null, endpoint.id)).toMatchObject({
+      headers: { 'x-other': '2' },
+    })
+    for (const empty of [{}, null]) {
+      await management.update(null, endpoint.id, { headers: { 'x-again': '3' } })
+      const cleared = await management.update(null, endpoint.id, { headers: empty })
+      expect(cleared.headers).toEqual({})
+      expect((await repository.get(null, endpoint.id))?.encryptedHeaders).toBeNull()
+      expect(await management.source.resolveEndpoint(null, endpoint.id)).not.toHaveProperty(
+        'headers',
+      )
+    }
+
     // Removal clears the headers along with the secrets.
-    results.push(await management.remove(null, endpoint.id))
-    for (const result of results) expect(result).not.toHaveProperty('encryptedHeaders')
-    expect(repository.patches[5]).toMatchObject({ status: 'deleted', encryptedHeaders: null })
+    await management.update(null, endpoint.id, { headers })
+    const removed = await management.remove(null, endpoint.id)
+    expect(removed.headers).toEqual({})
+    expect(repository.patches.at(-1)).toMatchObject({ status: 'deleted', encryptedHeaders: null })
+    expect((await repository.get(null, endpoint.id))?.encryptedHeaders).toBeNull()
+  })
+
+  it('stores no header blob for an endpoint created without headers', async () => {
+    const { management, repository } = setup()
+    const { endpoint } = await management.create(null, { ...input, headers: {} })
+    expect(endpoint.headers).toEqual({})
     expect((await repository.get(null, endpoint.id))?.encryptedHeaders).toBeNull()
   })
 
@@ -303,9 +340,10 @@ describe('portable endpoint management', () => {
     expect(await repository.list(null)).toEqual([])
   })
 
-  it('reencrypts current and overlapping keys without changing receiver signing values', async () => {
+  it('reencrypts current and overlapping keys and headers without changing their values', async () => {
     const { repository, management } = setup()
-    const first = await management.create(null, input)
+    const headers = { 'x-api-key': 'key-1' }
+    const first = await management.create(null, { ...input, headers })
     const second = await management.rotateSecret(null, first.endpoint.id)
     const migrated = createManagement({
       repository,
@@ -323,10 +361,13 @@ describe('portable endpoint management', () => {
     expect(await repository.get(null, first.endpoint.id)).toMatchObject({
       encryptedSecret: `new:${second.secret}`,
       previousEncryptedSecret: `new:${first.secret}`,
+      encryptedHeaders: `new:${JSON.stringify(headers)}`,
     })
     expect(await migrated.source.resolveEndpoint(null, first.endpoint.id)).toMatchObject({
       secrets: [second.secret, first.secret],
+      headers,
     })
+    expect((await migrated.get(null, first.endpoint.id)).headers).toEqual(headers)
   })
 
   it('does not restore an old signing key when re-encryption races rotation', async () => {
@@ -421,8 +462,14 @@ describe('test events', () => {
 
   /** A receiver that verifies with `secret` and answers with `status`. */
   async function testReceiver() {
-    const state = { secret: '', status: 204, received: [] as unknown[] }
+    const state = {
+      secret: '',
+      status: 204,
+      received: [] as unknown[],
+      headers: [] as IncomingHttpHeaders[],
+    }
     const { url } = await startReceiver(async (request, response) => {
+      state.headers.push(request.headers)
       const chunks: Buffer[] = []
       for await (const chunk of request) chunks.push(chunk as Buffer)
       try {
@@ -483,6 +530,25 @@ describe('test events', () => {
     state.status = 204
     expect((await management.sendTestEvent(null, endpoint.id)).ok).toBe(true)
     expect(new Set(state.received.map((event) => (event as { id: string }).id)).size).toBe(3)
+  })
+
+  it('sends the endpoint headers with the signature headers', async () => {
+    const { url, state } = await testReceiver()
+    const { management } = setup({ allowLocalhost: true })
+    const created = await management.create(null, {
+      url,
+      eventTypes: ['order.created'],
+      headers: { 'X-Api-Key': 'key-1', authorization: 'Bearer token' },
+    })
+    state.secret = created.secret
+    const result = await management.sendTestEvent(null, created.endpoint.id)
+    expect(result.ok).toBe(true)
+    expect(state.headers[0]).toMatchObject({
+      'x-api-key': 'key-1',
+      authorization: 'Bearer token',
+      'webhook-id': result.eventId,
+      'content-type': 'application/json',
+    })
   })
 
   it('rejects deleted and unknown endpoints and reports unsafe destinations', async () => {

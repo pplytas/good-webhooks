@@ -13,6 +13,8 @@ export async function sendTestEvent(input: {
   endpointId: string
   url: string
   secrets: readonly string[]
+  /** Endpoint headers, sent under the signature headers as on every attempt. */
+  headers: Record<string, string>
   allowLocalhost: boolean
 }): Promise<TestEventResult> {
   const eventId = randomUUID()
@@ -22,7 +24,7 @@ export async function sendTestEvent(input: {
     occurredAt: new Date().toISOString(),
     data: { endpointId: input.endpointId },
   })
-  const headers = signWebhook({
+  const signature = signWebhook({
     id: eventId,
     timestamp: Math.floor(Date.now() / 1000),
     body,
@@ -32,7 +34,7 @@ export async function sendTestEvent(input: {
   const response = await sendWebhook({
     url: input.url,
     body,
-    headers,
+    headers: { ...input.headers, ...signature },
     timeoutMs: TIMEOUT_MS,
     maxResponseBytes: MAX_RESPONSE_BYTES,
     allowLocalhost: input.allowLocalhost,

@@ -142,6 +142,12 @@ export interface Endpoint {
   status: EndpointStatus
   /** Set while paused. null when active, deleted, or paused before schema version 5. */
   pauseReason?: PauseReason | null
+  /**
+   * Extra request headers sent on every attempt and test event. Returned to the endpoint owner,
+   * who set them, unlike the write-once signing secret. Built-in management always returns it,
+   * `{}` when there are none.
+   */
+  headers?: Record<string, string>
   createdAt: Date
   updatedAt: Date
 }
@@ -149,11 +155,15 @@ export interface CreateEndpointInput {
   url: string
   description?: string
   eventTypes: readonly string[]
+  /** Extra request headers, at most 20. Names starting with `webhook-` and transport names are reserved. */
+  headers?: Record<string, string>
 }
 export interface UpdateEndpointInput {
   url?: string
   description?: string | null
   eventTypes?: readonly string[]
+  /** Replaces every endpoint header. null or `{}` removes them. */
+  headers?: Record<string, string> | null
 }
 export interface EndpointWithSecret {
   endpoint: Endpoint
@@ -253,6 +263,8 @@ export interface ClaimedDelivery {
   body: string
   url: string
   secrets: readonly string[]
+  /** Endpoint headers from the source, sent under the signature headers. */
+  headers?: Record<string, string>
   /** Endpoint revision the attempt was prepared with, or null when the source reports none. */
   revision: string | null
   attemptCount: number

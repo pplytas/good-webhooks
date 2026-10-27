@@ -21,7 +21,7 @@ const fields = {
   encryptedSecret: { type: 'string', required: true, input: false, returned: false },
   previousEncryptedSecret: { type: 'string', required: false, input: false, returned: false },
   previousSecretExpiresAt: { type: 'date', required: false, input: false, returned: false },
-  // Reserved for endpoint headers (0.6.0). Stored, never dropped.
+  // Endpoint headers as one encrypted JSON blob. Stored, never dropped.
   encryptedHeaders: { type: 'string', required: false, input: false, returned: false },
   revision: { type: 'number', required: true, defaultValue: 0, input: false, returned: false },
   createdAt: { type: 'date', required: true },

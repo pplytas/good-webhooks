@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { signWebhook } from './crypto.js'
+import { isReservedHeaderName } from './management/headers.js'
 import { computeRetryAt, isRetryExhausted } from './retry.js'
 import { scopeFromKey } from './scope.js'
 import { postgresTables } from './postgres-schema.js'
@@ -42,7 +43,10 @@ type Resolution = { reservation: Reservation } & (
   { endpoint: EndpointResolution; error?: never } | { error: unknown; endpoint?: never }
 )
 
-/** Copy endpoint headers from a source, rejecting anything but a plain object of strings. */
+/**
+ * Copy endpoint headers from a source, rejecting anything but a plain object of strings, and
+ * reserved names, so a source cannot replace the signature or framing headers.
+ */
 function endpointHeaders(value: unknown): Record<string, string> {
   const prototype = value && typeof value === 'object' ? Object.getPrototypeOf(value) : undefined
   if (prototype !== Object.prototype && prototype !== null)
@@ -50,6 +54,8 @@ function endpointHeaders(value: unknown): Record<string, string> {
   const entries = Object.entries(value as object)
   if (!entries.every(([, header]) => typeof header === 'string'))
     throw new Error('Endpoint source returned invalid endpoint headers.')
+  if (entries.some(([name]) => isReservedHeaderName(name)))
+    throw new Error('Endpoint source returned a reserved endpoint header name.')
   return Object.fromEntries(entries)
 }
 
@@ -236,7 +242,6 @@ export function createWorkerStore(config: ResolvedConfig) {
           throw new Error('Endpoint source returned an invalid endpoint revision.')
         const headers =
           endpoint.headers === undefined ? undefined : endpointHeaders(endpoint.headers)
-        // Kept on the resolution but not sent yet; attempts send endpoint headers from 0.6.0.
         return {
           reservation,
           endpoint: {
@@ -333,6 +338,9 @@ export function createWorkerStore(config: ResolvedConfig) {
           body: reservation.body,
           url: resolution.endpoint.url,
           secrets: resolution.endpoint.secrets,
+          ...(resolution.endpoint.headers === undefined
+            ? {}
+            : { headers: resolution.endpoint.headers }),
           attemptCount: reservation.attempt_count + 1,
           eventCreatedAt: reservation.event_created_at,
           revision: resolution.endpoint.revision ?? null,

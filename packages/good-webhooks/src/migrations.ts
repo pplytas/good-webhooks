@@ -27,7 +27,7 @@ export function getPostgresMigration(options: PostgresMigrationOptions = {}): st
   const tables = postgresTables(options.schema)
   const namespace = quotePostgresSchema(options.schema)
   const version = `CREATE TABLE IF NOT EXISTS ${tables.schemaVersion} (component text PRIMARY KEY, version integer NOT NULL CHECK (version > 0));`
-  // encrypted_headers holds endpoint headers. Repositories carry it unchanged until 0.6.0 writes it.
+  // encrypted_headers holds endpoint headers as one encrypted JSON blob, or NULL when there are none.
   const management = `INSERT INTO ${tables.schemaVersion} (component, version) VALUES ('management', ${POSTGRES_SCHEMA_VERSION});
 
 CREATE TABLE ${tables.endpoints} (
