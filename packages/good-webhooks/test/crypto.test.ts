@@ -257,7 +257,7 @@ describe('secret encryption', () => {
     expect(() => decryptSecret(encrypted, parseEncryptionKey(generateEncryptionKey()))).toThrow()
   })
 
-  it('encrypts endpoint header blobs up to the largest allowed set, and keeps secret checks', () => {
+  it('encrypts large endpoint header blobs, and keeps secret checks', () => {
     const key = parseEncryptionKey(generateEncryptionKey())
     const largest = JSON.stringify(
       Object.fromEntries(

@@ -102,7 +102,7 @@ await organization.endpoints.update(endpoint.id, { headers: null })
 
 The headers go out on every delivery attempt, every retry, and every [test event](#send-a-test-event). The signature headers are added after them. An update with `headers` replaces the whole set; `null` or `{}` removes them. Updates that leave out `headers` keep them.
 
-Names starting with `webhook-` are reserved for the signature, and so are `content-type`, `user-agent`, and hop-by-hop names such as `host` or `connection`. These are rejected in any case with `INVALID_INPUT`. An endpoint has at most 20 headers. Each name is an HTTP token of up to 100 characters, and each value has 1 to 2,048 characters with no line breaks or other control characters except tab. The [management reference](/docs/reference/management#endpoint-headers) has the full rules.
+Names starting with `webhook-` are reserved for the signature, and so are `content-type`, `user-agent`, and hop-by-hop names such as `host` or `connection`. These are rejected in any case with `INVALID_INPUT`. An endpoint has at most 20 headers. Each name is an HTTP token of up to 100 characters, and each value has 1 to 2,048 characters with no line breaks or other control characters except tab. Names and values together hold at most 2,048 characters, so one long bearer token still fits. The [management reference](/docs/reference/management#endpoint-headers) has the full rules.
 
 Headers are stored encrypted with the same storage key as the signing secret, since they often hold credentials. Unlike the signing secret, reads return them: `get`, `list`, and every other result include `headers`, `{}` when there are none. The owner set them, so they may see them again. `remove` clears them with the secrets.
 

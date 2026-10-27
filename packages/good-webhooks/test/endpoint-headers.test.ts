@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   isReservedHeaderName,
+  MAX_ENDPOINT_HEADER_CHARACTERS,
   RESERVED_HEADER_NAMES,
   TRANSPORT_HEADER_NAMES,
   validateEndpointHeaders,
@@ -66,8 +67,33 @@ describe('endpoint header validation', () => {
     expect(() => validateEndpointHeaders({ 'x-api-key': value })).toThrow(invalid)
   })
 
-  it('accepts a 2048-character value', () => {
-    expect(validateEndpointHeaders({ a: 'v'.repeat(2048) }).a).toHaveLength(2048)
+  it('accepts a 2047-character value with a one-character name', () => {
+    expect(validateEndpointHeaders({ a: 'v'.repeat(2047) }).a).toHaveLength(2047)
+  })
+
+  it('caps names and values together at 2048 characters', () => {
+    expect(MAX_ENDPOINT_HEADER_CHARACTERS).toBe(2048)
+    // Ten names of 4 characters plus values of 200 characters: exactly 2048.
+    const atCap = Object.fromEntries(
+      Array.from({ length: 10 }, (_, index) => [
+        `x-h${index}`,
+        'v'.repeat(index === 9 ? 208 : 200),
+      ]),
+    )
+    expect(
+      Object.entries(atCap).reduce((sum, [name, value]) => sum + name.length + value.length, 0),
+    ).toBe(2048)
+    expect(validateEndpointHeaders(atCap)).toEqual(atCap)
+    expect(() => validateEndpointHeaders({ ...atCap, 'x-h9': 'v'.repeat(209) })).toThrow(
+      expect.objectContaining({
+        code: 'INVALID_INPUT',
+        message: 'Endpoint header names and values may hold at most 2048 characters in total.',
+      }),
+    )
+    // One long bearer token still fits.
+    const bearer = `Bearer ${'t'.repeat(2048 - 'authorization'.length - 'Bearer '.length)}`
+    expect(validateEndpointHeaders({ authorization: bearer }).authorization).toBe(bearer)
+    expect(() => validateEndpointHeaders({ a: 'v'.repeat(2048) })).toThrow(invalid)
   })
 
   it('rejects names that repeat with different case', () => {
