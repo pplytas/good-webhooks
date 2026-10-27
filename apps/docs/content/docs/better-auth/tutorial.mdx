@@ -279,7 +279,7 @@ assert.deepEqual(created.data.endpoint.headers, { 'x-api-key': 'demo-key-123' })
 assert.equal(JSON.parse(detail.data.attempts[0].responseBody).apiKey, 'demo-key-123')
 ```
 
-The attempt panel in the example shows the receiver's response body, so you can see the echoed key in the browser.
+The attempt panel in the example shows the receiver's response body, so you can see the echoed key in the browser. The echo is for this demo only. A real receiver must not return credentials in its response, because the worker stores each response body on the attempt record.
 
 </Step>
 <Step>
