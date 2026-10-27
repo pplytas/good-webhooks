@@ -58,7 +58,7 @@ export function parseEncryptionKey(value: string | Uint8Array): Uint8Array {
   return bytes
 }
 
-/** Bounds stored ciphertext. Endpoint headers (at most 20 names and 2,048-character values) fit well inside. */
+/** Bounds stored ciphertext. Endpoint headers (at most 2,048 bytes as JSON) fit well inside. */
 const MAX_CIPHERTEXT_LENGTH = 262_144
 
 /** Encrypt any stored endpoint value (signing secret or header blob) with AES-256-GCM. */

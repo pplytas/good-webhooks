@@ -7,13 +7,13 @@ import {
   validateEndpointHeaders,
 } from '../src/management/headers.js'
 import { createManagement } from '../src/management/index.js'
-import type { ManagementRepository } from '../src/management/types.js'
+import type { ManagementRepository, StoredEndpoint } from '../src/management/types.js'
 
 const invalid = expect.objectContaining({ code: 'INVALID_INPUT' })
 
 describe('endpoint header validation', () => {
   it('copies valid headers and keeps the caller casing', () => {
-    const input = { 'X-Api-Key': 'secret', authorization: 'Bearer a\tb', 'x-latin': 'café' }
+    const input = { 'X-Api-Key': 'secret', authorization: 'Bearer a\tb', 'x-text': ' "a\\b" ~ ' }
     const copy = validateEndpointHeaders(input)
     expect(copy).toEqual(input)
     expect(copy).not.toBe(input)
@@ -52,7 +52,6 @@ describe('endpoint header validation', () => {
 
   it.each([
     '',
-    'x'.repeat(2049),
     'a\r\nInjected: yes',
     'a\nb',
     'a\rb',
@@ -60,6 +59,8 @@ describe('endpoint header validation', () => {
     'a\u0001b',
     'a\u007fb',
     'a\u0085b',
+    'a\u00a0b',
+    'café',
     'a€b',
     5,
     null,
@@ -67,8 +68,13 @@ describe('endpoint header validation', () => {
     expect(() => validateEndpointHeaders({ 'x-api-key': value })).toThrow(invalid)
   })
 
-  it('accepts a value at the per-value limit when the JSON fits', () => {
-    expect(validateEndpointHeaders({ a: 'v'.repeat(2040) }).a).toHaveLength(2040)
+  it('rejects a value with é, which would change bytes on the wire', () => {
+    expect(() => validateEndpointHeaders({ 'x-name': 'café' })).toThrow(
+      expect.objectContaining({
+        code: 'INVALID_INPUT',
+        message: 'Header x-name must have a nonempty value of visible ASCII, spaces, and tabs.',
+      }),
+    )
   })
 
   describe('total size as UTF-8 JSON', () => {
@@ -96,9 +102,9 @@ describe('endpoint header validation', () => {
       expect(() => validateEndpointHeaders(several)).toThrow(tooLarge)
     })
 
-    it('counts escaped quotes and two-byte accented characters', () => {
-      // Each " escapes to two bytes and each é encodes as two bytes: 1020 characters, 2040 bytes.
-      for (const value of ['"'.repeat(1020), 'é'.repeat(1020), '"é'.repeat(510)]) {
+    it('counts escaped quotes and backslashes at their JSON size', () => {
+      // Each " and \ escapes to two bytes: 1020 characters, 2040 bytes.
+      for (const value of ['"'.repeat(1020), '\\'.repeat(1020), '"\\'.repeat(510)]) {
         expect(value).toHaveLength(1020)
         expect(bytes({ a: value })).toBe(2048)
         expect(validateEndpointHeaders({ a: value }).a).toBe(value)
@@ -203,5 +209,59 @@ describe('endpoint headers in management input', () => {
     headers['webhook-id'] = 'spoofed'
     const { endpoint } = await creating
     expect(endpoint.headers).toEqual({ 'x-api-key': 'original' })
+  })
+})
+
+describe('stored endpoint headers', () => {
+  function management(encryptedHeaders: string) {
+    const row: StoredEndpoint = {
+      id: 'endpoint',
+      url: 'https://example.com/hook',
+      description: null,
+      eventTypes: ['order.created'],
+      status: 'active',
+      pauseReason: null,
+      revision: 0,
+      encryptedSecret: 'whsec_unused',
+      previousEncryptedSecret: null,
+      previousSecretExpiresAt: null,
+      encryptedHeaders,
+      createdAt: new Date('2026-10-27T00:00:00Z'),
+      updatedAt: new Date('2026-10-27T00:00:00Z'),
+    }
+    const repository: ManagementRepository = {
+      list: async () => [row],
+      get: async () => row,
+      create: async () => row,
+      update: async () => null,
+    }
+    // Identity cipher: the stored blob is the plaintext JSON.
+    return createManagement({
+      repository,
+      eventTypes: ['order.created'],
+      cipher: { encrypt: async (value) => value, decrypt: async (value) => value },
+    })
+  }
+
+  it.each(['not json', 'null', '{"a":1}', '["a"]', '"a"'])(
+    'reports the unreadable blob %s as INVALID_CONFIG with a cause',
+    async (blob) => {
+      const error = await management(blob)
+        .get(null, 'endpoint')
+        .catch((reason: unknown) => reason)
+      expect(error).toMatchObject({
+        code: 'INVALID_CONFIG',
+        message: 'Stored endpoint headers could not be read.',
+      })
+      expect((error as Error).cause).toBeInstanceOf(Error)
+      await expect(management(blob).source.resolveEndpoint(null, 'endpoint')).rejects.toMatchObject(
+        { code: 'INVALID_CONFIG' },
+      )
+    },
+  )
+
+  it('reads stored headers by shape only, so older rows survive stricter input rules', async () => {
+    const stored = { 'webhook-legacy': 'kept', 'x-a': 'b' }
+    expect((await management(JSON.stringify(stored)).get(null, 'endpoint')).headers).toEqual(stored)
   })
 })

@@ -44,7 +44,8 @@ function requestHeaders(
   target: Target,
   body: string,
 ): Record<string, string> {
-  const result: Record<string, string> = {}
+  // No prototype, so a header named __proto__ is stored rather than hitting the setter.
+  const result: Record<string, string> = Object.create(null)
   for (const [name, value] of Object.entries(headers)) {
     const normalized = name.toLowerCase()
     if (

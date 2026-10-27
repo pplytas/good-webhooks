@@ -326,6 +326,24 @@ describe('HTTP delivery', () => {
     ])
   })
 
+  it('sends a header literally named __proto__', async () => {
+    const raw: string[][] = []
+    const url = await receiver((request, response) => {
+      raw.push(request.rawHeaders)
+      response.writeHead(204).end()
+    })
+    const headers = Object.fromEntries([
+      ['__proto__', 'kept'],
+      ['webhook-id', 'msg_123'],
+    ]) as Record<string, string>
+    expect(await sendWebhook({ ...defaultInput, url, headers })).toMatchObject({
+      status: 204,
+      error: null,
+    })
+    const sent = raw[0]!
+    expect(sent[sent.findIndex((name) => name.toLowerCase() === '__proto__') + 1]).toBe('kept')
+  })
+
   it('returns the Retry-After header only when the receiver sends one', async () => {
     const url = await receiver((_request, response) =>
       response.writeHead(429, { 'retry-after': '30' }).end(),

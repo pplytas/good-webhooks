@@ -23,7 +23,6 @@ export const RESERVED_HEADER_NAMES: ReadonlySet<string> = new Set([
 
 export const MAX_ENDPOINT_HEADERS = 20
 const MAX_NAME_LENGTH = 100
-const MAX_VALUE_LENGTH = 2048
 /**
  * UTF-8 bytes of the headers as JSON, the exact plaintext management encrypts. Keeps the encrypted
  * blob inside narrow Better Auth columns such as SQL Server's varchar(8000), which stores it as hex.
@@ -31,8 +30,11 @@ const MAX_VALUE_LENGTH = 2048
 export const MAX_ENDPOINT_HEADER_BYTES = 2048
 /** RFC 9110 token. */
 const TOKEN = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/
-/** Tab, visible ASCII, space, and Latin-1 text. No other control characters, and nothing HTTP/1.1 cannot carry. */
-const FIELD_VALUE = /^[\t\x20-\x7E\xA0-\xFF]+$/
+/**
+ * Visible ASCII, space, and tab. The transport sends a string body, so Node encodes the header
+ * block as UTF-8 and would turn Latin-1 text into different bytes on the wire.
+ */
+const FIELD_VALUE = /^[\t\x20-\x7E]+$/
 
 /** True for signing headers (`webhook-*`), the content headers the library sets, and hop-by-hop names. */
 export function isReservedHeaderName(name: string): boolean {
@@ -63,10 +65,8 @@ export function validateEndpointHeaders(value: unknown): Record<string, string> 
     if (seen.has(normalized)) invalid(`Header ${name} appears more than once.`)
     seen.add(normalized)
     if (isReservedHeaderName(name)) invalid(`Header ${name} is reserved.`)
-    if (typeof header !== 'string' || header.length > MAX_VALUE_LENGTH || !FIELD_VALUE.test(header))
-      invalid(
-        `Header ${name} must have a value of 1–${MAX_VALUE_LENGTH} characters with no control characters other than tab.`,
-      )
+    if (typeof header !== 'string' || !FIELD_VALUE.test(header))
+      invalid(`Header ${name} must have a nonempty value of visible ASCII, spaces, and tabs.`)
   }
   // fromEntries defines own properties, even for a name such as __proto__.
   const headers = Object.fromEntries(entries) as Record<string, string>

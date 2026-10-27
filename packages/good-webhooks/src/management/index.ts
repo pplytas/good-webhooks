@@ -121,9 +121,28 @@ export function createManagement(options: ManagementOptions): EndpointManagement
     return Object.keys(headers).length === 0 ? null : cipher.encrypt(JSON.stringify(headers))
   }
 
+  /** Checks shape only, not current input rules, so stored rows stay readable if those tighten. */
   async function decryptHeaders(row: StoredEndpoint): Promise<Record<string, string>> {
     if (row.encryptedHeaders === null || row.encryptedHeaders === undefined) return {}
-    return JSON.parse(await cipher.decrypt(row.encryptedHeaders)) as Record<string, string>
+    const plaintext = await cipher.decrypt(row.encryptedHeaders)
+    let headers: unknown
+    try {
+      headers = JSON.parse(plaintext)
+    } catch (error) {
+      throw new WebhookError('INVALID_CONFIG', 'Stored endpoint headers could not be read.', {
+        cause: error,
+      })
+    }
+    if (
+      !headers ||
+      typeof headers !== 'object' ||
+      Object.getPrototypeOf(headers) !== Object.prototype ||
+      !Object.values(headers).every((value) => typeof value === 'string')
+    )
+      throw new WebhookError('INVALID_CONFIG', 'Stored endpoint headers could not be read.', {
+        cause: new TypeError('Stored endpoint headers are not an object of strings.'),
+      })
+    return headers as Record<string, string>
   }
 
   async function dto(row: StoredEndpoint): Promise<ManagedEndpoint> {

@@ -122,13 +122,13 @@ A receiver failure is a result with `ok: false`, never a thrown error. An unsafe
 
 `headers` adds request headers to every attempt and test event, for example a key an API gateway checks. Validation runs before any storage call and throws `INVALID_INPUT`:
 
-| Rule     | Limit                                                                                                                        |
-| -------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| Count    | At most 20 headers.                                                                                                          |
-| Name     | 1 through 100 characters, an RFC 9110 token. Two names that differ only in case are rejected.                                |
-| Value    | A string of 1 through 2,048 characters. No control characters other than tab, and no characters above `U+00FF`.              |
-| Total    | At most 2 KiB (2,048 bytes) in total as JSON, in UTF-8. Escaped quotes and accented characters count their encoded size.     |
-| Reserved | Names starting with `webhook-`, plus `content-type`, `user-agent`, and the hop-by-hop names the transport sets, in any case. |
+| Rule     | Limit                                                                                                                                       |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Count    | At most 20 headers.                                                                                                                         |
+| Name     | 1 through 100 characters, an RFC 9110 token. Two names that differ only in case are rejected.                                               |
+| Value    | A nonempty string of visible ASCII, spaces, and tabs.                                                                                       |
+| Total    | At most 2 KiB (2,048 bytes) in total as JSON, in UTF-8. Escaped quotes and backslashes count their encoded size.                            |
+| Reserved | Names starting with `webhook-`, plus `content-type`, `user-agent`, and the hop-by-hop names the transport sets, whatever their letter case. |
 
 The hop-by-hop names are `host`, `content-length`, `connection`, `transfer-encoding`, `upgrade`, `expect`, `proxy-authorization`, `proxy-connection`, `trailer`, and `te`. Management stores the set as one encrypted JSON value, or nothing when it is empty.
 
