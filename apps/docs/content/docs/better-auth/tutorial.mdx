@@ -170,6 +170,8 @@ The endpoint form has a description, two event checkboxes, and an optional gatew
 ```tsx title="src/endpoints.tsx"
 // In Endpoints():
 async function create(form: FormData) {
+  if (pendingSecret)
+    throw new Error('Transfer or copy the current signing secret before creating another endpoint.')
   const apiKey = String(form.get('apiKey') ?? '').trim()
   const result = unwrap(
     await auth.goodWebhooks.create({
@@ -185,7 +187,12 @@ async function create(form: FormData) {
 
 ```tsx title="src/endpoints.tsx"
 // In the JSX:
-<form action={(form) => run(() => create(form))}>
+<form
+  onSubmit={(event) => {
+    event.preventDefault()
+    void run(() => create(new FormData(event.currentTarget)))
+  }}
+>
   <input name="description" placeholder="Endpoint name" required />
   <input name="apiKey" placeholder="Gateway API key (optional)" />
   {eventTypes.map((type) => (
