@@ -3,8 +3,6 @@ on:
   schedule:
     - cron: '0 6 * * 1'
   workflow_dispatch:
-  push:
-    branches: [panos/growth-metrics] # temporary, removed before merge
 permissions:
   contents: read
 concurrency:

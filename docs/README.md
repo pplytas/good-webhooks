@@ -12,5 +12,6 @@ This directory keeps architecture decisions and historical implementation propos
 - [Receiver and operations proposal](receiver-and-operations-proposal.md)
 - [Worker lifecycle alignment](worker-lifecycle-plan.md)
 - [Documentation website analytics](website-analytics.md)
+- [Growth metrics](growth-metrics.md)
 
 Historical plans describe the code and decisions at the time they were written. Current source, tests, and public documentation take precedence. Former public-guide files remain as links to their new locations.

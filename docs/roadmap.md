@@ -129,6 +129,8 @@ Own-channel reach is near zero (the 0.1.0 thread on X reached 110 people from an
 
 The launch waits for its own gate (a zero-signup demo, the tutorial, and the comparison page), not for 0.5.0. If 0.5.0 is out by then, lead with bulk replay; if not, launch anyway.
 
+Rule: every posted link carries `?ref=<channel>` (for example `?ref=hn` or `?ref=reddit`), so a visit can be traced to its channel once the docs site records the parameter. See [growth metrics](growth-metrics.md).
+
 ### First two weeks (about 30 hours)
 
 1. Repo switches: topics to about 12, Discussions on, four to six real `good first issue` items, social preview checked.
