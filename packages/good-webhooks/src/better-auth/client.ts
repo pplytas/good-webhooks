@@ -1,5 +1,17 @@
+import type { BetterFetchPlugin } from '@better-fetch/fetch'
 import type { BetterAuthClientPlugin } from 'better-auth'
 import type { goodWebhooks } from './index.js'
+
+/** Parse Good Webhooks responses as JSON. */
+const jsonResponses: BetterFetchPlugin = {
+  id: 'good-webhooks-json',
+  name: 'Good Webhooks JSON responses',
+  init(url, options) {
+    if (!new URL(url, 'http://localhost').pathname.includes('/good-webhooks/'))
+      return { url, ...(options ? { options } : {}) }
+    return { url, options: { ...options, jsonParser: JSON.parse } }
+  },
+}
 
 /** Match the server event names to retain literal event types on the client. */
 export function goodWebhooksClient<
@@ -19,16 +31,6 @@ export function goodWebhooksClient<
       '/good-webhooks/rotate-secret': 'POST',
       '/good-webhooks/send-test-event': 'POST',
     },
-    fetchPlugins: [
-      {
-        id: 'good-webhooks-json',
-        name: 'Good Webhooks JSON responses',
-        init(url, options) {
-          if (!new URL(url, 'http://localhost').pathname.includes('/good-webhooks/'))
-            return { url, ...(options ? { options } : {}) }
-          return { url, options: { ...options, jsonParser: JSON.parse } }
-        },
-      },
-    ],
+    fetchPlugins: [jsonResponses],
   } satisfies BetterAuthClientPlugin
 }
