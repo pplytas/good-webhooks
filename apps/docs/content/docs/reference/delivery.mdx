@@ -212,15 +212,15 @@ const { deliveries, oldestPendingAgeMs, attemptsLastHour } = await delivery.deli
 // attemptsLastHour: { started: 2, succeeded: 140, retry: 6, failed: 1, abandoned: 0 }
 ```
 
-| `DeliveryStats` field | Meaning                                                                                                                 |
-| --------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `deliveries`          | Retained deliveries by status. Every status is present, `0` when none.                                                  |
-| `oldestPendingAgeMs`  | Milliseconds since the oldest `pending` delivery was created, from the database clock. `null` when none is pending.     |
-| `attemptsLastHour`    | Attempts started in the last hour by [outcome](#attempt-outcomes). `started` counts attempts still in flight. All keys. |
+| `DeliveryStats` field | Meaning                                                                                                                               |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `deliveries`          | Retained deliveries by status. Every status is present, `0` when none.                                                                |
+| `oldestPendingAgeMs`  | Milliseconds since the oldest `pending` delivery was created, from the database clock. `null` when none is pending.                   |
+| `attemptsLastHour`    | Attempts started in the last hour by [outcome](#attempt-outcomes). `started` counts attempts not yet finished or recovered. All keys. |
 
 `pending` includes deliveries waiting for a retry and deliveries queued behind a paused endpoint. Replays count as deliveries. Deliveries and attempts come from two separate reads, so they can disagree slightly under load.
 
-**Cost.** `stats` runs two queries without a transaction. The deliveries query reads every retained delivery of the scope. PostgreSQL reads the scope through its index when the scope is a small share of the table. When the scope holds most of the table, it scans the whole deliveries table instead. That is the usual case for an app that only uses application scope. The attempts query visits every retained attempt of the scope, because the last-hour filter has no index. As an order of magnitude, not a promise: with about 100,000 deliveries and 150,000 attempts in one scope, the deliveries query took tens of milliseconds and the attempts query under a quarter of a second on a local machine. Cost grows with retention, and [`prune()`](#prune) bounds it. Call it from a status page or a periodic check, not on every request.
+**Cost.** `stats` runs two queries without a transaction. The deliveries query reads every retained delivery of the scope. PostgreSQL reads the scope through its index when the scope is a small share of the table. When the scope holds most of the table, it scans the whole deliveries table instead. That is the usual case for an app that only uses application scope. The last-hour filter on attempts has no index. So the attempts query either reads every retained attempt of the scope through the deliveries index, or scans the whole attempts table when that is cheaper. As an order of magnitude, not a promise: with about 100,000 deliveries and 150,000 attempts in one scope, each query took tens of milliseconds on a local machine. Cost grows with retention, and [`prune()`](#prune) bounds it. Call it from a status page or a periodic check, not on every request.
 
 ### Delivery and attempt records
 

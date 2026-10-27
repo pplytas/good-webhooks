@@ -241,7 +241,7 @@ export interface DeliveryStats {
   deliveries: Record<DeliveryStatus, number>
   /** Milliseconds since the oldest pending delivery was created, or null when none is pending. */
   oldestPendingAgeMs: number | null
-  /** Attempts started in the last hour by outcome. `started` counts attempts still in flight. Every outcome is present. */
+  /** Attempts started in the last hour by outcome. `started` counts attempts not yet finished or recovered. Every outcome is present. */
   attemptsLastHour: Record<Attempt['outcome'], number>
 }
 export interface Page<T> {

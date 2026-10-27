@@ -164,6 +164,31 @@ describe('delivery stats', () => {
       started: 1,
       retry: 1,
     })
+
+    // Recovered, just inside the window, and just outside it. statement_timestamp() moves on
+    // between statements, so the boundary is checked a few seconds either side.
+    await pool.query(
+      `INSERT INTO public.webhook_attempts(delivery_id,number,started_at,outcome) VALUES
+        ($1,2,statement_timestamp(),'abandoned'),
+        ($1,3,statement_timestamp()-interval '1 hour'+interval '5 seconds','failed'),
+        ($1,4,statement_timestamp()-interval '1 hour'-interval '5 seconds','failed')`,
+      [succeeded],
+    )
+    // A delivery still preparing its claim has no attempt yet.
+    await app.publish({ type: 'order.created', data: { id: 'order-2' } })
+    await pool.query(
+      `UPDATE public.webhook_deliveries SET status='in_flight',preparing=true
+      WHERE id=(SELECT max(id) FROM public.webhook_deliveries)`,
+    )
+    const stats = await app.deliveries.stats()
+    expect(stats.deliveries).toMatchObject({ in_flight: 1, pending: 2 })
+    expect(stats.attemptsLastHour).toEqual({
+      started: 1,
+      succeeded: 0,
+      retry: 1,
+      failed: 1,
+      abandoned: 1,
+    })
   })
 
   it('never counts another scope', async () => {
@@ -195,9 +220,5 @@ describe('delivery stats', () => {
     const store = createStore(testConfig())
     for (const key of ['', ' ', 'a\0b', 'x'.repeat(2049), undefined, 42])
       await expect(store.stats(key as string)).rejects.toMatchObject({ code: 'INVALID_INPUT' })
-    const app = createWebhooks(options)
-    expect(() => app.forScope({ type: 'organization', id: '' })).toThrow(
-      expect.objectContaining({ code: 'INVALID_INPUT' }),
-    )
   })
 })

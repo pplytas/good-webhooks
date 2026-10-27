@@ -102,7 +102,7 @@ await pool.end()
 
 Schedule `webhooks.worker.prune()` in a loop until it returns `0` from a cleanup job; workers never delete history.
 
-For backlog checks, call `webhooks.deliveries.stats()` (or `forScope(scope).deliveries.stats()`) from a periodic job and alert on growing `deliveries.pending` or a high `oldestPendingAgeMs`; it reads the scope's whole retained history, so never call it per request.
+For backlog checks, call `webhooks.deliveries.stats()` (or `forScope(scope).deliveries.stats()`) from a periodic job and alert on growing `deliveries.pending` or a high `oldestPendingAgeMs`. It reads the scope's whole retained history, so never call it per request.
 
 ## Endpoints
 

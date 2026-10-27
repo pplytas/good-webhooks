@@ -442,44 +442,41 @@ export function createStore(config: ResolvedConfig) {
     })
   }
 
-  /** Two indexed reads, one per table, without a transaction. Cost grows with the scope's retained history. */
+  /** Two reads, one per table, without a transaction. Cost grows with the scope's retained history. */
   async function stats(scopeKey: string): Promise<DeliveryStats> {
     scope(scopeKey)
     // Counts read the (scope_key,endpoint_id,status,id) index, or the table when the scope holds
-    // most rows. The oldest pending row comes from a pending-only index. The age uses the
-    // database clock, like created_at itself.
+    // most rows. The oldest pending row comes from the pending-only index or the endpoint index,
+    // by the planner's choice. The age uses the database clock, like created_at itself.
     const deliveries = await config.database.query<{
       status: DeliveryStatus
-      count: string
+      count: number
       oldest_pending_age_ms: number | null
     }>(
-      `SELECT d.status,count(*)::bigint AS count,
+      `SELECT d.status,count(*)::integer AS count,
         (SELECT floor(extract(epoch FROM statement_timestamp()-min(p.created_at))*1000)::float8
           FROM ${tables.deliveries} p WHERE p.scope_key=$1 AND p.status='pending') AS oldest_pending_age_ms
       FROM ${tables.deliveries} d WHERE d.scope_key=$1 GROUP BY d.status`,
       [scopeKey],
     )
-    // started_at has no index, so this walks every retained attempt of the scope through the
-    // attempts primary key. OFFSET 0 keeps PostgreSQL from flattening the subquery into a hash
-    // join over every attempt in the schema, so the cost follows the scope's own attempts.
-    const attempts = await config.database.query<{ outcome: Attempt['outcome']; count: string }>(
-      `SELECT a.outcome,count(*)::bigint AS count FROM ${tables.deliveries} d
-      CROSS JOIN LATERAL (
-        SELECT a.outcome FROM ${tables.attempts} a
-        WHERE a.delivery_id=d.id AND a.started_at>=statement_timestamp()-interval '1 hour' OFFSET 0
-      ) a
-      WHERE d.scope_key=$1 GROUP BY a.outcome`,
+    // There is no index on started_at, so the planner reads the scope's attempts through the
+    // deliveries index or hash-joins the whole attempts table when that is cheaper.
+    const attempts = await config.database.query<{ outcome: Attempt['outcome']; count: number }>(
+      `SELECT a.outcome,count(*)::integer AS count FROM ${tables.deliveries} d
+      JOIN ${tables.attempts} a ON a.delivery_id=d.id
+      WHERE d.scope_key=$1 AND a.started_at>=statement_timestamp()-interval '1 hour'
+      GROUP BY a.outcome`,
       [scopeKey],
     )
-    // A row committed between this statement's start and its snapshot can be microseconds newer.
-    const age = deliveries.rows[0]?.oldest_pending_age_ms
+    const age = deliveries.rows[0]?.oldest_pending_age_ms ?? null
     const result: DeliveryStats = {
       deliveries: { pending: 0, in_flight: 0, succeeded: 0, failed: 0, cancelled: 0 },
-      oldestPendingAgeMs: age === null || age === undefined ? null : Math.max(0, age),
+      // A row committed between this statement's start and its snapshot can be microseconds newer.
+      oldestPendingAgeMs: age === null ? null : Math.max(0, age),
       attemptsLastHour: { started: 0, succeeded: 0, retry: 0, failed: 0, abandoned: 0 },
     }
-    for (const row of deliveries.rows) result.deliveries[row.status] = Number(row.count)
-    for (const row of attempts.rows) result.attemptsLastHour[row.outcome] = Number(row.count)
+    for (const row of deliveries.rows) result.deliveries[row.status] = row.count
+    for (const row of attempts.rows) result.attemptsLastHour[row.outcome] = row.count
     return result
   }
 
