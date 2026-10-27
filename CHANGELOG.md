@@ -17,7 +17,7 @@ Pure code release on schema `6`, no SQL, tracked in [#123](https://github.com/pp
   - `webhook-*`, `content-type`, `user-agent`, and hop-by-hop names are rejected.
 - `deliveries.stats()` returns counts by status, the oldest pending age, and the last hour's attempts by outcome ([docs](apps/docs/content/docs/reference/delivery.mdx#stats), [#129](https://github.com/pplytas/good-webhooks/pull/129)).
   - Two table reads per call, with the cost stated in the docs.
-- `describeEvents()` returns the event names with a JSON Schema per event through Standard JSON Schema ([docs](apps/docs/content/docs/guides/publish.mdx#describe-your-events), [#130](https://github.com/pplytas/good-webhooks/pull/130)).
+- `describeEvents()` returns the event names, with a JSON Schema for each validator that implements Standard JSON Schema ([docs](apps/docs/content/docs/guides/publish.mdx#describe-your-events), [#130](https://github.com/pplytas/good-webhooks/pull/130)).
   - Zod 4.2+ and ArkType 2.1.28+ work as is, and Valibot needs `@valibot/to-json-schema`.
 - Better Auth create and update bodies accept `headers`, and the endpoint DTO returns them.
 

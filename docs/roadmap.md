@@ -37,6 +37,8 @@ The current stability policy already states most of the contract. 1.0 turns the 
 
 ## Releases
 
+The dates below are the plan as written in October 2026. 0.5.0 shipped on 26 October 2026 and 0.6.0 on 27 October 2026; the [changelog](../CHANGELOG.md) records what each release carried.
+
 ### 0.4.x patches, now to mid-November 2026
 
 No API change. Each item is cheap and either fixes the funnel or removes a 1.0 blocker early.
