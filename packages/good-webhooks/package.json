@@ -1,6 +1,6 @@
 {
   "name": "good-webhooks",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Outbound webhooks for TypeScript apps, stored in your own PostgreSQL: transactional publish, Standard Webhooks signing, retries, and endpoint management.",
   "keywords": [
     "webhooks",
