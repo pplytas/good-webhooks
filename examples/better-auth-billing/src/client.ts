@@ -23,6 +23,10 @@ const money = (cents: number) =>
 const badge = (status: string) =>
   `<span class="badge ${html(status)}">${html(status.replaceAll('_', ' '))}</span>`
 const empty = (text: string) => `<p class="empty">${text}</p>`
+const headerLines = (headers: Record<string, string>) =>
+  Object.entries(headers)
+    .map(([name, value]) => `<p>${html(`${name}: ${value}`)}</p>`)
+    .join('')
 const previousMarkup = new WeakMap<HTMLElement, string>()
 function updateMarkup(selector: string, markup: string) {
   const element = $(selector)
@@ -146,13 +150,7 @@ function render() {
       ? endpoints
           .map(
             (endpoint) =>
-              `<article class="endpoint"><div class="topline"><strong>${html(endpoint.description || 'Invoice endpoint')}</strong>${badge(endpoint.status)}</div><p>${html(endpoint.url)}</p><p>${html(endpoint.eventTypes.join(', '))}</p>${Object.entries(
-                endpoint.headers,
-              )
-                .map(([name, value]) => `<p>${html(`${name}: ${value}`)}</p>`)
-                .join(
-                  '',
-                )}<div class="actions"><button class="secondary small" data-endpoint="${html(endpoint.id)}" data-operation="${endpoint.status === 'paused' ? 'resume' : 'pause'}">${endpoint.status === 'paused' ? 'Resume' : 'Pause'}</button><button class="secondary small danger" data-endpoint="${html(endpoint.id)}" data-operation="remove">Remove</button>${state.receivers.some((r) => r.endpoint_id === endpoint.id) ? '<span class="subtext">Receiver connected</span>' : '<span class="subtext">Secret transfer needed</span>'}</div></article>`,
+              `<article class="endpoint"><div class="topline"><strong>${html(endpoint.description || 'Invoice endpoint')}</strong>${badge(endpoint.status)}</div><p>${html(endpoint.url)}</p><p>${html(endpoint.eventTypes.join(', '))}</p>${headerLines(endpoint.headers)}<div class="actions"><button class="secondary small" data-endpoint="${html(endpoint.id)}" data-operation="${endpoint.status === 'paused' ? 'resume' : 'pause'}">${endpoint.status === 'paused' ? 'Resume' : 'Pause'}</button><button class="secondary small danger" data-endpoint="${html(endpoint.id)}" data-operation="remove">Remove</button>${state.receivers.some((r) => r.endpoint_id === endpoint.id) ? '<span class="subtext">Receiver connected</span>' : '<span class="subtext">Secret transfer needed</span>'}</div></article>`,
           )
           .join('')
       : empty('Create your first endpoint to receive invoice events.'),

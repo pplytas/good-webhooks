@@ -16,7 +16,9 @@ npm run dev
 Open [Ledger desk](http://127.0.0.1:4312). Use that exact address. The app requires the configured origin for mutations and binds to loopback.
 
 1. Create an account with a made-up email and a demo password.
-2. Create an endpoint. The typed Better Auth client calls the plugin's authenticated management routes. An optional gateway API key becomes an `x-api-key` header on every request, test events included. The receiver echoes it in its invoice responses, which the attempt panel shows.
+2. Create an endpoint. The typed Better Auth client calls the plugin's authenticated management routes.
+   - An optional gateway API key becomes an `x-api-key` header on every request, test events included.
+   - The receiver echoes it in its invoice responses, which the attempt panel shows.
 3. Copy the one-time signing secret if needed, then click **Transfer to local receiver**. The demo stores an encrypted receiver copy. If you leave before transferring it, remove the endpoint and create another.
 4. Create an invoice. Its delivery and the receiver's recorded invoice appear on the right.
 5. Record payment to send `invoice.paid`.
