@@ -71,29 +71,21 @@ async function npmStats() {
   }
 }
 
-// Turns HTML into plain text with single spaces.
-function htmlToText(html) {
-  const entities = { nbsp: ' ', amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'" }
-  return html
-    .replace(/<script\b[\s\S]*?<\/script\s*>|<style\b[\s\S]*?<\/style\s*>/gi, ' ')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&(nbsp|amp|lt|gt|quot|#39);/g, (_, name) => entities[name])
-    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)))
-    .replace(/\s+/g, ' ')
-}
-
 // GitHub has no API for "Used by" counts, so read the dependents page.
+// Each count sits in the page text shortly after its dependent_type link.
 async function dependents() {
   const result = { source: 'github-dependents-page', repositories: null, packages: null }
   try {
     const url = `https://github.com/${repo}/network/dependents`
-    const text = htmlToText(await (await request(url, pageHeaders)).text())
-    const parse = (pattern) => {
-      const match = text.match(pattern)
+    const html = await (await request(url, pageHeaders)).text()
+    const count = (type, word) => {
+      const match = html.match(
+        new RegExp(`dependent_type=${type}[^>]*>[\\s\\S]{0,2000}?(\\d[\\d,]*)\\s+${word}\\b`),
+      )
       return match ? Number(match[1].replace(/,/g, '')) : null
     }
-    result.repositories = parse(/(\d[\d,]*)\s+Repositor(?:y|ies)\b/)
-    result.packages = parse(/(\d[\d,]*)\s+Packages?\b/)
+    result.repositories = count('REPOSITORY', 'Repositor(?:y|ies)')
+    result.packages = count('PACKAGE', 'Packages?')
     if (result.repositories === null || result.packages === null) {
       result.error = 'Could not parse the dependents counts from the page.'
     }
