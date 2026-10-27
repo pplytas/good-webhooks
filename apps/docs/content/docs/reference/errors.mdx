@@ -44,23 +44,25 @@ try {
 
 ## Codes
 
-| Code                   | Meaning                                                                          | Thrown by                                                               |
-| ---------------------- | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| `INVALID_CONFIG`       | Invalid constructor, encryption, migration, or receiver-validator configuration. | Constructors, `getPostgresMigration`, `parseWebhook`, secret decryption |
-| `INVALID_INPUT`        | Invalid operation arguments or producer payload.                                 | Most operations                                                         |
-| `UNSAFE_URL`           | Destination fails URL or resolved-address validation.                            | Endpoint create, update, and resume                                     |
-| `NOT_FOUND`            | Record or owner is absent in the selected scope.                                 | Endpoint and delivery lookups, `replayMany`                             |
-| `INVALID_STATE`        | Operation conflicts with lifecycle, limits, retention, or concurrent state.      | Endpoint lifecycle, `replay`, `replayMany`, worker overlap              |
-| `ENDPOINT_LIMIT`       | The scope already has its `maxEndpoints` limit of endpoints.                     | Endpoint create                                                         |
-| `IDEMPOTENCY_CONFLICT` | An accepted key identifies different event content.                              | `publish`                                                               |
-| `REPLAY_IN_PROGRESS`   | An original delivery already has a pending or in-flight replay.                  | `replay`                                                                |
-| `SCHEMA_MISMATCH`      | Expected storage is missing or incompatible.                                     | `check()`, Better Auth record reads                                     |
-| `SIGNATURE_INVALID`    | Webhook headers or signature are invalid.                                        | `verifyWebhook`, `parseWebhook`                                         |
-| `SIGNATURE_EXPIRED`    | Webhook timestamp falls outside the configured tolerance.                        | `verifyWebhook`, `parseWebhook`                                         |
-| `PAYLOAD_INVALID`      | An authenticated webhook body fails envelope or receiver-payload validation.     | `parseWebhook`                                                          |
-| `TRANSACTION_REQUIRED` | A supplied publication client has no active PostgreSQL transaction.              | `publish` with `options.transaction`                                    |
+| Code                   | Meaning                                                                          | Thrown by                                                                                 |
+| ---------------------- | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `INVALID_CONFIG`       | Invalid constructor, encryption, migration, or receiver-validator configuration. | Constructors, `getPostgresMigration`, `parseWebhook`, `describeEvents`, secret decryption |
+| `INVALID_INPUT`        | Invalid operation arguments or producer payload.                                 | Most operations                                                                           |
+| `UNSAFE_URL`           | Destination fails URL or resolved-address validation.                            | Endpoint create, update, and resume                                                       |
+| `NOT_FOUND`            | Record or owner is absent in the selected scope.                                 | Endpoint and delivery lookups, `replayMany`                                               |
+| `INVALID_STATE`        | Operation conflicts with lifecycle, limits, retention, or concurrent state.      | Endpoint lifecycle, `replay`, `replayMany`, worker overlap                                |
+| `ENDPOINT_LIMIT`       | The scope already has its `maxEndpoints` limit of endpoints.                     | Endpoint create                                                                           |
+| `IDEMPOTENCY_CONFLICT` | An accepted key identifies different event content.                              | `publish`                                                                                 |
+| `REPLAY_IN_PROGRESS`   | An original delivery already has a pending or in-flight replay.                  | `replay`                                                                                  |
+| `SCHEMA_MISMATCH`      | Expected storage is missing or incompatible.                                     | `check()`, Better Auth record reads                                                       |
+| `SIGNATURE_INVALID`    | Webhook headers or signature are invalid.                                        | `verifyWebhook`, `parseWebhook`                                                           |
+| `SIGNATURE_EXPIRED`    | Webhook timestamp falls outside the configured tolerance.                        | `verifyWebhook`, `parseWebhook`                                                           |
+| `PAYLOAD_INVALID`      | An authenticated webhook body fails envelope or receiver-payload validation.     | `parseWebhook`                                                                            |
+| `TRANSACTION_REQUIRED` | A supplied publication client has no active PostgreSQL transaction.              | `publish` with `options.transaction`                                                      |
 
 Each reference page lists the exact conditions for its operations.
+
+`describeEvents` reports a `target` the validator rejects as `INVALID_CONFIG` naming the event, like any other conversion failure, because the validator's error cannot be told apart. See [describeEvents](/docs/reference/core#describeevents).
 
 ## Failures outside WebhookError
 

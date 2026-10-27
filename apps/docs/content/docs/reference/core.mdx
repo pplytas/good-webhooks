@@ -141,15 +141,17 @@ Returns one entry per event, in the order of the event map. The client method de
 | `type`                   | `string`                          | The event name from the map.                                                                               |
 | `schema`                 | `Record<string, unknown> \| null` | JSON Schema of the validated output, or `null` when the validator does not implement Standard JSON Schema. |
 
-| `DescribeEventsOptions` field | Default           | Contract                                                                            |
-| ----------------------------- | ----------------- | ----------------------------------------------------------------------------------- |
-| `target`                      | `'draft-2020-12'` | JSON Schema dialect passed to the validator, such as `'draft-07'`. Nonempty string. |
+| `DescribeEventsOptions` field | Default           | Contract                                                                                                                                |
+| ----------------------------- | ----------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `target`                      | `'draft-2020-12'` | JSON Schema dialect passed to the validator, such as `'draft-07'`. Nonempty string.                                                     |
+| `libraryOptions`              | None              | Object passed to every validator's converter unchanged, such as Zod's `{ unrepresentable: 'any' }`. Omitted from the call when not set. |
 
-The schema comes from the validator's `~standard.jsonSchema.output()`, so defaulted fields are required. Good Webhooks imports no validator library. The [publish guide](/docs/guides/publish#describe-your-events) lists which validators support it.
+The schema comes from the validator's `~standard.jsonSchema.output()`. In Zod and ArkType, a field with a default is therefore required. Good Webhooks imports no validator library. The [publish guide](/docs/guides/publish#describe-your-events) lists which validators support it and their `libraryOptions`.
 
 - An invalid event map throws `INVALID_CONFIG`, as in `createWebhooks()`.
-- Options that are not an object, or a `target` that is not a nonempty string, throw `INVALID_INPUT`.
-- A validator that cannot convert its schema, for example a transform, a date, or an unsupported `target`, throws `INVALID_CONFIG` naming the event. The validator's error is the `cause`.
+- Options that are not an object, a `target` that is not a nonempty string, or `libraryOptions` that are not an object throw `INVALID_INPUT`.
+- A validator that cannot convert its schema, for example a transform or a date, throws `INVALID_CONFIG` naming the event. The validator's error is the `cause`.
+- A target the validator rejects throws the same way. Zod accepts unknown targets and omits `$schema`.
 
 ## generateEncryptionKey
 

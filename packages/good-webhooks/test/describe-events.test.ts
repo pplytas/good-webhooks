@@ -19,7 +19,12 @@ const plain: StandardSchemaV1<{ id: string }> = {
   },
 }
 
-function withConverter(output: () => Record<string, unknown>): StandardSchemaV1 {
+function withConverter(
+  output: (options: {
+    target: string
+    libraryOptions?: Record<string, unknown>
+  }) => Record<string, unknown>,
+): StandardSchemaV1 {
   return {
     '~standard': {
       ...plain['~standard'],
@@ -102,6 +107,33 @@ describe('describeEvents', () => {
     )
   })
 
+  it('passes library options to the converter only when given', () => {
+    const calls: unknown[] = []
+    const recording = withConverter((options) => {
+      calls.push(options)
+      return { type: 'object' }
+    })
+    describeEvents({ 'order.created': recording })
+    describeEvents(
+      { 'order.created': recording },
+      { target: 'draft-07', libraryOptions: { unrepresentable: 'any' } },
+    )
+    expect(calls).toEqual([
+      { target: 'draft-2020-12' },
+      { target: 'draft-07', libraryOptions: { unrepresentable: 'any' } },
+    ])
+    expect(calls[0]).not.toHaveProperty('libraryOptions')
+  })
+
+  it('lets Zod describe a date as {} with unrepresentable: any', () => {
+    const events = { 'order.created': z.object({ at: z.date() }) }
+    expect(() => describeEvents(events)).toThrow(
+      expect.objectContaining({ code: 'INVALID_CONFIG' }),
+    )
+    const [description] = describeEvents(events, { libraryOptions: { unrepresentable: 'any' } })
+    expect(description?.schema).toMatchObject({ properties: { at: {} }, required: ['at'] })
+  })
+
   it('reports Zod transforms as INVALID_CONFIG', () => {
     const events = { 'order.created': z.object({ total: z.string().transform(Number) }) }
     expect(() => describeEvents(events)).toThrow(
@@ -127,10 +159,12 @@ describe('describeEvents', () => {
   it.each([
     ['null options', null],
     ['string options', 'draft-07'],
-    ['array options', []],
     ['an empty target', { target: '' }],
     ['a numeric target', { target: 7 }],
     ['a null target', { target: null }],
+    ['null library options', { libraryOptions: null }],
+    ['string library options', { libraryOptions: 'any' }],
+    ['array library options', { libraryOptions: [] }],
   ])('rejects %s with INVALID_INPUT', (_, options) => {
     expect(() =>
       describeEvents({ 'order.created': order }, options as unknown as { target?: string }),
@@ -144,9 +178,14 @@ describe('describeEvents', () => {
       encryptionKey: new Uint8Array(32).fill(7),
       events,
     })
-    expect(webhooks.describeEvents()).toEqual(describeEvents(events))
+    const before = describeEvents(events)
+    expect(webhooks.describeEvents()).toEqual(before)
     expect(webhooks.describeEvents({ target: 'draft-07' })).toEqual(
       describeEvents(events, { target: 'draft-07' }),
     )
+    // The engine keeps its own copy of the map.
+    Object.assign(events, { 'order.refunded': order })
+    delete (events as Partial<typeof events>)['order.paid']
+    expect(webhooks.describeEvents()).toEqual(before)
   })
 })

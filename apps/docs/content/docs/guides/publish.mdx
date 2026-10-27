@@ -87,9 +87,9 @@ export function GET() {
 }
 ```
 
-Or render each `type` with its `schema` on a docs page. Without a delivery engine, for example in a Better Auth app that only manages endpoints, call `describeEvents(events)` from `good-webhooks` with the same map.
+Or render each `type` with its `schema` on a docs page. Without a delivery engine, for example in a Better Auth app that only manages endpoints, call `describeEvents(events)` from `good-webhooks` with the validator map your own sender uses.
 
-The schema describes the validated output, because that is the payload receivers get. A field with a default is therefore required. Pick the JSON Schema dialect with `target`:
+The schema describes the validated output, because that is the payload receivers get. In Zod and ArkType, a field with a default is therefore required. Pick the JSON Schema dialect with `target`:
 
 ```ts
 webhooks.describeEvents({ target: 'draft-07' }) // default 'draft-2020-12'
@@ -115,10 +115,23 @@ export const events = {
 }
 ```
 
-Zod and Valibot cannot convert transforms or dates. `describeEvents()` then throws `INVALID_CONFIG` naming the event. To fix it:
+Zod and Valibot cannot convert transforms or dates by default. `describeEvents()` then throws `INVALID_CONFIG` naming the event, and returns no entries at all. To fix it:
 
 - Define the event with a JSON-shaped schema, such as `z.iso.datetime()` instead of `z.date()`.
-- Or build that event's schema yourself, for example with `z.toJSONSchema(schema, { unrepresentable: 'any' })`, and add it to your catalog.
+- Or pass the validator's own option through `libraryOptions`, from the table below.
+- Or call `describeEvents()` on a map without that event, and append your own entry for it.
+
+```ts
+webhooks.describeEvents({ libraryOptions: { unrepresentable: 'any' } })
+```
+
+`libraryOptions` goes to every event's converter unchanged:
+
+| Validator | `libraryOptions`             | Effect                                                                                                                 |
+| --------- | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Zod       | `{ unrepresentable: 'any' }` | Transforms and dates become `{}`.                                                                                      |
+| Valibot   | `{ errorMode: 'ignore' }`    | Dates become `{}`. Transforms are skipped, so the field shows its input type.                                          |
+| ArkType   | `{ fallback }`               | Your function returns the schema, such as `{ date: (ctx) => ({ ...ctx.base, type: 'string', format: 'date-time' }) }`. |
 
 ## Make retries of your code safe
 

@@ -122,6 +122,9 @@ function consumerTypes(request: IncomingMessage) {
     const required: Record<string, unknown> = schema
     void [name, jsonSchema, required]
   }
+  describeEvents(appEvents, { libraryOptions: { unrepresentable: 'any' } })
+  // @ts-expect-error library options are an object
+  delivery.describeEvents({ libraryOptions: 'any' })
   // @ts-expect-error the JSON Schema target is a string
   describeEvents(appEvents, { target: 7 })
   // @ts-expect-error bound clients do not describe the installation's event map
