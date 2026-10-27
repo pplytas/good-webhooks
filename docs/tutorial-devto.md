@@ -102,8 +102,8 @@ const receiver = createServer(async (request, response) => {
   const given = request.headers['x-signature']
   if (
     typeof given !== 'string' ||
-    given.length !== expected.length ||
-    !timingSafeEqual(Buffer.from(given), Buffer.from(expected))
+    !/^[0-9a-f]{64}$/.test(given) ||
+    !timingSafeEqual(Buffer.from(given, 'hex'), Buffer.from(expected, 'hex'))
   )
     return answer(400)
   captured = { body, signature: given }
