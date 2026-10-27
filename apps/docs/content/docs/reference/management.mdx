@@ -75,15 +75,17 @@ All direct calls are trusted server operations. They do not authorize the caller
 | `create(scope, input)`              | `Promise<ManagedEndpointWithSecret>`. Creates an active endpoint and returns `{ endpoint, secret }`.                                                 |
 | `list(scope)`                       | `Promise<ManagedEndpoint[]>`. Returns every nondeleted endpoint in the scope.                                                                        |
 | `get(scope, id)`                    | `Promise<ManagedEndpoint>`. Returns an endpoint, including its deleted state.                                                                        |
-| `update(scope, id, patch)`          | `Promise<ManagedEndpoint>`. Changes the supplied mutable fields. `headers` replaces the whole set.                                                   |
+| `update(scope, id, patch)`          | Changes the supplied fields.                                                                                                                         |
 | `pause(scope, id)`                  | `Promise<ManagedEndpoint>`. Changes the status to `'paused'` with `pauseReason: 'owner'`.                                                            |
 | `resume(scope, id)`                 | `Promise<ManagedEndpoint>`. Validates the current URL, changes status to `'active'`, and clears `pauseReason`. Also resumes automatic pauses.        |
-| `remove(scope, id)`                 | `Promise<ManagedEndpoint>`. Sets status to `'deleted'` and clears signing secrets and headers. Removing an already deleted record is idempotent.     |
+| `remove(scope, id)`                 | Clears secrets and headers.                                                                                                                          |
 | `rotateSecret(scope, id, options?)` | `Promise<ManagedEndpointWithSecret>`. Changes the signing secret. `options.graceMs` defaults to 86,400,000 and accepts 0 through 86,400,000.         |
 | `sendTestEvent(scope, id)`          | `Promise<TestEventResult>`. Signs and sends one [test event](#test-events) to an active or paused endpoint. Deleted endpoints throw `INVALID_STATE`. |
 | `removeScope(scope)`                | `Promise<void>`. Deletes the scope's currently registered endpoints.                                                                                 |
-| `reencrypt(scope)`                  | `Promise<number>`. Rewrites live signing-secret and header ciphertext using the current storage encryption key and returns the count.                |
+| `reencrypt(scope)`                  | Re-encrypts secrets and headers.                                                                                                                     |
 | `source`                            | Trusted sender reads. See [EndpointSource](#endpointsource).                                                                                         |
+
+`update` returns the endpoint and changes only the supplied fields; `headers` replaces the whole header set. `remove` sets status to `'deleted'`, clears signing secrets and headers, and returns the endpoint; removing an already deleted record is idempotent. `reencrypt` rewrites live signing-secret and header ciphertext with the current storage encryption key and returns the count.
 
 ### Test events
 
@@ -114,7 +116,7 @@ A receiver failure is a result with `ok: false`, never a thrown error. An unsafe
 | URL          | At most 2,048 characters. Must pass the configured destination validation, otherwise `UNSAFE_URL`. |
 | Description  | At most 2,000 characters, no null bytes.                                                           |
 | `eventTypes` | 1 through 100 configured event names. Duplicates are collapsed.                                    |
-| `headers`    | A plain object of at most 20 headers. See [endpoint headers](#endpoint-headers).                   |
+| `headers`    | See [endpoint headers](#endpoint-headers).                                                         |
 | Endpoints    | At most 1,000 nondeleted endpoints per scope, or fewer with `maxEndpoints`.                        |
 | `graceMs`    | Integer from 0 through 86,400,000. Default 86,400,000.                                             |
 
@@ -122,15 +124,15 @@ A receiver failure is a result with `ok: false`, never a thrown error. An unsafe
 
 `headers` adds request headers to every attempt and test event, for example a key an API gateway checks. Validation runs before any storage call and throws `INVALID_INPUT`:
 
-| Rule     | Limit                                                                                                                                       |
-| -------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| Count    | At most 20 headers.                                                                                                                         |
-| Name     | 1 through 100 characters, an RFC 9110 token. Two names that differ only in case are rejected.                                               |
-| Value    | A nonempty string of visible ASCII, spaces, and tabs.                                                                                       |
-| Total    | At most 2 KiB (2,048 bytes) in total as JSON, in UTF-8. Escaped quotes and backslashes count their encoded size.                            |
-| Reserved | Names starting with `webhook-`, plus `content-type`, `user-agent`, and the hop-by-hop names the transport sets, whatever their letter case. |
+| Rule     | Limit                        |
+| -------- | ---------------------------- |
+| Count    | 20                           |
+| Name     | 1 to 100 characters, a token |
+| Value    | Visible ASCII, space, tab    |
+| Total    | 2 KiB as JSON                |
+| Reserved | See below                    |
 
-The hop-by-hop names are `host`, `content-length`, `connection`, `transfer-encoding`, `upgrade`, `expect`, `proxy-authorization`, `proxy-connection`, `trailer`, and `te`. Management stores the set as one encrypted JSON value, or nothing when it is empty.
+Names are RFC 9110 tokens, and two names that differ only in letter case are rejected. A value is a nonempty string of visible ASCII, spaces, and tabs. The total is the UTF-8 byte length of the headers as JSON, so escaped quotes and backslashes count their encoded size. Reserved names, whatever their letter case, are those starting with `webhook-`, plus `content-type`, `user-agent`, and the hop-by-hop names the transport sets: `host`, `content-length`, `connection`, `transfer-encoding`, `upgrade`, `expect`, `proxy-authorization`, `proxy-connection`, `trailer`, and `te`. Management stores the set as one encrypted JSON value, or nothing when it is empty.
 
 ### Results
 

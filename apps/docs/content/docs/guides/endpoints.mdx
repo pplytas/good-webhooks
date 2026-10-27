@@ -72,13 +72,13 @@ await organization.endpoints.remove(id)
 
 | Method         | Effect                                                                                                                  |
 | -------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `update`       | Changes the URL, description, subscriptions, or `headers`. A new URL is checked again                                   |
+| `update`       | Changes URL, description, subscriptions, or headers                                                                     |
 | `pause`        | Keeps subscriptions and queued deliveries. The worker holds them until resume, then sends them with a full retry window |
 | `resume`       | Checks the URL again, then queued deliveries send                                                                       |
 | `rotateSecret` | Returns a new signing secret. Both sign requests during the overlap (default and max 24 h)                              |
 | `remove`       | Permanent. Clears stored secrets, cancels queued deliveries, and keeps a deleted record                                 |
 
-These calls return as soon as the record changes. A request already being sent can still arrive after a pause or remove. See [endpoint changes while work is queued](/docs/concepts/delivery-guarantees#endpoint-changes-while-work-is-queued).
+`update` checks a new URL again. These calls return as soon as the record changes. A request already being sent can still arrive after a pause or remove. See [endpoint changes while work is queued](/docs/concepts/delivery-guarantees#endpoint-changes-while-work-is-queued).
 
 ## Send extra headers
 

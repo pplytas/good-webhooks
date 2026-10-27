@@ -227,7 +227,7 @@ describe('standalone PostgreSQL management', () => {
     expect(await management.get(null, endpoint.id)).toMatchObject({ status: 'deleted' })
   })
 
-  it('rewrites both signing secrets and the headers under a replacement storage key', async () => {
+  it('rewrites both signing secrets under a replacement storage key', async () => {
     const initial = create()
     const headers = { 'x-api-key': 'key-1' }
     const first = await initial.create(null, { ...input, headers })
