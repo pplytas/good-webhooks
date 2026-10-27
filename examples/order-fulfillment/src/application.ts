@@ -33,25 +33,29 @@ export function createApplication(runtime: Runtime) {
   }
   app.get('/api/state', async (_request, response) => {
     const endpointId = await configuredEndpointId()
-    const [orders, endpoint, deliveries, shipments, receiver, heartbeat] = await Promise.all([
-      pool.query(
-        `SELECT ${orderColumns} FROM ${table('shop_orders')} ORDER BY created_at DESC, id DESC LIMIT 50`,
-      ),
-      endpointId ? webhooks.endpoints.get(endpointId) : null,
-      webhooks.deliveries.list({ limit: 50 }),
-      pool.query(
-        `SELECT event_id AS "eventId", order_id AS "orderId", customer, received_at AS "receivedAt" FROM ${table('warehouse_shipments')} ORDER BY received_at DESC LIMIT 50`,
-      ),
-      receiverState(runtime),
-      pool.query(`SELECT process_id AS "processId", last_seen_at AS "lastSeenAt", stopped_at AS "stoppedAt",
+    const [orders, endpoint, deliveries, stats, shipments, receiver, heartbeat] = await Promise.all(
+      [
+        pool.query(
+          `SELECT ${orderColumns} FROM ${table('shop_orders')} ORDER BY created_at DESC, id DESC LIMIT 50`,
+        ),
+        endpointId ? webhooks.endpoints.get(endpointId) : null,
+        webhooks.deliveries.list({ limit: 50 }),
+        webhooks.deliveries.stats(),
+        pool.query(
+          `SELECT event_id AS "eventId", order_id AS "orderId", customer, received_at AS "receivedAt" FROM ${table('warehouse_shipments')} ORDER BY received_at DESC LIMIT 50`,
+        ),
+        receiverState(runtime),
+        pool.query(`SELECT process_id AS "processId", last_seen_at AS "lastSeenAt", stopped_at AS "stoppedAt",
         stopped_at IS NULL AND last_seen_at > now() - interval '6 seconds' AS running
         FROM ${table('worker_heartbeat')} WHERE singleton`),
-    ])
+      ],
+    )
     response.json({
       products,
       orders: orders.rows,
       endpoint,
       deliveries: deliveries.items,
+      stats,
       shipments: shipments.rows,
       receiver,
       worker: heartbeat.rows[0] ?? { running: false },

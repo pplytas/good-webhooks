@@ -1,6 +1,6 @@
 # Northstar Supply
 
-A small shop admin and warehouse receiver built with the published `good-webhooks@0.5.0` package. Place an order, watch its delivery, take the warehouse offline, and replay an event without creating a second shipment.
+A small shop admin and warehouse receiver built with the published `good-webhooks@0.6.0` package. Place an order, watch its delivery, take the warehouse offline, and replay an event without creating a second shipment.
 
 This is an independent npm application. It has its own lockfile and does not use the repository's package source or pnpm workspace. You can copy this directory elsewhere and run it.
 
@@ -37,7 +37,7 @@ If the default ports are occupied, change `APP_PORT` and `RECEIVER_PORT` in `.en
 9. Pause the endpoint and place an order. It still selects the subscribed warehouse, but stays pending without an HTTP attempt. Resume the endpoint and the worker delivers the retained event.
 10. Stop and restart the processes with Ctrl+C and `npm run dev`. Existing data and keys remain. For an explicit queue test, run the app and receiver separately, place an order while no worker runs, then start the worker.
 
-The dashboard shows the latest 50 orders, deliveries, and shipments. Its receiver counters cover all retained receipts. It polls actual persisted state through the public delivery APIs and app-owned tables. It does not simulate delivery status.
+The dashboard shows the latest 50 orders, deliveries, and shipments. Under **Delivery activity**, it shows `deliveries.stats()` for the application scope. Its receiver counters cover all retained receipts. It polls actual persisted state through the public delivery APIs and app-owned tables. It does not simulate delivery status.
 
 ## Run processes separately
 

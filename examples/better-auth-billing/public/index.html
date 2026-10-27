@@ -88,6 +88,15 @@
                     required
                     maxlength="120"
                 /></label>
+                <label
+                  >Gateway API key (optional)<input
+                    name="apiKey"
+                    placeholder="demo-key-123"
+                    maxlength="200"
+                    autocomplete="off"
+                    spellcheck="false"
+                /></label>
+                <p class="hint">Sent as an <code>x-api-key</code> header on every request.</p>
                 <fieldset>
                   <legend>Events</legend>
                   <label class="check"

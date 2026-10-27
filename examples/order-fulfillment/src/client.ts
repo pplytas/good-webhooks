@@ -1,4 +1,4 @@
-import type { Delivery, DeliveryDetail, Endpoint } from 'good-webhooks'
+import type { Delivery, DeliveryDetail, DeliveryStats, Endpoint } from 'good-webhooks'
 
 type Product = { sku: string; name: string; unitPriceCents: number }
 type Order = {
@@ -15,6 +15,7 @@ type State = {
   orders: Order[]
   endpoint: Endpoint | null
   deliveries: Delivery[]
+  stats: DeliveryStats
   shipments: { eventId: string; orderId: string; customer: string; receivedAt: string }[]
   receiver: { mode: 'healthy' | 'reject'; accepted: number; duplicates: number }
   worker: { running: boolean }
@@ -195,6 +196,17 @@ async function refresh() {
       `${state.orders.length} ${state.orders.length === 1 ? 'order' : 'orders'}`
     element('delivery-count').textContent =
       `${state.deliveries.length} ${state.deliveries.length === 1 ? 'delivery' : 'deliveries'}`
+    const { deliveries: counts, attemptsLastHour, oldestPendingAgeMs } = state.stats
+    const attempts = Object.values(attemptsLastHour).reduce((sum, count) => sum + count, 0)
+    element('delivery-stats').textContent = [
+      `${counts.pending} pending`,
+      `${counts.failed} failed`,
+      `${counts.succeeded} succeeded`,
+      `${attempts} ${attempts === 1 ? 'attempt' : 'attempts'} in the last hour`,
+      ...(oldestPendingAgeMs === null
+        ? []
+        : [`oldest pending ${Math.round(oldestPendingAgeMs / 1000)} s`]),
+    ].join(' · ')
     element('worker-state').textContent = state.worker.running
       ? 'Running. Ready to send and retry.'
       : 'Stopped. Queued deliveries will wait.'

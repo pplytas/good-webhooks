@@ -88,7 +88,9 @@ export function createReceiver(pool: Pool) {
       )
       return duplicate
     })
-    res.json({ accepted: true, duplicate })
+    // A real gateway would check this key before the request reaches the app.
+    const apiKey = req.get('x-api-key') ?? null
+    res.json({ accepted: true, duplicate, apiKey })
   })
   app.use(errorHandler)
   return app

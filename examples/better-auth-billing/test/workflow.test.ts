@@ -156,8 +156,10 @@ test(
         url: `${receiverOrigin}/webhooks/${routeId}`,
         description: 'Alice accounting',
         eventTypes: ['invoice.created', 'invoice.paid'],
+        headers: { 'x-api-key': 'demo-key-123' },
       })
       assert.equal(created.status, 200, JSON.stringify(created.data))
+      assert.deepEqual(created.data.endpoint.headers, { 'x-api-key': 'demo-key-123' })
       const endpointId = created.data.endpoint.id as string
       const scope = context.delivery.forScope({ type: 'user', id: alice.data.user.id })
       async function receiptCount() {
@@ -203,8 +205,17 @@ test(
             (await request('/api/auth/good-webhooks/pause', bob.cookie, { id: endpointId })).status,
             404,
           )
+          const reserved = await request('/api/auth/good-webhooks/create', alice.cookie, {
+            url: `${receiverOrigin}/webhooks/${randomUUID()}`,
+            eventTypes: ['invoice.created'],
+            headers: { 'webhook-id': 'x' },
+          })
+          assert.equal(reserved.status, 400)
+          assert.equal(reserved.data.code, 'INVALID_INPUT')
+          assert.equal(reserved.data.message, 'Header webhook-id is reserved.')
           const listing = await request('/api/auth/good-webhooks/list', alice.cookie, {})
           assert.equal(listing.data.length, 1)
+          assert.deepEqual(listing.data[0].headers, { 'x-api-key': 'demo-key-123' })
           assert.equal('secret' in listing.data[0], false)
           assert.equal('encryptedSecret' in listing.data[0], false)
           assert.deepEqual((await request('/api/auth/good-webhooks/list', bob.cookie, {})).data, [])
@@ -314,6 +325,7 @@ test(
           firstDelivery = delivered.id
           const detail = await request(`/api/deliveries/${delivered.id}`, alice.cookie)
           assert.equal(detail.data.attempts[0].responseStatus, 200)
+          assert.equal(JSON.parse(detail.data.attempts[0].responseBody).apiKey, 'demo-key-123')
           const state = (await request('/api/workspace', alice.cookie)).data
           assert.equal(state.outcomes.length, 1)
           assert.equal(state.outcomes[0].invoice_id, invoiceId)

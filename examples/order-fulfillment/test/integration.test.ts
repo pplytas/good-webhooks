@@ -6,7 +6,7 @@ import { request as httpRequest } from 'node:http'
 import { setTimeout as delay } from 'node:timers/promises'
 import { test } from 'node:test'
 import { generateEncryptionKey } from 'good-webhooks'
-import type { Delivery, DeliveryDetail, Endpoint } from 'good-webhooks'
+import type { Delivery, DeliveryDetail, DeliveryStats, Endpoint } from 'good-webhooks'
 import { defaultDatabaseUrl, readConfig } from '../src/config.ts'
 import { createRuntime } from '../src/runtime.ts'
 import { migrate } from '../scripts/migrate.ts'
@@ -15,6 +15,7 @@ type State = {
   orders: { id: string; eventId: string; customer: string; totalCents: number }[]
   endpoint: Endpoint | null
   deliveries: Delivery[]
+  stats: DeliveryStats
   shipments: { eventId: string; orderId: string; customer: string }[]
   receiver: { mode: string; accepted: number; duplicates: number }
   worker: { running: boolean }
@@ -268,6 +269,15 @@ test(
           assert(delivered.shipments.some((shipment) => shipment.eventId === firstEventId))
         },
       )
+
+      await context.test('state reports application-scope delivery stats', async () => {
+        const { stats } = await state()
+        assert.deepEqual(stats, {
+          deliveries: { pending: 0, in_flight: 0, succeeded: 2, failed: 0, cancelled: 0 },
+          oldestPendingAgeMs: null,
+          attemptsLastHour: { started: 0, succeeded: 2, retry: 0, failed: 0, abandoned: 0 },
+        })
+      })
 
       await context.test(
         '503 retries exhaust policy, recovery replays the retained event',

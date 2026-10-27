@@ -146,7 +146,13 @@ function render() {
       ? endpoints
           .map(
             (endpoint) =>
-              `<article class="endpoint"><div class="topline"><strong>${html(endpoint.description || 'Invoice endpoint')}</strong>${badge(endpoint.status)}</div><p>${html(endpoint.url)}</p><p>${html(endpoint.eventTypes.join(', '))}</p><div class="actions"><button class="secondary small" data-endpoint="${html(endpoint.id)}" data-operation="${endpoint.status === 'paused' ? 'resume' : 'pause'}">${endpoint.status === 'paused' ? 'Resume' : 'Pause'}</button><button class="secondary small danger" data-endpoint="${html(endpoint.id)}" data-operation="remove">Remove</button>${state.receivers.some((r) => r.endpoint_id === endpoint.id) ? '<span class="subtext">Receiver connected</span>' : '<span class="subtext">Secret transfer needed</span>'}</div></article>`,
+              `<article class="endpoint"><div class="topline"><strong>${html(endpoint.description || 'Invoice endpoint')}</strong>${badge(endpoint.status)}</div><p>${html(endpoint.url)}</p><p>${html(endpoint.eventTypes.join(', '))}</p>${Object.entries(
+                endpoint.headers,
+              )
+                .map(([name, value]) => `<p>${html(`${name}: ${value}`)}</p>`)
+                .join(
+                  '',
+                )}<div class="actions"><button class="secondary small" data-endpoint="${html(endpoint.id)}" data-operation="${endpoint.status === 'paused' ? 'resume' : 'pause'}">${endpoint.status === 'paused' ? 'Resume' : 'Pause'}</button><button class="secondary small danger" data-endpoint="${html(endpoint.id)}" data-operation="remove">Remove</button>${state.receivers.some((r) => r.endpoint_id === endpoint.id) ? '<span class="subtext">Receiver connected</span>' : '<span class="subtext">Secret transfer needed</span>'}</div></article>`,
           )
           .join('')
       : empty('Create your first endpoint to receive invoice events.'),
@@ -246,11 +252,13 @@ $('#endpoint-form').addEventListener('submit', (event) => {
       form.has(type === 'invoice.created' ? 'created' : 'paid'),
     )
     if (!selected.length) throw new Error('Choose at least one event')
+    const apiKey = String(form.get('apiKey') ?? '').trim()
     const result = unwrap(
       await auth.goodWebhooks.create({
         description: String(form.get('description')),
         url: `${workspace!.receiverOrigin}/webhooks/${crypto.randomUUID()}`,
         eventTypes: selected,
+        ...(apiKey ? { headers: { 'x-api-key': apiKey } } : {}),
       }),
     )
     pendingSecret = { endpointId: result.endpoint.id, secret: result.secret }
