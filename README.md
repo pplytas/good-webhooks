@@ -44,6 +44,7 @@ Requires Node.js 24 or later. Built-in delivery and standalone management need P
 | You want                                          | Start with                                                                     |
 | ------------------------------------------------- | ------------------------------------------------------------------------------ |
 | Everything on PostgreSQL                          | [Quick start](https://good-webhooks.dev/docs/quick-start)                      |
+| To see what a hand-rolled sender gets wrong       | [Tutorial](https://good-webhooks.dev/docs/tutorials/outbound-webhooks)         |
 | Signed-in users managing their own endpoints      | [Better Auth plugin](https://good-webhooks.dev/docs/better-auth)               |
 | Better Auth endpoints with built-in delivery      | [Add delivery](https://good-webhooks.dev/docs/better-auth/delivery)            |
 | Endpoint management for your own sender           | [Custom senders](https://good-webhooks.dev/docs/guides/custom-senders)         |

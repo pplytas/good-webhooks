@@ -46,6 +46,17 @@ GITHUB_TOKEN=$(gh auth token) node scripts/growth-snapshot.mjs
   - GitHub referrers show the domain only.
   - A small custom event that records `ref` is the cheapest way to make it count.
 
+## Content
+
+Pages written for the launch, with where each one is posted. Add a line when a post goes live, so the next prompt run and the weekly snapshot have a date to compare against.
+
+| Page                                                                   | Published  | Cross-posts        |
+| ---------------------------------------------------------------------- | ---------- | ------------------ |
+| [Comparison](https://good-webhooks.dev/docs/concepts/compared)         | 2026-10-27 | None               |
+| [Tutorial](https://good-webhooks.dev/docs/tutorials/outbound-webhooks) | 2026-10-27 | dev.to: not posted |
+
+The dev.to version of the tutorial is `docs/tutorial-devto.md`. Its front matter carries the canonical URL, and every link back to the docs carries `?ref=devto`. Replace "not posted" with the dev.to URL and date once it is live.
+
 ## AI assistant prompts
 
 Six fixed prompts check whether assistants recommend the library. Repeat them after each content push and record the outcome here.

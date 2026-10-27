@@ -1,0 +1,699 @@
+---
+title: Outbound webhooks from Node.js and PostgreSQL
+description: Build webhook sending by hand, break it four ways, then build the same thing with Good Webhooks. Outbox, Standard Webhooks signatures, retries, replay, and delivery stats, with real output.
+---
+
+Your application needs to tell other servers when something happens. The first version is a `fetch()` in the request handler. This tutorial builds that version, breaks it four ways, and then builds the same thing with Good Webhooks. Every script runs on your machine, and every output shown comes from a real run.
+
+You need **Node.js 24** and **Docker**, and about 30 minutes. The code was checked against `good-webhooks` 0.6.0. If you only want the five-minute version, take the [quick start](/docs/quick-start) instead.
+
+<Steps>
+<Step>
+### Create a project
+
+```sh
+mkdir webhooks-tutorial && cd webhooks-tutorial
+npm init -y
+```
+
+```package-install
+good-webhooks pg zod
+```
+
+</Step>
+<Step>
+### Start PostgreSQL
+
+A throwaway database on port 55442:
+
+```sh
+docker run --name good-webhooks-tutorial -d \
+  -e POSTGRES_PASSWORD=dev_only -e POSTGRES_DB=webhooks \
+  -p 127.0.0.1:55442:5432 postgres:16
+until docker exec good-webhooks-tutorial pg_isready -h 127.0.0.1 -U postgres -d webhooks; do sleep 1; done
+```
+
+</Step>
+</Steps>
+
+## Part 1: send webhooks by hand
+
+The sender signs the JSON body with HMAC-SHA256, puts the result in an `x-signature` header, and tries three times. The receiver reads the raw body, recomputes the signature, compares it in constant time, and records the invoice. A `mode` switch lets the receiver simulate its bad days: down, or moved to a new path.
+
+It signs, it retries, and it compares in constant time: a reasonable first version.
+
+```ts title="by-hand.mts"
+import { createHmac, timingSafeEqual } from 'node:crypto'
+import { once } from 'node:events'
+import { createServer } from 'node:http'
+import { setTimeout as sleep } from 'node:timers/promises'
+import { Pool } from 'pg'
+
+const pool = new Pool({
+  connectionString: 'postgres://postgres:dev_only@127.0.0.1:55442/webhooks',
+})
+await pool.query(`CREATE TABLE IF NOT EXISTS invoices (
+  id text PRIMARY KEY, amount integer NOT NULL, paid boolean NOT NULL DEFAULT false
+)`)
+await pool.query('TRUNCATE invoices')
+
+// --- The sender: sign the body, POST it, retry twice ------------------------
+const secret = 'shared-secret'
+
+async function sendWebhook(url: string, payload: unknown) {
+  const body = JSON.stringify(payload)
+  const signature = createHmac('sha256', secret).update(body).digest('hex')
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-signature': signature },
+        body,
+      })
+      if (response.ok) return
+    } catch {}
+    await sleep(500)
+  }
+  throw new Error(`Webhook to ${url} failed after 3 attempts`)
+}
+
+// --- The receiver: someone else's server, with a switch for its bad days ----
+let mode: 'ok' | 'down' | 'moved' = 'ok'
+const answered: number[] = []
+const processed: string[] = []
+let inFlight = 0
+let peakInFlight = 0
+let captured: { body: string; signature: string } | undefined
+
+const receiver = createServer(async (request, response) => {
+  inFlight++
+  peakInFlight = Math.max(peakInFlight, inFlight)
+  const chunks: Buffer[] = []
+  for await (const chunk of request) chunks.push(chunk)
+  const body = Buffer.concat(chunks).toString()
+  const answer = (status: number) => {
+    answered.push(status)
+    inFlight--
+    response.writeHead(status).end()
+  }
+  if (mode === 'down') return sleep(50).then(() => answer(503))
+  if (mode === 'moved' && request.url !== '/v2/webhooks') return answer(404)
+  const expected = createHmac('sha256', secret).update(body).digest('hex')
+  const given = request.headers['x-signature']
+  if (
+    typeof given !== 'string' ||
+    given.length !== expected.length ||
+    !timingSafeEqual(Buffer.from(given), Buffer.from(expected))
+  )
+    return answer(400)
+  captured = { body, signature: given }
+  processed.push(JSON.parse(body).invoiceId)
+  answer(200)
+})
+receiver.listen(0, '127.0.0.1')
+await once(receiver, 'listening')
+const { port } = receiver.address() as { port: number }
+const url = `http://127.0.0.1:${port}/webhooks`
+
+const paidInvoices = async () =>
+  (await pool.query('SELECT count(*)::int AS n FROM invoices WHERE paid')).rows[0].n
+
+try {
+  // 1. Rollback: the webhook goes out inside the transaction, then the transaction fails.
+  console.log('\n1. Rollback')
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+    await client.query(`INSERT INTO invoices (id, amount, paid) VALUES ('inv_1', 4200, true)`)
+    await sendWebhook(url, { type: 'invoice.paid', invoiceId: 'inv_1', amount: 4200 })
+    const ledgerOk = false // any later failure in the transaction
+    if (!ledgerOk) throw new Error('ledger write failed')
+    await client.query('COMMIT')
+  } catch {
+    await client.query('ROLLBACK')
+  } finally {
+    client.release()
+  }
+  console.log(`Receiver processed: ${JSON.stringify(processed)}`)
+  console.log(`Paid invoices in the database: ${await paidInvoices()}`)
+
+  // The other order: commit first, then send. A crash in between loses the event.
+  await pool.query(`INSERT INTO invoices (id, amount, paid) VALUES ('inv_2', 1800, true)`)
+  const crashed = true // a deploy restart, an OOM kill, an unhandled error
+  if (!crashed) await sendWebhook(url, { type: 'invoice.paid', invoiceId: 'inv_2', amount: 1800 })
+  console.log(`Receiver processed: ${JSON.stringify(processed)}`)
+  console.log(`Paid invoices in the database: ${await paidInvoices()}`)
+
+  // 2. Retry storm: 20 payments while the receiver is down.
+  console.log('\n2. Retry storm')
+  mode = 'down'
+  answered.length = 0
+  const started = Date.now()
+  const results = await Promise.allSettled(
+    Array.from({ length: 20 }, (_, i) =>
+      sendWebhook(url, { type: 'invoice.paid', invoiceId: `inv_${i + 10}`, amount: 100 }),
+    ),
+  )
+  const seconds = ((Date.now() - started) / 1000).toFixed(1)
+  const statuses = [...new Set(answered)].join(' and ')
+  console.log(
+    `${answered.length} requests in ${seconds} s, answered ${statuses}, peak ${peakInFlight} in flight`,
+  )
+  console.log(`Events given up on: ${results.filter((r) => r.status === 'rejected').length}`)
+  mode = 'ok'
+
+  // 3. Signature: a captured request stays valid forever.
+  console.log('\n3. Signature')
+  await sendWebhook(url, { type: 'invoice.paid', invoiceId: 'inv_3', amount: 999 })
+  const { body, signature } = captured!
+  await sleep(1000) // or a week
+  const replayed = await fetch(url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-signature': signature },
+    body,
+  })
+  console.log(`Replayed request answered ${replayed.status}`)
+  console.log(`Receiver processed inv_3 ${processed.filter((id) => id === 'inv_3').length} times`)
+
+  // 4. Endpoint move: the receiver now lives at /v2/webhooks and the old path answers 404.
+  console.log('\n4. Endpoint move')
+  mode = 'moved'
+  answered.length = 0
+  try {
+    await sendWebhook(url, { type: 'invoice.paid', invoiceId: 'inv_4', amount: 5000 })
+  } catch (error) {
+    console.log((error as Error).message)
+  }
+  console.log(`Receiver answered: ${answered.join(', ')}`)
+  console.log(`Receiver processed inv_4: ${processed.includes('inv_4')}`)
+} finally {
+  receiver.close()
+  await pool.end()
+}
+```
+
+Run it:
+
+```sh
+node by-hand.mts
+```
+
+```text
+1. Rollback
+Receiver processed: ["inv_1"]
+Paid invoices in the database: 0
+Receiver processed: ["inv_1"]
+Paid invoices in the database: 1
+
+2. Retry storm
+60 requests in 1.7 s, answered 503, peak 20 in flight
+Events given up on: 20
+
+3. Signature
+Replayed request answered 200
+Receiver processed inv_3 2 times
+
+4. Endpoint move
+Webhook to http://127.0.0.1:PORT/webhooks failed after 3 attempts
+Receiver answered: 404, 404, 404
+Receiver processed inv_4: false
+```
+
+Each experiment shows one way this version breaks.
+
+### 1. A rollback sends a ghost event, or loses one
+
+The first transaction inserts the invoice, sends the webhook, and then fails on a later write. The transaction rolls back, but the HTTP request already happened. The receiver now believes `inv_1` was paid. The database says it was not.
+
+Swapping the order does not help. The second invoice commits first and the send comes after, so a crash between the two loses the event. A deploy restart, an out-of-memory kill, or an unhandled error is enough. Nothing records that `inv_2` was never sent, so nothing can send it later.
+
+No ordering of two separate operations fixes this. The event has to be written in the same transaction as the invoice, and sent afterwards by something that can retry. That is the transactional outbox pattern.
+
+### 2. Retries become a storm
+
+Twenty invoices are paid while the receiver is down. The sender makes 60 requests in under two seconds, 20 of them at the same instant, in three synchronized bursts. Then it gives up on all 20 events.
+
+Three things go wrong at once. Each `sendWebhook()` call holds its caller for 1.7 seconds before giving up, and inside a request handler that is the user's wait. Every application server retries on the same schedule, so a receiver that is already struggling gets hit by all of them together. And after the third attempt the events are gone, because the only record of them was the call stack.
+
+The fix needs a schedule that spans hours, with jitter and a per-receiver cap, from a store that survives restarts.
+
+### 3. The signature proves who sent the bytes, not when
+
+The receiver keeps a copy of one accepted request and sends it again a second later. It is accepted again and processed again. The signature covers only the body, so a captured request stays valid forever, and no header tells the receiver whether it has seen this event before.
+
+The fix has two parts. Sign the timestamp and a unique ID along with the body, so the receiver can reject old requests and deduplicate by ID. And sign every attempt fresh: a signature computed once and reused on a retry hours later would be rejected as stale by that same check. [Standard Webhooks](https://www.standardwebhooks.com) specifies exactly this, with `webhook-id`, `webhook-timestamp`, and `webhook-signature` headers.
+
+### 4. A 404 during a move
+
+The receiver's owner moved their handler to `/v2/webhooks`, and the old path answers 404. The sender gets three 404s in a second, reports a failure, and `inv_4` is lost. Receivers move paths and domains, and a 404 during the move is normal.
+
+Treating 404 as final loses events. Treating it as retryable needs the retry schedule from experiment 2, a way for the owner to fix the URL so that pending events follow it, and a signal that means "gone for good", which HTTP spells 410.
+
+You can build all of this. The rest of the tutorial uses the library that already did.
+
+## Part 2: the same with Good Webhooks
+
+Three files replace the one above. `app.mts` holds the event catalog, the client, and the business transaction. `receiver.mts` is the other side, now with real verification and a receipts table. `with-library.mts` runs the same experiments, plus replay and stats.
+
+The client takes a demo retry schedule of 500 ms, 1 s, and 2 s so the run finishes in seconds. The default is eight attempts over about 28 hours. `allowLocalhost` and a fresh encryption key on every run are development shortcuts, and the [quick start](/docs/quick-start#from-script-to-application) lists what replaces them.
+
+```ts title="app.mts"
+import { setTimeout as sleep } from 'node:timers/promises'
+import { Pool } from 'pg'
+import { z } from 'zod'
+import { createWebhooks, generateEncryptionKey } from 'good-webhooks'
+import { getPostgresMigration } from 'good-webhooks/migrations'
+
+// The event catalog. The sender validates against it, the receiver decodes with it.
+export const events = {
+  'invoice.paid': z.object({ invoiceId: z.string(), amount: z.number().int() }),
+}
+
+export const pool = new Pool({
+  connectionString: 'postgres://postgres:dev_only@127.0.0.1:55442/webhooks',
+})
+await pool.query(`CREATE TABLE IF NOT EXISTS invoices (
+  id text PRIMARY KEY, amount integer NOT NULL, paid boolean NOT NULL DEFAULT false
+)`)
+await pool.query('TRUNCATE invoices')
+// Throwaway database only: create the tables once. Real apps use their migration runner.
+const { rows } = await pool.query(`SELECT to_regclass('webhook_events') AS found`)
+if (!rows[0].found) await pool.query(getPostgresMigration())
+
+export const webhooks = createWebhooks({
+  database: pool,
+  events,
+  encryptionKey: generateEncryptionKey(), // Real apps load a stored key.
+  allowLocalhost: true, // Development only: allows http://127.0.0.1 receivers.
+  retry: { delaysMs: [500, 1000, 2000] }, // Demo schedule. The default is 8 attempts over 28 hours.
+})
+
+/** The business transaction. The event commits or rolls back with the invoice. */
+export async function payInvoice(
+  invoiceId: string,
+  amount: number,
+  options: { fail?: boolean } = {},
+) {
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+    await client.query('INSERT INTO invoices (id, amount, paid) VALUES ($1, $2, true)', [
+      invoiceId,
+      amount,
+    ])
+    const publication = await webhooks.publish(
+      {
+        type: 'invoice.paid',
+        data: { invoiceId, amount },
+        idempotencyKey: `invoice.paid:${invoiceId}`,
+      },
+      { transaction: client },
+    )
+    if (options.fail) throw new Error('ledger write failed') // any later failure in the transaction
+    await client.query('COMMIT')
+    return publication
+  } catch (error) {
+    await client.query('ROLLBACK')
+    throw error
+  } finally {
+    client.release()
+  }
+}
+
+export const paidInvoices = async () =>
+  (await pool.query('SELECT count(*)::int AS n FROM invoices WHERE paid')).rows[0].n
+
+/** Run worker batches until nothing is pending. A real worker calls worker.run() and keeps going. */
+export async function deliver(timeoutMs = 10_000) {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    await webhooks.worker.runOnce()
+    // stats() reads the whole scope. Fine for a demo loop, not for a request path.
+    const { deliveries } = await webhooks.deliveries.stats()
+    if (deliveries.pending + deliveries.in_flight === 0) return
+    await sleep(100)
+  }
+}
+```
+
+The receiver calls `parseWebhook()` on the raw bytes and gets a typed event. It records the event ID in the same transaction as its own change, here only a receipt, so a repeated event changes nothing.
+
+```ts title="receiver.mts"
+import { once } from 'node:events'
+import { createServer } from 'node:http'
+import { setTimeout as sleep } from 'node:timers/promises'
+import { parseWebhook, WebhookError } from 'good-webhooks/verify'
+import { events, pool } from './app.mts'
+
+// Someone else's server. It shares this database only to keep the tutorial in one process.
+await pool.query(`CREATE TABLE IF NOT EXISTS webhook_receipts (event_id text PRIMARY KEY)`)
+await pool.query('TRUNCATE webhook_receipts')
+
+export const receiver = {
+  mode: 'ok' as 'ok' | 'down' | 'moved' | 'gone',
+  secret: '',
+  seen: [] as { id: string; timestamp: string; signature: string; path: string; status: number }[],
+  processed: [] as string[],
+  captured: undefined as { body: Buffer; headers: Record<string, string> } | undefined,
+  inFlight: 0,
+  peakInFlight: 0,
+}
+
+const server = createServer(async (request, response) => {
+  receiver.inFlight++
+  receiver.peakInFlight = Math.max(receiver.peakInFlight, receiver.inFlight)
+  const chunks: Buffer[] = []
+  for await (const chunk of request) chunks.push(chunk)
+  const body = Buffer.concat(chunks)
+  const header = (name: string) => String(request.headers[name])
+  const answer = (status: number) => {
+    receiver.seen.push({
+      id: header('webhook-id'),
+      timestamp: header('webhook-timestamp'),
+      signature: header('webhook-signature'),
+      path: request.url!,
+      status,
+    })
+    receiver.inFlight--
+    response.writeHead(status).end()
+  }
+  if (receiver.mode === 'down') return sleep(50).then(() => answer(503))
+  if (receiver.mode === 'gone') return answer(410)
+  if (receiver.mode === 'moved' && request.url !== '/v2/webhooks') return answer(404)
+
+  // Verify the raw bytes, then decode a typed event.
+  let event
+  try {
+    event = await parseWebhook({ body, headers: request.headers, secret: receiver.secret, events })
+  } catch (error) {
+    return answer(error instanceof WebhookError ? 400 : 500)
+  }
+  if (event.type === 'good-webhooks.test') return answer(204)
+  receiver.captured = {
+    body,
+    headers: {
+      'webhook-id': header('webhook-id'),
+      'webhook-timestamp': header('webhook-timestamp'),
+      'webhook-signature': header('webhook-signature'),
+    },
+  }
+
+  // Process each event once: record the event ID in the same transaction as your own change.
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+    const receipt = await client.query(
+      'INSERT INTO webhook_receipts (event_id) VALUES ($1) ON CONFLICT DO NOTHING RETURNING event_id',
+      [event.id],
+    )
+    if (receipt.rowCount) receiver.processed.push(event.data.invoiceId)
+    await client.query('COMMIT')
+  } catch {
+    await client.query('ROLLBACK')
+    return answer(500)
+  } finally {
+    client.release()
+  }
+  answer(200)
+})
+
+server.listen(0, '127.0.0.1')
+await once(server, 'listening')
+export const port = (server.address() as { port: number }).port
+export const stopReceiver = () => server.close()
+```
+
+The experiments. The endpoint is registered with `endpoints.create()`, which returns the signing secret once.
+
+```ts title="with-library.mts"
+import { setTimeout as sleep } from 'node:timers/promises'
+import { parseWebhook, type WebhookError } from 'good-webhooks/verify'
+import { deliver, events, paidInvoices, payInvoice, pool, webhooks } from './app.mts'
+import { port, receiver, stopReceiver } from './receiver.mts'
+
+const url = `http://127.0.0.1:${port}/webhooks`
+const created = await webhooks.endpoints.create({ url, eventTypes: ['invoice.paid'] })
+receiver.secret = created.secret // Returned once. Hand it to the receiver over a secure channel.
+const endpointId = created.endpoint.id
+// Fresh IDs per run: the idempotency key `invoice.paid:<id>` would otherwise return the earlier event.
+const run = Math.random().toString(36).slice(2, 6)
+const inv = (n: number) => `inv_${run}_${n}`
+const { seen, processed } = receiver
+
+try {
+  // 1. Rollback: publish inside the transaction, then the transaction fails.
+  console.log('\n1. Rollback')
+  await payInvoice(inv(1), 4200, { fail: true }).catch(() => {})
+  console.log(`Deliveries stored: ${(await webhooks.deliveries.list({ endpointId })).items.length}`)
+  console.log(`Paid invoices in the database: ${await paidInvoices()}`)
+
+  // Commit, then "crash" before any worker runs. The delivery is already in the database.
+  await payInvoice(inv(2), 1800)
+  const [queued] = (await webhooks.deliveries.list({ endpointId })).items
+  console.log(
+    `Delivery ${queued!.id} is ${queued!.status}, receiver processed: ${JSON.stringify(processed)}`,
+  )
+  await deliver()
+  console.log(`After a worker ran, receiver processed: ${JSON.stringify(processed)}`)
+
+  // 2. Retry storm: 20 payments while the receiver is down.
+  console.log('\n2. Retry storm')
+  receiver.mode = 'down'
+  receiver.peakInFlight = 0
+  const stormStart = seen.length
+  const started = Date.now()
+  for (let i = 10; i < 30; i++) await payInvoice(inv(i), 100)
+  while (Date.now() - started < 1200) {
+    await webhooks.worker.runOnce()
+    await sleep(50)
+  }
+  const stats = await webhooks.deliveries.stats()
+  console.log(
+    `${seen.length - stormStart} requests in 1.2 s while the receiver was down, peak ${receiver.peakInFlight} in flight`,
+  )
+  console.log(`Deliveries: ${JSON.stringify(stats.deliveries)}`)
+  receiver.mode = 'ok'
+  await deliver()
+  const failed = await webhooks.deliveries.list({ endpointId, status: 'failed' })
+  console.log(
+    `Receiver back: processed ${processed.length} invoices, failed deliveries: ${failed.items.length}`,
+  )
+  const retried = (await webhooks.deliveries.list({ endpointId, limit: 100 })).items.find(
+    (d) => d.attemptCount > 1,
+  )!
+  const sample = await webhooks.deliveries.get(retried.id)
+  const offset = (at: Date) => `+${at.getTime() - sample.createdAt.getTime()} ms`
+  console.log(
+    `One delivery's attempts: ${sample.attempts.map((a) => `${a.responseStatus} at ${offset(a.startedAt)}`).join(', ')}`,
+  )
+
+  // 3. Signature: what the receiver saw, and what a captured request is worth later.
+  console.log('\n3. Signature')
+  const { body, headers } = receiver.captured!
+  for (const [name, value] of Object.entries(headers)) console.log(`${name}: ${value}`)
+  const now = await parseWebhook({ body, headers, secret: receiver.secret, events })
+  console.log(`Replayed within 5 minutes: accepted, event ${now.id}`)
+  const later = new Date(Date.now() + 10 * 60 * 1000)
+  await parseWebhook({ body, headers, secret: receiver.secret, events, now: later }).catch(
+    (error: WebhookError) => console.log(`Replayed 10 minutes later: ${error.code}`),
+  )
+
+  // 4. Endpoint move: the receiver now lives at /v2/webhooks and the old path answers 404.
+  console.log('\n4. Endpoint move')
+  receiver.mode = 'moved'
+  const moveStart = seen.length
+  const moved = await payInvoice(inv(40), 5000)
+  await webhooks.worker.runOnce()
+  let [delivery] = (await webhooks.deliveries.list({ eventId: moved.eventId })).items
+  console.log(
+    `After a 404: ${delivery!.status}, attempt ${delivery!.attemptCount}, next at +${delivery!.nextAttemptAt.getTime() - delivery!.createdAt.getTime()} ms`,
+  )
+  await webhooks.endpoints.update(endpointId, { url: `http://127.0.0.1:${port}/v2/webhooks` })
+  await deliver()
+  ;[delivery] = (await webhooks.deliveries.list({ eventId: moved.eventId })).items
+  console.log(
+    `After the URL change: ${delivery!.status}, receiver answered ${seen
+      .slice(moveStart)
+      .map((r) => `${r.status} ${r.path}`)
+      .join(', ')}`,
+  )
+
+  receiver.mode = 'gone'
+  const gone = await payInvoice(inv(41), 6000)
+  await deliver(2000)
+  ;[delivery] = (await webhooks.deliveries.list({ eventId: gone.eventId })).items
+  const endpoint = await webhooks.endpoints.get(endpointId)
+  console.log(
+    `After a 410: delivery ${delivery!.status}, endpoint ${endpoint.status} (${endpoint.pauseReason})`,
+  )
+
+  // 5. Replay: the same event again, as a new delivery.
+  console.log('\n5. Replay')
+  receiver.mode = 'ok'
+  await webhooks.endpoints.resume(endpointId)
+  const replay = await webhooks.deliveries.replay(delivery!.id)
+  await deliver()
+  console.log(
+    `Replay ${replay.id} of ${delivery!.id}: same event ${replay.eventId === delivery!.eventId}, receiver processed ${processed.at(-1)}`,
+  )
+  await sleep(1100) // a new second, so the fresh timestamp is visible
+  const again = await webhooks.deliveries.replay(queued!.id) // the second invoice, already processed
+  await deliver()
+  console.log(
+    `Replay of a processed event: ${(await webhooks.deliveries.get(again.id)).status}, processed count still ${processed.length}`,
+  )
+  const last = seen.at(-1)!
+  const first = seen.find((r) => r.id === last.id)!
+  console.log(
+    `Replay carries the original event ID: ${last.id === queued!.eventId}, new timestamp: ${first.timestamp !== last.timestamp}, new signature: ${first.signature !== last.signature}`,
+  )
+
+  // 6. Stats: one call for a status page or a backlog alert.
+  console.log('\n6. Stats')
+  console.log(JSON.stringify(await webhooks.deliveries.stats(), null, 2))
+} finally {
+  await webhooks.endpoints.remove(endpointId)
+  stopReceiver()
+  await pool.end()
+}
+```
+
+Run it:
+
+```sh
+node with-library.mts
+```
+
+```text
+1. Rollback
+Deliveries stored: 0
+Paid invoices in the database: 0
+Delivery 2 is pending, receiver processed: []
+After a worker ran, receiver processed: ["inv_icic_2"]
+
+2. Retry storm
+16 requests in 1.2 s while the receiver was down, peak 2 in flight
+Deliveries: {"pending":20,"in_flight":0,"succeeded":1,"failed":0,"cancelled":0}
+Receiver back: processed 21 invoices, failed deliveries: 0
+One delivery's attempts: 503 at +1057 ms, 200 at +2523 ms
+
+3. Signature
+webhook-id: 793b1ed6-25f8-433b-be32-1fee60a540e2
+webhook-timestamp: 1793094881
+webhook-signature: v1,ZVqdzY5z/kWHcKNweVo9QkpEkN53VbCYH7CI+moemCM=
+Replayed within 5 minutes: accepted, event 793b1ed6-25f8-433b-be32-1fee60a540e2
+Replayed 10 minutes later: SIGNATURE_EXPIRED
+
+4. Endpoint move
+After a 404: pending, attempt 1, next at +571 ms
+After the URL change: succeeded, receiver answered 404 /webhooks, 200 /v2/webhooks
+After a 410: delivery failed, endpoint paused (gone)
+
+5. Replay
+Replay 25 of 24: same event true, receiver processed inv_icic_41
+Replay of a processed event: succeeded, processed count still 23
+Replay carries the original event ID: true, new timestamp: true, new signature: true
+
+6. Stats
+{
+  "deliveries": {
+    "pending": 0,
+    "in_flight": 0,
+    "succeeded": 24,
+    "failed": 1,
+    "cancelled": 0
+  },
+  "oldestPendingAgeMs": null,
+  "attemptsLastHour": {
+    "started": 0,
+    "succeeded": 24,
+    "retry": 17,
+    "failed": 1,
+    "abandoned": 0
+  }
+}
+```
+
+Counts and timings vary a little between runs. Here is what each block shows.
+
+### 1. The event commits with the invoice
+
+`publish()` runs inside the invoice's transaction. When the ledger write fails, the rollback removes the invoice and the event together, and the receiver never hears about it. Nothing was sent, because `publish()` sends nothing. It validates the payload, finds the subscribed endpoints, and writes one event and one delivery per endpoint.
+
+The second invoice commits, and then the script does nothing, as a crashed process would. The delivery is already in the database with status `pending`. When a worker runs, it is sent. A crash between the commit and the send is no longer a lost event, only a late one. See [publish inside your transaction](/docs/guides/publish#publish-inside-your-transaction).
+
+### 2. Retries come from the database
+
+Twenty invoices are paid while the receiver is down. In 1.2 seconds the receiver sees about 16 requests, never more than two at a time, and the 20 deliveries sit in the database as `pending`. When the receiver comes back, every one of them is delivered and none has failed. The sample delivery shows its attempts: a 503, then a 200 about 1.5 seconds later. That is the 500 ms wait, then its turn behind the two-in-flight cap once the receiver was back.
+
+The default schedule waits 5 seconds, 5 minutes, 30 minutes, 2 hours, 5 hours, 10 hours, and 10 hours, so a receiver whose owner fixes it the next day still gets the event. Each wait gets up to 20 percent of jitter. A longer `Retry-After` on a 429 or 503 wins over the scheduled wait. Each endpoint gets at most two requests in flight across all workers by default. See [delivery guarantees](/docs/concepts/delivery-guarantees#retries).
+
+### 3. Standard Webhooks signatures
+
+The three headers the receiver saw are the Standard Webhooks headers. The signature is HMAC-SHA256 over `{id}.{timestamp}.{body}`. The captured request is still accepted within five minutes, because the signature is valid, but the receiver's receipts table makes a repeat harmless. The same request checked with a clock ten minutes ahead fails with `SIGNATURE_EXPIRED`.
+
+Every attempt gets a fresh timestamp and signature while the event ID and body stay the same. Block 5 shows it: the replay's `webhook-id` is the original event ID, with a new timestamp and a new signature. See the [security model](/docs/concepts/security#signing).
+
+### 4. A 404 is a retry, a 410 is a stop
+
+The receiver moves to `/v2/webhooks`. The first attempt gets a 404, and the delivery goes back to `pending` with a next attempt time. The owner updates the endpoint URL, and the next attempt goes to the new path and succeeds. Endpoint state is read at each attempt, so a URL change applies to everything still queued.
+
+When the receiver answers 410 Gone, the delivery fails without further retries and the worker pauses the endpoint with `pauseReason: 'gone'`. The worker also pauses an endpoint after five days of nothing but failures. Use the [`onEndpointPaused` hook](/docs/guides/hooks#tell-owners-about-automatic-pauses) to tell the owner. See [automatic pauses](/docs/guides/endpoints#automatic-pauses).
+
+### 5. Replay keeps the event ID
+
+After the endpoint is resumed, `deliveries.replay()` sends the failed delivery's event again as a new delivery, with a new ID and a fresh retry budget. The receiver processes `inv_41` for the first time. Replaying the already delivered second invoice succeeds too, but the receiver's processed count does not change, because the event ID is the same and the receipts table already has it.
+
+That is why the receiver deduplicates by event ID and not by delivery: retries, replays, and bulk recovery after an outage all repeat the same ID. See [retries and replay](/docs/operations/retries-and-replay).
+
+### 6. One call for a status page
+
+`deliveries.stats()` returns the retained deliveries by status, the age of the oldest pending one, and the last hour's attempts by outcome. The retries in the output are the storm's 503s plus the 404, and the one failure is the 410. Call it from a status page or a periodic check, not on every request, because it reads the whole scope. See the [stats reference](/docs/reference/delivery#stats).
+
+## Side by side
+
+| Situation        | By hand                | With the library             |
+| ---------------- | ---------------------- | ---------------------------- |
+| Rollback         | Ghost or lost event    | Nothing stored, nothing sent |
+| Receiver down    | 60 requests, then lost | Spaced retries, 2 in flight  |
+| Captured request | Valid forever          | Rejected after 5 minutes     |
+| Endpoint move    | Three 404s, then lost  | Retried at the new URL       |
+| Repeated event   | No ID to check         | Same `webhook-id`            |
+| Backlog          | Nothing to look at     | History and stats            |
+
+Deduplication is the receiver's job in both columns. The library gives it a stable event ID to key on, and the hand-rolled version would have to invent one.
+
+## What the library does not do
+
+- **No dashboard or portal.** History comes from `list()`, `get()`, and `stats()`. The UI is yours.
+- **No rate limiting to receivers** beyond the per-endpoint in-flight cap.
+- **No hosted service.** The worker is a process you run and supervise.
+- **PostgreSQL 16 or later and Node.js 24 or later** only.
+- **No payload transformations or pull API.**
+
+The [comparison page](/docs/concepts/compared) sets this against Svix, Outpost, Convoy, and pg-boss plus `fetch`.
+
+## From script to application
+
+The scripts cut the same corners as the quick start, and its [from script to application](/docs/quick-start#from-script-to-application) section lists the replacements. Two more apply here: bound the request body before the receiver buffers it, and schedule `prune()` so history does not grow forever. The [production checklist](/docs/operations/production) has both.
+
+## Clean up
+
+```sh
+docker rm -f good-webhooks-tutorial
+```
+
+<Cards>
+  <Card title="Add it to your app" href="/docs/installation">
+    Install, create the tables, and connect.
+  </Card>
+  <Card title="Let users register endpoints" href="/docs/better-auth">
+    The Better Auth plugin adds endpoint routes to your auth server.
+  </Card>
+  <Card title="Receive webhooks" href="/docs/guides/receive">
+    Handlers for Next.js, Hono, Express, Fastify, and Node.js.
+  </Card>
+  <Card title="Run workers" href="/docs/operations/workers">
+    Start, supervise, and stop the process that sends.
+  </Card>
+</Cards>
