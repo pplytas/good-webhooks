@@ -6,13 +6,15 @@ Set up on 27 October 2026 as item 3 of the [growth plan](roadmap.md#growth-plan)
 
 The `Growth metrics` workflow (`.github/workflows/growth-metrics.yml`) runs every Monday at 06:00 UTC and on demand. It runs `scripts/growth-snapshot.mjs`, which collects:
 
-| Field                                            | Source                                                                                               |
-| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
-| `stars`, `forks`, `watchers`, `open_issues`      | GitHub repository API                                                                                |
-| `views_14d`, `clones_14d`                        | GitHub traffic API, totals plus one entry per day for the last 14 days                               |
-| `referrers_14d`, `paths_14d`                     | GitHub traffic API, top referrers and paths for the last 14 days                                     |
-| `npm.downloads_7d`                               | npm downloads API for the 7 days ending two days ago, plus `latest_version` from the registry        |
-| `dependents.repositories`, `dependents.packages` | The GitHub "Used by" page (`/network/dependents`), scraped, because there is no API for these counts |
+| Field                                       | Source         |
+| ------------------------------------------- | -------------- |
+| `stars`, `forks`, `watchers`, `open_issues` | Repository API |
+| `views_14d`, `clones_14d`                   | Traffic API    |
+| `referrers_14d`, `paths_14d`                | Traffic API    |
+| `npm`                                       | npm APIs       |
+| `dependents`                                | "Used by" page |
+
+Views and clones carry the 14-day totals plus one entry per day. Referrers and paths are the top entries for the same 14 days. The `npm` block holds the downloads for the 7 days ending two days before the run and the latest published version. The `dependents` block holds the repository and package counts from the GitHub "Used by" page, scraped because there is no API for them.
 
 ## Where the data lives
 
@@ -28,12 +30,21 @@ GITHUB_TOKEN=$(gh auth token) node scripts/growth-snapshot.mjs
 
 ## Caveats
 
-- The traffic endpoints need push access. The built-in Actions token is refused, so the workflow reads `METRICS_GITHUB_TOKEN`, a fine-grained token with read-only Administration permission on this repository. Renew it before it expires, or the weekly run fails.
-- The traffic API keeps 14 days and the run is weekly, so consecutive snapshots overlap by 7 days. Use the per-day entries, not the totals, to build a continuous series.
+- The traffic endpoints need push access, and the built-in Actions token is refused.
+  - The workflow reads `METRICS_GITHUB_TOKEN`, a fine-grained token with read-only Administration permission on this repository.
+  - Renew it before it expires, or the weekly run fails.
+- The traffic API keeps 14 days and the run is weekly, so consecutive snapshots overlap by 7 days.
+  - Use the per-day entries, not the totals, to build a continuous series.
 - Clone counts include CI, mirrors and bots, so they say little about people.
-- The npm `last-week` alias returned a stale window in October 2026, so the script asks for an explicit date range. npm publishes a day's count during the next day, so the window ends two days before the run.
-- The dependents page counts repositories whose dependency graph GitHub has indexed. Private repositories and lockfile-free projects are missing. npmjs.com blocks scrapers, so its dependents tab is not used.
-- The `?ref=<channel>` rule in the roadmap is not measurable yet: Vercel Web Analytics drops query parameters, and its UTM filters need the Plus plan. GitHub referrers show the domain only. Adding a small custom event that records `ref` is the cheapest way to make it count.
+- The npm `last-week` alias returned a stale window in October 2026, so the script asks for an explicit date range.
+  - npm publishes a day's count during the next day, so the window ends two days before the run.
+- The dependents page counts repositories whose dependency graph GitHub has indexed.
+  - Private repositories and lockfile-free projects are missing.
+  - npmjs.com blocks scrapers, so its dependents tab is not used.
+- The `ref=<channel>` rule in the roadmap is not measurable yet.
+  - Vercel Web Analytics drops query parameters, and its UTM filters need the Plus plan.
+  - GitHub referrers show the domain only.
+  - A small custom event that records `ref` is the cheapest way to make it count.
 
 ## AI assistant prompts
 
@@ -50,13 +61,22 @@ Six fixed prompts check whether assistants recommend the library. Repeat them af
 
 Method: each prompt is sent once to `claude -p` (Claude Code 2.1.311) from an empty directory. Only web search and fetch are allowed, so no repository context leaks in. A first attempt leaked the maintainer's identity and the prompt list into every run. The model then named the library in four answers. Those runs were discarded. Cursor, Codex and ChatGPT runs need their own accounts, so a person runs them.
 
-| Date       | Tool, model                  | Prompt | Library recommended | What was named                                                         |
-| ---------- | ---------------------------- | ------ | ------------------- | ---------------------------------------------------------------------- |
-| 2026-10-27 | Claude Code, claude-opus-5-5 | 1      | No                  | Svix, Graphile Worker, pg-boss, Hook0, Convoy                          |
-| 2026-10-27 | Claude Code, claude-opus-5-5 | 2      | No                  | Outbox table plus Graphile Worker or pg-boss, `standardwebhooks`, Svix |
-| 2026-10-27 | Claude Code, claude-opus-5-5 | 3      | No                  | `standardwebhooks` `sign()`, Svix server, Hookdeck Outpost             |
-| 2026-10-27 | Claude Code, claude-opus-5-5 | 4      | No                  | Svix app portal, or a custom Better Auth plugin                        |
-| 2026-10-27 | Claude Code, claude-opus-5-5 | 5      | No                  | Svix server, Outpost, Hook0, Convoy                                    |
-| 2026-10-27 | Claude Code, claude-opus-5-5 | 6      | No                  | pg-boss, Graphile Worker, pg-transactional-outbox, pg-trx-outbox       |
+| Date       | Tool        | Model           | Prompt | Recommended |
+| ---------- | ----------- | --------------- | ------ | ----------- |
+| 2026-10-27 | Claude Code | claude-opus-5-5 | 1      | No          |
+| 2026-10-27 | Claude Code | claude-opus-5-5 | 2      | No          |
+| 2026-10-27 | Claude Code | claude-opus-5-5 | 3      | No          |
+| 2026-10-27 | Claude Code | claude-opus-5-5 | 4      | No          |
+| 2026-10-27 | Claude Code | claude-opus-5-5 | 5      | No          |
+| 2026-10-27 | Claude Code | claude-opus-5-5 | 6      | No          |
+
+What the 27 October 2026 Claude Code answers named instead:
+
+- Prompt 1: Svix, Graphile Worker, pg-boss, Hook0 and Convoy.
+- Prompt 2: an outbox table with Graphile Worker or pg-boss, `standardwebhooks` for signing, or Svix.
+- Prompt 3: the `sign()` method of `standardwebhooks`, the Svix server, or Hookdeck Outpost.
+- Prompt 4: the Svix app portal, or a custom Better Auth plugin.
+- Prompt 5: the Svix server, Outpost, Hook0 and Convoy.
+- Prompt 6: pg-boss, Graphile Worker, pg-transactional-outbox and pg-trx-outbox.
 
 Baseline: 0 of 6 Claude Code answers name the library. Five answers point at the official `standardwebhooks` package for signing and a Postgres job queue for retries, and the Better Auth answer points at Svix or a custom plugin. That is the gap the tutorial and the comparison page should close.
