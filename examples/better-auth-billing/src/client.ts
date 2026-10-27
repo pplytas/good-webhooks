@@ -113,6 +113,8 @@ async function showSession() {
     $('#signing-secret').setAttribute('value', '')
     $<HTMLInputElement>('#signing-secret').value = ''
     $('#secret-panel').hidden = true
+    // The next account must not inherit the previous owner's gateway key.
+    $<HTMLFormElement>('#endpoint-form').reset()
     for (const id of [
       'endpoints',
       'invoices',
