@@ -460,8 +460,8 @@ export function createStore(config: ResolvedConfig) {
       [scopeKey],
     )
     // started_at has no index, so this walks every retained attempt of the scope through the
-    // attempts primary key. OFFSET 0 keeps the planner from flattening the subquery into a hash
-    // join that scans the attempts of every scope.
+    // attempts primary key. OFFSET 0 keeps PostgreSQL from flattening the subquery into a hash
+    // join over every attempt in the schema, so the cost follows the scope's own attempts.
     const attempts = await config.database.query<{ outcome: Attempt['outcome']; count: string }>(
       `SELECT a.outcome,count(*)::bigint AS count FROM ${tables.deliveries} d
       CROSS JOIN LATERAL (

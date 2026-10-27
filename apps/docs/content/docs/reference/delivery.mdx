@@ -220,7 +220,7 @@ const { deliveries, oldestPendingAgeMs, attemptsLastHour } = await delivery.deli
 
 `pending` includes deliveries waiting for a retry and deliveries queued behind a paused endpoint. Replays count as deliveries. Deliveries and attempts come from two separate reads, so they can disagree slightly under load.
 
-**Cost.** `stats` runs two indexed queries without a transaction. The deliveries query reads every retained delivery of the scope. The attempts query reads every retained attempt of the scope, because the last-hour filter has no index. Cost grows with retention, and [`prune()`](#prune) bounds it. Call it from a status page or a periodic check, not on every request.
+**Cost.** `stats` runs two queries without a transaction. The deliveries query reads every retained delivery of the scope. PostgreSQL reads the scope through its index when the scope is a small share of the table. When the scope holds most of the table, it scans the whole deliveries table instead. That is the usual case for an app that only uses application scope. The attempts query visits every retained attempt of the scope, because the last-hour filter has no index. As an order of magnitude, not a promise: with about 100,000 deliveries and 150,000 attempts in one scope, the deliveries query took tens of milliseconds and the attempts query under a quarter of a second on a local machine. Cost grows with retention, and [`prune()`](#prune) bounds it. Call it from a status page or a periodic check, not on every request.
 
 ### Delivery and attempt records
 

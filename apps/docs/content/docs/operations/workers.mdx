@@ -114,4 +114,4 @@ Alert on two numbers:
 
 `pending` also holds deliveries waiting for a retry and deliveries behind a paused endpoint. With the default schedule a delivery to a failing receiver stays pending for more than a day, so set the age threshold with that in mind. `attemptsLastHour` shows whether workers are making attempts at all.
 
-Each call covers one scope. Call it from a periodic check or a status page, not on every request: it reads the scope's whole retained history. See [the cost](/docs/reference/delivery#stats). For per-attempt metrics, use the [OpenTelemetry recipe](/docs/operations/opentelemetry).
+Each call covers one scope. Poll it about once a minute from a status check, not on every request: it reads the scope's whole retained history. See [the cost](/docs/reference/delivery#stats). For per-attempt metrics, use the [OpenTelemetry recipe](/docs/operations/opentelemetry).
