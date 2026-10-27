@@ -5,10 +5,13 @@ description: Signing secrets, the storage encryption key, destination checks, an
 
 ## Two kinds of secrets
 
-| Secret                         | Held by                                           | Used for                                            |
-| ------------------------------ | ------------------------------------------------- | --------------------------------------------------- |
-| **Signing secret** (`whsec_…`) | The receiver, and endpoint management (encrypted) | Signing each request. The receiver verifies with it |
-| **Storage encryption key**     | Your app and worker processes                     | Encrypting secrets and headers at rest              |
+| Secret                         | Held by                  | Used for                    |
+| ------------------------------ | ------------------------ | --------------------------- |
+| **Signing secret** (`whsec_…`) | Receiver and management  | Signing requests            |
+| **Storage encryption key**     | App and worker processes | Secrets and headers at rest |
+
+- **Signing secret**: the receiver holds it, and endpoint management stores it encrypted. It signs each request, and the receiver verifies with it.
+- **Storage encryption key**: your app and worker processes hold it. It encrypts signing secrets and endpoint headers at rest.
 
 Standalone PostgreSQL management takes a 32-byte key from `generateEncryptionKey()`. Better Auth management uses the auth instance's `secret` or versioned `secrets` instead. [Endpoint headers](/docs/guides/endpoints#send-extra-headers) are encrypted with the same key, because they may hold receiver credentials such as an API key.
 
@@ -34,25 +37,90 @@ Registration requires HTTPS and rejects credentials in the URL and unsafe IP lit
 
 ## Threats and defences
 
-Each row names an attack, what stops it, and the test in `packages/good-webhooks` that checks it. **Host** marks a defence your application must provide.
+Each row names an attack and what stops it. The sections below give the full defence and the test in `packages/good-webhooks` that checks it. **Host** marks a defence your application must provide.
 
-| Asset                  | Attack                            | Defence                                                                                                                                                                                                                                                                                                          | Where it is tested                                                                                                                                                                                                                                    |
-| ---------------------- | --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Receiver               | Forged request                    | HMAC-SHA256 over `{id}.{timestamp}.{body}`, compared in constant time                                                                                                                                                                                                                                            | `test/crypto.test.ts`, "matches an independent published test vector" and "rejects changed body bytes". The constant-time compare is not tested                                                                                                       |
-| Receiver               | Replayed request                  | Rejects timestamps more than five minutes from now by default. **Host:** deduplicate by `webhook-id` inside that window                                                                                                                                                                                          | `test/crypto.test.ts`, "rejects timestamps outside tolerance in either direction"                                                                                                                                                                     |
-| Signing secrets        | Read from storage                 | Encrypted with the storage encryption key (AES-256-GCM in standalone PostgreSQL). Plaintext is returned once on create and rotate, never from `get()` or `list()`. **Host:** keep `management.source` in server code, because it resolves plaintext for delivery                                                 | `test/crypto.test.ts`, "rejects tampered ciphertext, wrong keys, and malformed versions without echoing secrets"; `test/management.test.ts`, "isolates scopes and exposes plaintext secrets only through creation/rotation and trusted resolution"    |
-| Storage encryption key | Key stolen or due for rotation    | **Host:** rotate it. Standalone uses `decryptionKeys` and `reencrypt()`; Better Auth uses versioned `secrets`. Rotation re-encrypts the stored signing secrets and leaves them unchanged, so after a suspected theft also rotate each affected signing secret. See [key rotation](/docs/operations/key-rotation) | `test/management-postgres.test.ts`, "rewrites both signing secrets under a replacement storage key"; `test/better-auth-plugin.test.ts`, "initializes an independent worker provider and rewrites storage encryption without rotating signing secrets" |
-| Endpoint headers       | Read from storage                 | Encrypted like signing secrets                                                                                                                                                                                                                                                                                   | See below                                                                                                                                                                                                                                             |
-| Receiver               | Header spoofing                   | Reserved names rejected, signature applied last                                                                                                                                                                                                                                                                  | See below                                                                                                                                                                                                                                             |
-| Internal network       | SSRF through an endpoint URL      | HTTPS only, no credentials in the URL, unsafe IP literals rejected                                                                                                                                                                                                                                               | `test/transport.test.ts`, "rejects unsafe URL"                                                                                                                                                                                                        |
-| Internal network       | DNS rebinding                     | Standalone PostgreSQL checks DNS at registration. Every send checks again and connects to the checked address                                                                                                                                                                                                    | `test/transport.test.ts`, "re-resolves and rechecks DNS after registration" and "pins the vetted address and keeps the original Host and TLS identity"                                                                                                |
-| Internal network       | Redirect to an internal address   | Redirects are never followed                                                                                                                                                                                                                                                                                     | `test/transport.test.ts`, "returns redirects without following them"                                                                                                                                                                                  |
-| Internal network       | Misused `allowLocalhost`          | Permits loopback destinations only, over HTTP or HTTPS, and no other private range                                                                                                                                                                                                                               | `test/transport.test.ts`, "allows only literal loopback and localhost with the development option"                                                                                                                                                    |
-| Worker                 | Slow or huge receiver response    | One `timeoutMs` deadline covers the whole attempt, including DNS and a stalled body. Reading stops at `maxResponseBytes`                                                                                                                                                                                         | `test/transport.test.ts`, "bounds the DNS phase with the same deadline", "applies the whole deadline to stalled response bodies", and "stops reading at the response byte limit without waiting for the response to finish"                           |
-| Receiver               | Oversized webhook body            | `parseWebhook()` rejects bodies over 512 KiB before signature work. **Host:** cap the body before buffering it                                                                                                                                                                                                   | `test/verify.test.ts`, "rejects excessive raw bodies before signature work"                                                                                                                                                                           |
-| Payload data           | Exposure through delivery history | Events expire after `retentionMs`. **Host:** schedule `prune()` and treat history as user data                                                                                                                                                                                                                   | `test/worker.test.ts`, "prunes expired events in bounded batches and defers active claims"                                                                                                                                                            |
-| Endpoints and events   | Access to another owner's scope   | **Host:** authorize the caller before `forScope()`. The library keeps scopes apart but checks no permissions                                                                                                                                                                                                     | Isolation only: `test/scopes.test.ts`, "never falls back or broadcasts between application and named scopes"                                                                                                                                          |
-| Receiver               | Spoofed `user-agent`              | None. The header is not signed                                                                                                                                                                                                                                                                                   | Not tested                                                                                                                                                                                                                                            |
+| Asset                  | Attack                            | Defence                         |
+| ---------------------- | --------------------------------- | ------------------------------- |
+| Receiver               | Forged request                    | HMAC-SHA256 signature           |
+| Receiver               | Replayed request                  | Timestamp check, **Host** dedup |
+| Receiver               | Oversized webhook body            | 512 KiB cap, **Host** limit     |
+| Receiver               | Spoofed `user-agent`              | None                            |
+| Receiver               | Header spoofing                   | Reserved names, signature last  |
+| Signing secrets        | Read from storage                 | Encryption at rest              |
+| Storage encryption key | Key stolen or due for rotation    | **Host** rotation               |
+| Endpoint headers       | Read from storage                 | Encrypted like secrets          |
+| Internal network       | SSRF through an endpoint URL      | URL rules                       |
+| Internal network       | DNS rebinding                     | DNS recheck and pinning         |
+| Internal network       | Redirect to an internal address   | No redirects                    |
+| Internal network       | Misused `allowLocalhost`          | Loopback only                   |
+| Worker                 | Slow or huge receiver response    | Deadline and byte cap           |
+| Payload data           | Exposure through delivery history | Retention, **Host** pruning     |
+| Endpoints and events   | Access to another owner's scope   | **Host** authorization          |
+
+### Receiver
+
+- **Forged request**: HMAC-SHA256 over `{id}.{timestamp}.{body}`, compared in constant time.
+  - Tested in `test/crypto.test.ts`: "matches an independent published test vector" and "rejects changed body bytes".
+  - The constant-time compare is not tested.
+- **Replayed request**: rejects timestamps more than five minutes from now by default.
+  - **Host:** deduplicate by `webhook-id` inside that window.
+  - Tested in `test/crypto.test.ts`: "rejects timestamps outside tolerance in either direction".
+- **Oversized webhook body**: `parseWebhook()` rejects bodies over 512 KiB before signature work.
+  - **Host:** cap the body before buffering it.
+  - Tested in `test/verify.test.ts`: "rejects excessive raw bodies before signature work".
+- **Spoofed `user-agent`**: none. The header is not signed.
+  - Not tested.
+- **Header spoofing**: names starting with `webhook-`, plus `content-type`, `user-agent`, and hop-by-hop names, are rejected on input and from custom sources, and the worker applies the signature headers last.
+  - Tested in `test/endpoint-headers.test.ts`: "rejects reserved name %s".
+  - Tested in `test/provider-delivery.test.ts`: "treats a reserved endpoint header … from a custom source as a lookup failure".
+  - Tested in `test/worker-lifecycle.test.ts`: "sends endpoint headers under the signature headers, which always win".
+
+### Signing secrets
+
+- **Read from storage**: encrypted with the storage encryption key (AES-256-GCM in standalone PostgreSQL). Plaintext is returned once on create and rotate, never from `get()` or `list()`.
+  - **Host:** keep `management.source` in server code, because it resolves plaintext for delivery.
+  - Tested in `test/crypto.test.ts`: "rejects tampered ciphertext, wrong keys, and malformed versions without echoing secrets".
+  - Tested in `test/management.test.ts`: "isolates scopes and exposes plaintext secrets only through creation/rotation and trusted resolution".
+
+### Storage encryption key
+
+- **Key stolen or due for rotation**: **Host:** rotate it. Standalone uses `decryptionKeys` and `reencrypt()`; Better Auth uses versioned `secrets`.
+  - Rotation re-encrypts the stored signing secrets and leaves them unchanged, so after a suspected theft also rotate each affected signing secret. See [key rotation](/docs/operations/key-rotation).
+  - Tested in `test/management-postgres.test.ts`: "rewrites both signing secrets under a replacement storage key".
+  - Tested in `test/better-auth-plugin.test.ts`: "initializes an independent worker provider and rewrites storage encryption without rotating signing secrets".
+
+### Endpoint headers
+
+- **Read from storage**: encrypted with the storage encryption key as one value, and `reencrypt()` rewrites them along with the signing secrets. Reads return them to the endpoint owner who set them, so show them only to callers allowed to manage the endpoint.
+  - After a suspected key theft, also replace any credential the headers carry.
+  - Tested in `test/management-postgres.test.ts`: "round trips encrypted endpoint headers on create and update, and clears them on remove".
+
+### Internal network
+
+- **SSRF through an endpoint URL**: HTTPS only, no credentials in the URL, unsafe IP literals rejected.
+  - Tested in `test/transport.test.ts`: "rejects unsafe URL".
+- **DNS rebinding**: standalone PostgreSQL checks DNS at registration. Every send checks again and connects to the checked address.
+  - Tested in `test/transport.test.ts`: "re-resolves and rechecks DNS after registration" and "pins the vetted address and keeps the original Host and TLS identity".
+- **Redirect to an internal address**: redirects are never followed.
+  - Tested in `test/transport.test.ts`: "returns redirects without following them".
+- **Misused `allowLocalhost`**: permits loopback destinations only, over HTTP or HTTPS, and no other private range.
+  - Tested in `test/transport.test.ts`: "allows only literal loopback and localhost with the development option".
+
+### Worker
+
+- **Slow or huge receiver response**: one `timeoutMs` deadline covers the whole attempt, including DNS and a stalled body. Reading stops at `maxResponseBytes`.
+  - Tested in `test/transport.test.ts`: "bounds the DNS phase with the same deadline", "applies the whole deadline to stalled response bodies", and "stops reading at the response byte limit without waiting for the response to finish".
+
+### Payload data
+
+- **Exposure through delivery history**: events expire after `retentionMs`.
+  - **Host:** schedule `prune()` and treat history as user data.
+  - Tested in `test/worker.test.ts`: "prunes expired events in bounded batches and defers active claims".
+
+### Endpoints and events
+
+- **Access to another owner's scope**: **Host:** authorize the caller before `forScope()`. The library keeps scopes apart but checks no permissions.
+  - Tested for isolation only, in `test/scopes.test.ts`: "never falls back or broadcasts between application and named scopes".
 
 Endpoint headers are encrypted with the storage encryption key as one value, and `reencrypt()` rewrites them along with the signing secrets. Reads return them to the endpoint owner who set them, so show them only to callers allowed to manage the endpoint. After a suspected key theft, also replace any credential the headers carry. Names starting with `webhook-`, plus `content-type`, `user-agent`, and hop-by-hop names, are rejected on input and from custom sources, and the worker applies the signature headers last. The tests are "round trips encrypted endpoint headers on create and update, and clears them on remove" in `test/management-postgres.test.ts`, "rejects reserved name %s" in `test/endpoint-headers.test.ts`, "treats a reserved endpoint header … from a custom source as a lookup failure" in `test/provider-delivery.test.ts`, and "sends endpoint headers under the signature headers, which always win" in `test/worker-lifecycle.test.ts`.
 

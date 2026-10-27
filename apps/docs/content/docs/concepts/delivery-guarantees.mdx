@@ -25,12 +25,16 @@ WHERE invoices.version < excluded.version;
 
 A delivery is `pending` until a worker sends it (`in_flight`), then ends `succeeded`, `failed`, or `cancelled` (the endpoint was deleted). Each attempt's response decides what happens next:
 
-| Response                                    | Result                                                                          |
-| ------------------------------------------- | ------------------------------------------------------------------------------- |
-| `2xx`                                       | `succeeded`                                                                     |
-| `410`                                       | `failed`, no retry. By default the endpoint is also [paused](#automatic-pauses) |
-| Any other status, including `3xx` and `4xx` | Back to `pending` until the next retry time. Redirects are never followed       |
-| Network, DNS, or timeout error              | Back to `pending` until the next retry time                                     |
+| Response                       | Result             |
+| ------------------------------ | ------------------ |
+| `2xx`                          | `succeeded`        |
+| `410`                          | `failed`, no retry |
+| Any other status               | Back to `pending`  |
+| Network, DNS, or timeout error | Back to `pending`  |
+
+- **`410`**: by default the endpoint is also [paused](#automatic-pauses).
+- **Any other status**: this includes `3xx` and `4xx`. Redirects are never followed.
+- **Back to `pending`**: the delivery waits until the next retry time.
 
 By default a delivery gets up to eight attempts over about 28 hours, so a receiver whose owner fixes it the next day still gets the event:
 
@@ -55,14 +59,19 @@ The worker pauses an endpoint when all its attempts have failed for five days, o
 
 ## Endpoint changes while work is queued
 
-| Change                | Effect on queued deliveries                                                                              |
-| --------------------- | -------------------------------------------------------------------------------------------------------- |
-| Pause                 | Held until resume. The retry window restarts at the first attempt after the resume, within `retentionMs` |
-| Automatic pause       | Same as a pause                                                                                          |
-| Resume                | Eligible deliveries send again                                                                           |
-| Delete                | Pending work is cancelled when the worker sees it. Secrets are cleared                                   |
-| Change URL            | The next attempt uses the new URL                                                                        |
-| Change subscriptions  | Later events only. Already accepted recipients stay                                                      |
-| Rotate signing secret | The next attempt signs with the current secrets (both, during the overlap)                               |
+| Change                | Effect on queued deliveries    |
+| --------------------- | ------------------------------ |
+| Pause                 | Held until resume              |
+| Automatic pause       | Same as a pause                |
+| Resume                | Eligible deliveries send again |
+| Delete                | Pending work cancelled         |
+| Change URL            | Next attempt uses the new URL  |
+| Change subscriptions  | Later events only              |
+| Rotate signing secret | Signs with current secrets     |
+
+- **Pause**: the retry window restarts at the first attempt after the resume, within `retentionMs`.
+- **Delete**: pending work is cancelled when the worker sees it. Secrets are cleared.
+- **Change subscriptions**: already accepted recipients stay.
+- **Rotate signing secret**: the next attempt signs with the current secrets (both, during the overlap).
 
 A request already being sent when you pause or delete can still arrive. If endpoint management is unreachable at attempt time, the delivery waits without using up an attempt. An outage is never treated as a deletion.

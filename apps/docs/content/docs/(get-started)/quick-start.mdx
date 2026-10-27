@@ -150,13 +150,11 @@ docker rm -f good-webhooks-quickstart
 
 The script cuts five corners:
 
-| In the script                          | In your application                                                      | Guide                                      |
-| -------------------------------------- | ------------------------------------------------------------------------ | ------------------------------------------ |
-| `pool.query(getPostgresMigration())`   | Your migration runner applies the SQL once                               | [Migrations](/docs/operations/migrations)  |
-| `generateEncryptionKey()` on every run | Generate once, store in a secret manager, load in every process          | [Manage endpoints](/docs/guides/endpoints) |
-| `worker.runOnce()` in the same file    | A separate worker process calling `worker.run({ signal })`               | [Run workers](/docs/operations/workers)    |
-| `publish()` on its own                 | `publish()` inside the transaction that changes your data                | [Publish events](/docs/guides/publish)     |
-| The receiver only logs                 | The receiver records `event.id` with its change, so retries are harmless | [Receive webhooks](/docs/guides/receive)   |
+- **`pool.query(getPostgresMigration())`**: your migration runner applies the SQL once. See [Migrations](/docs/operations/migrations).
+- **`generateEncryptionKey()` on every run**: generate the key once, store it in a secret manager, and load it in every process. See [Manage endpoints](/docs/guides/endpoints).
+- **`worker.runOnce()` in the same file**: a separate worker process calls `worker.run({ signal })`. See [Run workers](/docs/operations/workers).
+- **`publish()` on its own**: call `publish()` inside the transaction that changes your data. See [Publish events](/docs/guides/publish).
+- **The receiver only logs**: the receiver records `event.id` with its change, so retries are harmless. See [Receive webhooks](/docs/guides/receive).
 
 Drop `allowLocalhost` outside development. The [production checklist](/docs/operations/production) collects the rest.
 

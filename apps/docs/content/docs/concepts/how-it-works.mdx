@@ -14,19 +14,19 @@ The split lets you mix and match: manage endpoints with Better Auth and deliver 
 
 Two providers offer the same lifecycle API: create, update, pause, resume, rotate secret, remove.
 
-| Provider                                        | Stores endpoints in                    | Who calls it                        |
-| ----------------------------------------------- | -------------------------------------- | ----------------------------------- |
-| [Better Auth plugin](/docs/better-auth)         | Your Better Auth database, any adapter | Signed-in users through HTTP routes |
-| [Standalone PostgreSQL](/docs/guides/endpoints) | A `webhook_endpoints` table            | Your server code                    |
+| Provider                                        | Stores endpoints in         | Who calls it     |
+| ----------------------------------------------- | --------------------------- | ---------------- |
+| [Better Auth plugin](/docs/better-auth)         | Your Better Auth database   | Signed-in users  |
+| [Standalone PostgreSQL](/docs/guides/endpoints) | A `webhook_endpoints` table | Your server code |
+
+The Better Auth plugin works with any Better Auth adapter. Signed-in users call it through HTTP routes.
 
 ## The link: EndpointSource
 
 Both providers expose `management.source` with the two reads a sender needs:
 
-| Method                         | Called                           | Returns                                            |
-| ------------------------------ | -------------------------------- | -------------------------------------------------- |
-| `matchRecipients(scope, type)` | Once, when an event is published | Every subscribed endpoint ID, paused ones included |
-| `resolveEndpoint(scope, id)`   | Before each delivery attempt     | Current status, URL, and signing secrets           |
+- **`matchRecipients(scope, type)`**: called once, when an event is published. Returns every subscribed endpoint ID, paused ones included.
+- **`resolveEndpoint(scope, id)`**: called before each delivery attempt. Returns the current status, URL, and signing secrets.
 
 Because delivery asks again before every attempt, pausing, moving, or deleting an endpoint takes effect at the next attempt. `resolveEndpoint` returns plaintext secrets, so keep `source` in trusted server code.
 

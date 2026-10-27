@@ -70,22 +70,33 @@ await management.pause(scope, endpoint.id)
 
 All direct calls are trusted server operations. They do not authorize the caller. The first argument is `ManagementScope`: `null` for application scope or `{ type, id }` for a named scope. See [scopes](/docs/concepts/scopes).
 
-| Method                              | Result and behavior                                                                                                                                  |
-| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `create(scope, input)`              | `Promise<ManagedEndpointWithSecret>`. Creates an active endpoint and returns `{ endpoint, secret }`.                                                 |
-| `list(scope)`                       | `Promise<ManagedEndpoint[]>`. Returns every nondeleted endpoint in the scope.                                                                        |
-| `get(scope, id)`                    | `Promise<ManagedEndpoint>`. Returns an endpoint, including its deleted state.                                                                        |
-| `update(scope, id, patch)`          | Changes the supplied fields.                                                                                                                         |
-| `pause(scope, id)`                  | `Promise<ManagedEndpoint>`. Changes the status to `'paused'` with `pauseReason: 'owner'`.                                                            |
-| `resume(scope, id)`                 | `Promise<ManagedEndpoint>`. Validates the current URL, changes status to `'active'`, and clears `pauseReason`. Also resumes automatic pauses.        |
-| `remove(scope, id)`                 | Clears secrets and headers.                                                                                                                          |
-| `rotateSecret(scope, id, options?)` | `Promise<ManagedEndpointWithSecret>`. Changes the signing secret. `options.graceMs` defaults to 86,400,000 and accepts 0 through 86,400,000.         |
-| `sendTestEvent(scope, id)`          | `Promise<TestEventResult>`. Signs and sends one [test event](#test-events) to an active or paused endpoint. Deleted endpoints throw `INVALID_STATE`. |
-| `removeScope(scope)`                | `Promise<void>`. Deletes the scope's currently registered endpoints.                                                                                 |
-| `reencrypt(scope)`                  | Re-encrypts secrets and headers.                                                                                                                     |
-| `source`                            | Trusted sender reads. See [EndpointSource](#endpointsource).                                                                                         |
+| Method                              | Returns                              |
+| ----------------------------------- | ------------------------------------ |
+| `create(scope, input)`              | `Promise<ManagedEndpointWithSecret>` |
+| `list(scope)`                       | `Promise<ManagedEndpoint[]>`         |
+| `get(scope, id)`                    | `Promise<ManagedEndpoint>`           |
+| `update(scope, id, patch)`          | `Promise<ManagedEndpoint>`           |
+| `pause(scope, id)`                  | `Promise<ManagedEndpoint>`           |
+| `resume(scope, id)`                 | `Promise<ManagedEndpoint>`           |
+| `remove(scope, id)`                 | `Promise<ManagedEndpoint>`           |
+| `rotateSecret(scope, id, options?)` | `Promise<ManagedEndpointWithSecret>` |
+| `sendTestEvent(scope, id)`          | `Promise<TestEventResult>`           |
+| `removeScope(scope)`                | `Promise<void>`                      |
+| `reencrypt(scope)`                  | `Promise<number>`                    |
+| `source`                            | `EndpointSource`                     |
 
-`update` returns the endpoint and changes only the supplied fields; `headers` replaces the whole header set. `remove` sets status to `'deleted'`, clears signing secrets and headers, and returns the endpoint; removing an already deleted record is idempotent. `reencrypt` rewrites live signing-secret and header ciphertext with the current storage encryption key and returns the count.
+- **`create`**: creates an active endpoint and returns `{ endpoint, secret }`.
+- **`list`**: returns every nondeleted endpoint in the scope.
+- **`get`**: returns an endpoint, including its deleted state.
+- **`update`**: returns the endpoint and changes only the supplied fields. `headers` replaces the whole header set.
+- **`pause`**: changes the status to `'paused'` with `pauseReason: 'owner'`.
+- **`resume`**: validates the current URL, changes status to `'active'`, and clears `pauseReason`. Also resumes automatic pauses.
+- **`remove`**: sets status to `'deleted'`, clears signing secrets and headers, and returns the endpoint. Removing an already deleted record is idempotent.
+- **`rotateSecret`**: changes the signing secret. `options.graceMs` defaults to 86,400,000 and accepts 0 through 86,400,000.
+- **`sendTestEvent`**: signs and sends one [test event](#test-events) to an active or paused endpoint. Deleted endpoints throw `INVALID_STATE`.
+- **`removeScope`**: deletes the scope's currently registered endpoints.
+- **`reencrypt`**: rewrites live signing-secret and header ciphertext with the current storage encryption key and returns the count.
+- **`source`**: trusted sender reads. See [EndpointSource](#endpointsource).
 
 ### Test events
 
@@ -108,17 +119,25 @@ A receiver failure is a result with `ok: false`, never a thrown error. An unsafe
 
 `CreateManagedEndpoint` has `url`, optional `description`, `eventTypes`, and optional `headers`. `UpdateManagedEndpoint` makes those fields optional, accepts `description: null` to clear the description, and accepts `headers: null` or `{}` to remove every header.
 
-| Value        | Limit                                                                                              |
-| ------------ | -------------------------------------------------------------------------------------------------- |
-| Scope `type` | 1 through 64 characters, nonblank, no null bytes.                                                  |
-| Scope `id`   | 1 through 200 characters, nonblank, no null bytes.                                                 |
-| Endpoint ID  | 1 through 255 characters, nonblank, no null bytes.                                                 |
-| URL          | At most 2,048 characters. Must pass the configured destination validation, otherwise `UNSAFE_URL`. |
-| Description  | At most 2,000 characters, no null bytes.                                                           |
-| `eventTypes` | 1 through 100 configured event names. Duplicates are collapsed.                                    |
-| `headers`    | See [endpoint headers](#endpoint-headers).                                                         |
-| Endpoints    | At most 1,000 nondeleted endpoints per scope, or fewer with `maxEndpoints`.                        |
-| `graceMs`    | Integer from 0 through 86,400,000. Default 86,400,000.                                             |
+| Value        | Limit                     |
+| ------------ | ------------------------- |
+| Scope `type` | 1 through 64 characters   |
+| Scope `id`   | 1 through 200 characters  |
+| Endpoint ID  | 1 through 255 characters  |
+| URL          | At most 2,048 characters  |
+| Description  | At most 2,000 characters  |
+| `eventTypes` | 1 through 100 event names |
+| `headers`    | See below                 |
+| Endpoints    | At most 1,000 per scope   |
+| `graceMs`    | 0 through 86,400,000      |
+
+- **Scope `type`, scope `id`, and endpoint ID**: each must be nonblank, with no null bytes.
+- **URL**: must pass the configured destination validation, otherwise `UNSAFE_URL`.
+- **Description**: no null bytes.
+- **`eventTypes`**: configured event names only. Duplicates are collapsed.
+- **`headers`**: see [endpoint headers](#endpoint-headers).
+- **Endpoints**: the limit counts nondeleted endpoints. `maxEndpoints` can set fewer.
+- **`graceMs`**: an integer. Default 86,400,000.
 
 ### Endpoint headers
 
@@ -140,13 +159,11 @@ Names are RFC 9110 tokens, and two names that differ only in letter case are rej
 
 ### Errors
 
-| Error            | When                                                                                       |
-| ---------------- | ------------------------------------------------------------------------------------------ |
-| `INVALID_INPUT`  | An argument breaks a limit above, or names an event outside the configured list.           |
-| `UNSAFE_URL`     | The URL fails destination validation.                                                      |
-| `NOT_FOUND`      | No endpoint with this ID in the scope, or the scope's owner no longer exists.              |
-| `INVALID_STATE`  | The endpoint is deleted, a signing-secret overlap is active, or the record keeps changing. |
-| `ENDPOINT_LIMIT` | `create` in a scope that already has its endpoint limit.                                   |
+- **`INVALID_INPUT`**: an argument breaks a limit above, or names an event outside the configured list.
+- **`UNSAFE_URL`**: the URL fails destination validation.
+- **`NOT_FOUND`**: no endpoint with this ID in the scope, or the scope's owner no longer exists.
+- **`INVALID_STATE`**: the endpoint is deleted, a signing-secret overlap is active, or the record keeps changing.
+- **`ENDPOINT_LIMIT`**: `create` in a scope that already has its endpoint limit.
 
 <Accordions>
 <Accordion title="Lifecycle rules for deleted endpoints and rotation">
@@ -214,11 +231,13 @@ const delivery = createDelivery({
 
 The sender calls `matchRecipients` once at publication and `resolveEndpoint` before every attempt. The source is not an API for untrusted callers.
 
-| Method            | Contract                                                                                                                                                                                                                                                                   |
-| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `matchRecipients` | Returns the complete set of matching endpoint IDs, including paused endpoints. Lookup failures reject. A source must not convert an outage into an empty result.                                                                                                           |
-| `resolveEndpoint` | Returns current state. Active results contain the current URL and usable Standard Webhooks signing secrets. Deleted or missing records return `'deleted'`.                                                                                                                 |
-| `pause`           | Optional. Pauses an active endpoint for the worker and resolves `true`. Resolves `false` without changing anything when the endpoint isn't active or no longer has `revision`. Required by a worker with [automatic pauses](/docs/reference/delivery#automatic-pauses) on. |
+- **`matchRecipients`**: returns the complete set of matching endpoint IDs, including paused endpoints. Lookup failures reject.
+  - A source must not convert an outage into an empty result.
+- **`resolveEndpoint`**: returns current state. Deleted or missing records return `'deleted'`.
+  - Active results contain the current URL and usable Standard Webhooks signing secrets.
+- **`pause`**: optional. Required by a worker with [automatic pauses](/docs/reference/delivery#automatic-pauses) on.
+  - It pauses an active endpoint for the worker and resolves `true`.
+  - It resolves `false` without changing anything when the endpoint isn't active or no longer has `revision`.
 
 `revision` is optional and opaque. It must change whenever the endpoint changes, including on resume, so the worker can tell that earlier failures no longer describe it. Without it, a resumed endpoint that fails again is paused at once, and only a success starts a new period. The built-in sources report the record's revision.
 
@@ -261,15 +280,15 @@ export const management = createManagement({
 
 Creates the shared endpoint lifecycle over custom persistence and encryption.
 
-| Option                | Contract                                                                                                                                                     |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `repository`          | Required `ManagementRepository`.                                                                                                                             |
-| `cipher`              | Required `SecretCipher`.                                                                                                                                     |
-| `eventTypes`          | Required nonempty array of names matching `^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,119}$` and not starting with `good-webhooks.`. No payload validators are required.  |
-| `allowLocalhost`      | Optional boolean, default `false`. Allows development HTTP loopback URLs.                                                                                    |
-| `validateUrl(url)`    | Optional async host check after portable URL validation. Runs on create, URL update, and resume, not on each send.                                           |
-| `scopeExists(scope)`  | Optional async ownership check. Returns `false` for a missing owner and rejects on lookup failure.                                                           |
-| `maxEndpoints(scope)` | Optional `EndpointLimit`: returns, or resolves to, the scope's endpoint limit from 0 to 1,000. Default 1,000. Other values throw `INVALID_CONFIG` on create. |
+- **`repository`**: required `ManagementRepository`.
+- **`cipher`**: required `SecretCipher`.
+- **`eventTypes`**: required nonempty array of event names. No payload validators are required.
+  - Each name matches `^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,119}$` and does not start with `good-webhooks.`.
+- **`allowLocalhost`**: optional boolean, default `false`. Allows development HTTP loopback URLs.
+- **`validateUrl(url)`**: optional async host check after portable URL validation. Runs on create, URL update, and resume, not on each send.
+- **`scopeExists(scope)`**: optional async ownership check. Returns `false` for a missing owner and rejects on lookup failure.
+- **`maxEndpoints(scope)`**: optional `EndpointLimit`, default 1,000. Returns, or resolves to, the scope's endpoint limit from 0 to 1,000.
+  - Other values throw `INVALID_CONFIG` on create.
 
 Invalid options throw `INVALID_CONFIG`. Portable URL validation requires HTTPS and rejects credentials, fragments, and private or reserved IP literals. Loopback hosts, including `localhost`, need `allowLocalhost`, which also permits HTTP for them.
 
@@ -301,12 +320,11 @@ interface ManagementRepository {
 }
 ```
 
-| Method   | Contract                                                                                                                                                                               |
-| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `list`   | Returns every live record in the scope without truncation.                                                                                                                             |
-| `get`    | Returns the record, including a deleted one, or `null`.                                                                                                                                |
-| `create` | Atomically inserts the complete record, `encryptedHeaders` included, unless the scope already has `options.limit` nondeleted records (0 to 1,000), then rejects with `ENDPOINT_LIMIT`. |
-| `update` | Atomically guards on scope, ID, and revision, increments the revision, and applies the patch. A revision conflict returns `null`.                                                      |
+- **`list`**: returns every live record in the scope without truncation.
+- **`get`**: returns the record, including a deleted one, or `null`.
+- **`create`**: atomically inserts the complete record, `encryptedHeaders` included.
+  - `options.limit` is 0 to 1,000. When the scope already has `options.limit` nondeleted records, `create` inserts nothing and rejects with `ENDPOINT_LIMIT`.
+- **`update`**: atomically guards on scope, ID, and revision, increments the revision, and applies the patch. A revision conflict returns `null`.
 
 Repository errors propagate. [`createPostgresManagementRepository`](/docs/reference/postgres#createpostgresmanagementrepository) is the built-in implementation.
 

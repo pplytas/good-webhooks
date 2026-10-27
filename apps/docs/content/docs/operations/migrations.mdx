@@ -7,13 +7,19 @@ Good Webhooks never applies DDL. `getPostgresMigration()` returns SQL text, the 
 
 ## Which SQL do I need?
 
-| Setup                                              | Management                               | Delivery                               |
-| -------------------------------------------------- | ---------------------------------------- | -------------------------------------- |
-| Standalone management and delivery, same schema    | `001-initial.sql` (both components)      |                                        |
-| Standalone management only                         | `management.sql`                         | none                                   |
-| Better Auth management only                        | Better Auth or ORM schema workflow       | none                                   |
-| Better Auth management with Good Webhooks delivery | Better Auth or ORM schema workflow       | `delivery.sql`                         |
-| Management and delivery in separate schemas        | generated with `component: 'management'` | generated with `component: 'delivery'` |
+| Setup                      | Management         | Delivery       |
+| -------------------------- | ------------------ | -------------- |
+| Standalone, one schema     | `001-initial.sql`  | same file      |
+| Standalone management only | `management.sql`   | none           |
+| Better Auth only           | Better Auth or ORM | none           |
+| Better Auth with delivery  | Better Auth or ORM | `delivery.sql` |
+| Separate schemas           | generated          | generated      |
+
+- **Standalone, one schema**: standalone management and delivery in the same schema. `001-initial.sql` holds both components.
+- **Standalone management only**: apply `management.sql`. There is no delivery SQL.
+- **Better Auth only**: Better Auth management only. Use the Better Auth or ORM schema workflow. There is no delivery SQL.
+- **Better Auth with delivery**: Better Auth management with Good Webhooks delivery. Management comes from the Better Auth or ORM schema workflow; apply `delivery.sql` for delivery.
+- **Separate schemas**: management and delivery in separate schemas. Generate management SQL with `component: 'management'` and delivery SQL with `component: 'delivery'`.
 
 Never apply the combined file and a component file to the same installation.
 

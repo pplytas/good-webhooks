@@ -80,13 +80,11 @@ if (event.type === 'invoice.paid') event.data.amount // number
 
 A `fetch()` in a request handler loses events when a receiving server is down, sends duplicates on deploys, and can be pointed at internal services. Good Webhooks covers those cases:
 
-| Good Webhooks handles                                  | You decide                                    |
-| ------------------------------------------------------ | --------------------------------------------- |
-| Endpoint storage, encrypted secrets, URL safety checks | Who may manage which endpoints                |
-| Payload validation, idempotency, recipient selection   | When to publish, and in which transaction     |
-| Signing, retries, attempt history, replay              | Where the worker runs and how it's supervised |
-| Migration SQL and schema checks                        | When migrations run                           |
-| Signature verification and typed parsing for receivers | What the receiver does with the event         |
+- **Endpoints**: Good Webhooks handles endpoint storage, encrypted secrets, and URL safety checks. You decide who may manage which endpoints.
+- **Publishing**: Good Webhooks handles payload validation, idempotency, and recipient selection. You decide when to publish, and in which transaction.
+- **Delivery**: Good Webhooks handles signing, retries, attempt history, and replay. You decide where the worker runs and how it's supervised.
+- **Migrations**: Good Webhooks handles the migration SQL and schema checks. You decide when migrations run.
+- **Receivers**: Good Webhooks handles signature verification and typed parsing. You decide what the receiver does with the event.
 
 Nothing starts on its own: creating the client opens no connections, runs no migrations, and starts no workers.
 

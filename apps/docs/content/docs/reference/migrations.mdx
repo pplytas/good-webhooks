@@ -40,11 +40,17 @@ Every generated script starts with `CREATE SCHEMA IF NOT EXISTS` for its namespa
 
 ## Components and SQL assets
 
-| Component    | Created tables                                                                                                             | Equivalent shipped asset for `public`      |
-| ------------ | -------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
-| `management` | `webhook_schema_version` (if absent), `webhook_endpoints`                                                                  | `good-webhooks/migrations/management.sql`  |
-| `delivery`   | `webhook_schema_version` (if absent), `webhook_endpoint_state`, `webhook_events`, `webhook_deliveries`, `webhook_attempts` | `good-webhooks/migrations/delivery.sql`    |
-| `all`        | Both groups                                                                                                                | `good-webhooks/migrations/001-initial.sql` |
+| Component    | Equivalent shipped asset for `public`      |
+| ------------ | ------------------------------------------ |
+| `management` | `good-webhooks/migrations/management.sql`  |
+| `delivery`   | `good-webhooks/migrations/delivery.sql`    |
+| `all`        | `good-webhooks/migrations/001-initial.sql` |
+
+Tables each component creates:
+
+- **`management`**: `webhook_schema_version` (if absent) and `webhook_endpoints`.
+- **`delivery`**: `webhook_schema_version` (if absent), `webhook_endpoint_state`, `webhook_events`, `webhook_deliveries`, and `webhook_attempts`.
+- **`all`**: both groups.
 
 Each component records its version in `webhook_schema_version`; components that share a namespace share the table. The `.sql` files are public package exports. They are text assets, not executable JavaScript imports. Resolve them with `import.meta.resolve` or `require.resolve` and read them with your migration tool:
 
@@ -81,17 +87,32 @@ Returns SQL that moves storage recorded at version `from` to the current version
 
 `from` is the version recorded in the database: `3`, `4`, or `5`. From `3` or `4`, the SQL applies each published step in order up to version `6`. `from: 6` throws `INVALID_CONFIG` because no upgrade is needed. Versions before `3` were never published and need fresh storage.
 
-| Upgrade | Shipped asset for `public`                             | What it changes                                                                           |
-| ------- | ------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
-| 3 to 4  | `good-webhooks/migrations/upgrades/004-all.sql`        | Records a version per component. Delivery rewrites its version row; management gains one. |
-|         | `good-webhooks/migrations/upgrades/004-management.sql` | Management in its own namespace: creates the version table and records `management`.      |
-|         | `good-webhooks/migrations/upgrades/004-delivery.sql`   | Delivery in its own namespace: rewrites the version row.                                  |
-| 4 to 5  | `good-webhooks/migrations/upgrades/005-all.sql`        | Adds the columns for automatic pauses to both components.                                 |
-|         | `good-webhooks/migrations/upgrades/005-management.sql` | Adds `webhook_endpoints.pause_reason`.                                                    |
-|         | `good-webhooks/migrations/upgrades/005-delivery.sql`   | Adds `failing_since` and `failing_revision` to `webhook_endpoint_state`.                  |
-| 5 to 6  | `good-webhooks/migrations/upgrades/006-all.sql`        | Adds the delivery retry window and the endpoint headers column.                           |
-|         | `good-webhooks/migrations/upgrades/006-management.sql` | Adds `webhook_endpoints.encrypted_headers`.                                               |
-|         | `good-webhooks/migrations/upgrades/006-delivery.sql`   | Adds `webhook_deliveries.window_started_at` and sets it to `created_at` for every row.    |
+| Upgrade | Component    | Shipped asset for `public`                             |
+| ------- | ------------ | ------------------------------------------------------ |
+| 3 to 4  | `all`        | `good-webhooks/migrations/upgrades/004-all.sql`        |
+|         | `management` | `good-webhooks/migrations/upgrades/004-management.sql` |
+|         | `delivery`   | `good-webhooks/migrations/upgrades/004-delivery.sql`   |
+| 4 to 5  | `all`        | `good-webhooks/migrations/upgrades/005-all.sql`        |
+|         | `management` | `good-webhooks/migrations/upgrades/005-management.sql` |
+|         | `delivery`   | `good-webhooks/migrations/upgrades/005-delivery.sql`   |
+| 5 to 6  | `all`        | `good-webhooks/migrations/upgrades/006-all.sql`        |
+|         | `management` | `good-webhooks/migrations/upgrades/006-management.sql` |
+|         | `delivery`   | `good-webhooks/migrations/upgrades/006-delivery.sql`   |
+
+What each asset changes:
+
+- **3 to 4**
+  - `all`: records a version per component. Delivery rewrites its version row; management gains one.
+  - `management`: management in its own namespace. Creates the version table and records `management`.
+  - `delivery`: delivery in its own namespace. Rewrites the version row.
+- **4 to 5**
+  - `all`: adds the columns for automatic pauses to both components.
+  - `management`: adds `webhook_endpoints.pause_reason`.
+  - `delivery`: adds `failing_since` and `failing_revision` to `webhook_endpoint_state`.
+- **5 to 6**
+  - `all`: adds the delivery retry window and the endpoint headers column.
+  - `management`: adds `webhook_endpoints.encrypted_headers`.
+  - `delivery`: adds `webhook_deliveries.window_started_at` and sets it to `created_at` for every row.
 
 Shipped upgrade files never change, and each covers one step. For 3 to 4 in a shared namespace, apply `all`, or `delivery` before `management`; the management step needs the rewritten table and fails otherwise. The 4-to-5 and 5-to-6 components can run in either order. Each upgrade adds only a version record or nullable columns, so processes on the previous package keep working until they restart. The 5-to-6 delivery step also fills `window_started_at` from `created_at` in one `UPDATE` under the `ALTER TABLE` lock, so it blocks reads and writes of `webhook_deliveries` for a time that grows with the table's row count. Check the count and any pruning backlog first. The [migrations guide](/docs/operations/migrations#upgrades) gives the rollout order.
 

@@ -44,14 +44,12 @@ Verifies the signature, validates the Good Webhooks JSON envelope, and decodes i
 
 `ParsedWebhook<E>` is a discriminated union by event `type`. Each member contains `id: string`, its event-name literal, `occurredAt: string`, and `data` with that validator's output type. The union also contains `ParsedTestEvent`, with `type: 'good-webhooks.test'` and `data: { endpointId: string }`. `parseWebhook` accepts that [test event](/docs/guides/receive#answer-test-events) without an entry in `events`.
 
-| Rule         | Contract                                                                                                                                |
-| ------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
-| Body size    | At most 512 KiB, checked before verification. Larger bodies produce `PAYLOAD_INVALID`.                                                  |
-| Envelope     | A JSON object with `id`, `type`, `occurredAt`, and `data`.                                                                              |
-| `id`         | Must match the authenticated `webhook-id` header.                                                                                       |
-| `type`       | Must be a key of `events`. Unknown event types produce `PAYLOAD_INVALID`.                                                               |
-| `occurredAt` | A canonical ISO timestamp.                                                                                                              |
-| `data`       | Must fit the sender's JSON limits: 256 KiB, maximum depth 64, finite numbers, and plain JSON values. Then the validator must accept it. |
+- **Body size**: at most 512 KiB, checked before verification. Larger bodies produce `PAYLOAD_INVALID`.
+- **Envelope**: a JSON object with `id`, `type`, `occurredAt`, and `data`.
+- **`id`**: must match the authenticated `webhook-id` header.
+- **`type`**: must be a key of `events`, or `good-webhooks.test`. Other unknown event types produce `PAYLOAD_INVALID`.
+- **`occurredAt`**: a canonical ISO timestamp.
+- **`data`**: must fit the sender's JSON limits: 256 KiB, maximum depth 64, finite numbers, and plain JSON values. Then the validator must accept it.
 
 Receiver validators accept transmitted JSON and can decode it into local values such as `Date`. Expected error messages do not expose payload values.
 
@@ -92,13 +90,11 @@ The input table below is generated from the public function signature. `VerifyOp
 
 <auto-type-table path="../../reference-types.ts" name="VerifyOptions" />
 
-| Input              | Contract                                                                                                            |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------- |
-| `body`             | Required raw string or `Uint8Array`, before JSON parsing or reserialization.                                        |
-| `headers`          | Required `Headers` or record of string, string-array, or undefined values. Relevant values must each be one string. |
-| `secret`           | One signing secret or an array of 1 through 16 secrets.                                                             |
-| `now`              | Optional valid `Date`, defaulting to the current time.                                                              |
-| `toleranceSeconds` | Optional nonnegative safe integer, default `300`. Applies to timestamps in the past and future.                     |
+- **`body`**: required raw string or `Uint8Array`, before JSON parsing or reserialization.
+- **`headers`**: required `Headers` or record of string, string-array, or undefined values. Relevant values must each be one string.
+- **`secret`**: one signing secret or an array of 1 through 16 secrets.
+- **`now`**: optional valid `Date`, defaulting to the current time.
+- **`toleranceSeconds`**: optional nonnegative safe integer, default `300`. Applies to timestamps in the past and future.
 
 | Header              | Rule                                                             |
 | ------------------- | ---------------------------------------------------------------- |
@@ -120,12 +116,9 @@ Signing secrets have a `whsec_` prefix and canonical base64 encoding of 24 throu
 
 Both functions throw `WebhookError` for expected failures. The [receiving guide](/docs/guides/receive) maps each code to an HTTP response.
 
-| Failure                                                                 | Result                                                           |
-| ----------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| Invalid body type, signing secret, clock, or tolerance                  | `INVALID_INPUT`                                                  |
-| Missing or malformed signature headers, or signature mismatch           | `SIGNATURE_INVALID`                                              |
-| Timestamp outside tolerance                                             | `SIGNATURE_EXPIRED`                                              |
-| Body over 512 KiB                                                       | `PAYLOAD_INVALID` from `parseWebhook`                            |
-| Invalid UTF-8, JSON, envelope, unknown event, or rejected event payload | `PAYLOAD_INVALID` from `parseWebhook`                            |
-| Missing event map or invalid selected validator                         | `INVALID_CONFIG` from `parseWebhook`                             |
-| Validator throws or returns an invalid result                           | Ordinary `Error` with a cause, not an expected request rejection |
+- **`INVALID_INPUT`**: invalid body type, signing secret, clock, or tolerance.
+- **`SIGNATURE_INVALID`**: missing or malformed signature headers, or signature mismatch.
+- **`SIGNATURE_EXPIRED`**: timestamp outside tolerance.
+- **`PAYLOAD_INVALID`**: from `parseWebhook`. A body over 512 KiB, or invalid UTF-8, JSON, envelope, unknown event, or rejected event payload.
+- **`INVALID_CONFIG`**: from `parseWebhook`, for a missing event map or invalid selected validator.
+- **Ordinary `Error` with a cause**: the validator throws or returns an invalid result. This is not an expected request rejection.

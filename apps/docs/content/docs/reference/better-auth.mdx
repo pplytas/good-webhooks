@@ -40,14 +40,12 @@ export const auth = betterAuth({
 
 Returns the `good-webhooks` Better Auth server plugin. It adds one management model and nine authenticated POST routes. It does not publish events, create delivery storage, or start a worker.
 
-| Option             | Contract                                                                                                             |
-| ------------------ | -------------------------------------------------------------------------------------------------------------------- |
-| `eventTypes`       | Required configured event names. A literal tuple preserves names in server and client types.                         |
-| `allowLocalhost`   | Optional boolean, default `false`. Permits development HTTP loopback destinations.                                   |
-| `schema.modelName` | Optional physical model name, default `webhookEndpoint`. This is not a PostgreSQL namespace.                         |
-| `schema.fields`    | Optional mapping from logical fields to physical field names.                                                        |
-| `authorizeScope`   | Optional policy required for application and custom scopes. Cannot override user or organization rules.              |
-| `maxEndpoints`     | Optional `(scope) => number \| Promise<number>` from 0 to 1,000. The most endpoints a scope may have. Default 1,000. |
+- **`eventTypes`**: required configured event names. A literal tuple preserves names in server and client types.
+- **`allowLocalhost`**: optional boolean, default `false`. Permits development HTTP loopback destinations.
+- **`schema.modelName`**: optional physical model name, default `webhookEndpoint`. This is not a PostgreSQL namespace.
+- **`schema.fields`**: optional mapping from logical fields to physical field names.
+- **`authorizeScope`**: optional policy required for application and custom scopes. It cannot override user or organization rules.
+- **`maxEndpoints`**: optional `(scope) => number | Promise<number>` from 0 to 1,000, default 1,000. It sets the most endpoints a scope may have.
 
 ### Storage model
 
@@ -72,17 +70,29 @@ export async function createEndpoint(request: Request) {
 
 Each route lives under Better Auth's configured base path. Every route uses sensitive session middleware and disables response storage. Server calls use `auth.api.<method>({ body, headers })` with the caller's session headers. Browsers use the [client plugin](#client-plugin).
 
-| Server method                  | POST path                        | Body besides `scope?`                       | Result                 | Action   |
-| ------------------------------ | -------------------------------- | ------------------------------------------- | ---------------------- | -------- |
-| `createWebhookEndpoint`        | `/good-webhooks/create`          | `url`, `eventTypes`, `description?`         | `{ endpoint, secret }` | `create` |
-| `listWebhookEndpoints`         | `/good-webhooks/list`            | None                                        | `WebhookEndpointDTO[]` | `read`   |
-| `getWebhookEndpoint`           | `/good-webhooks/get`             | `id`                                        | `WebhookEndpointDTO`   | `read`   |
-| `updateWebhookEndpoint`        | `/good-webhooks/update`          | `id`, `url?`, `description?`, `eventTypes?` | `WebhookEndpointDTO`   | `update` |
-| `pauseWebhookEndpoint`         | `/good-webhooks/pause`           | `id`                                        | `WebhookEndpointDTO`   | `update` |
-| `resumeWebhookEndpoint`        | `/good-webhooks/resume`          | `id`                                        | `WebhookEndpointDTO`   | `update` |
-| `removeWebhookEndpoint`        | `/good-webhooks/remove`          | `id`                                        | `WebhookEndpointDTO`   | `delete` |
-| `rotateWebhookEndpointSecret`  | `/good-webhooks/rotate-secret`   | `id`, `graceMs?`                            | `{ endpoint, secret }` | `update` |
-| `sendWebhookEndpointTestEvent` | `/good-webhooks/send-test-event` | `id`                                        | `TestEventResult`      | `update` |
+| Server method                  | POST path                        | Action   |
+| ------------------------------ | -------------------------------- | -------- |
+| `createWebhookEndpoint`        | `/good-webhooks/create`          | `create` |
+| `listWebhookEndpoints`         | `/good-webhooks/list`            | `read`   |
+| `getWebhookEndpoint`           | `/good-webhooks/get`             | `read`   |
+| `updateWebhookEndpoint`        | `/good-webhooks/update`          | `update` |
+| `pauseWebhookEndpoint`         | `/good-webhooks/pause`           | `update` |
+| `resumeWebhookEndpoint`        | `/good-webhooks/resume`          | `update` |
+| `removeWebhookEndpoint`        | `/good-webhooks/remove`          | `delete` |
+| `rotateWebhookEndpointSecret`  | `/good-webhooks/rotate-secret`   | `update` |
+| `sendWebhookEndpointTestEvent` | `/good-webhooks/send-test-event` | `update` |
+
+Every body accepts `scope?`. The other body fields and the result of each method:
+
+- **`createWebhookEndpoint`**: body `url`, `eventTypes`, `description?`. Returns `{ endpoint, secret }`.
+- **`listWebhookEndpoints`**: no other body fields. Returns `WebhookEndpointDTO[]`.
+- **`getWebhookEndpoint`**: body `id`. Returns `WebhookEndpointDTO`.
+- **`updateWebhookEndpoint`**: body `id`, `url?`, `description?`, `eventTypes?`. Returns `WebhookEndpointDTO`.
+- **`pauseWebhookEndpoint`**: body `id`. Returns `WebhookEndpointDTO`.
+- **`resumeWebhookEndpoint`**: body `id`. Returns `WebhookEndpointDTO`.
+- **`removeWebhookEndpoint`**: body `id`. Returns `WebhookEndpointDTO`.
+- **`rotateWebhookEndpointSecret`**: body `id`, `graceMs?`. Returns `{ endpoint, secret }`.
+- **`sendWebhookEndpointTestEvent`**: body `id`. Returns `TestEventResult`.
 
 `scope` accepts `{ type, id }`, `null`, or omission. Bodies reject unknown fields. Create and update bodies also accept optional `headers`. Creation and updates use the [management input limits](/docs/reference/management#inputs-and-limits). An update accepts `description: null` to clear the value, and `headers: null` or `{}` to remove every header. A new `headers` object replaces the whole set. Rotation accepts an integer `graceMs` from 0 through 86,400,000, defaulting to 86,400,000.
 
@@ -174,9 +184,7 @@ export const authClient = createAuthClient({
 
 Returns a Better Auth client plugin for `createAuthClient`.
 
-| Option       | Contract                                                                                                                                                                                                  |
-| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `eventTypes` | Optional tuple that carries the server's event-name literals into client types. Omitting it leaves event names typed as `string`. It does not change the server's configured names or authorize requests. |
+`eventTypes` is an optional tuple that carries the server's event-name literals into client types. Omitting it leaves event names typed as `string`. It does not change the server's configured names or authorize requests.
 
 The dedicated client entry point has no runtime import of the server plugin, database driver, or delivery worker. It configures all Good Webhooks route methods as POST and preserves JSON values with `JSON.parse`, including descriptions that look like dates.
 
@@ -195,17 +203,19 @@ console.log(data.secret) // Show once. No later response contains it.
 
 All methods return Better Auth's client result containing `data` and `error`. Request bodies and data shapes match the [server routes](#authenticated-routes).
 
-| Client method                                  | Server method                  | `data`                 |
-| ---------------------------------------------- | ------------------------------ | ---------------------- |
-| `authClient.goodWebhooks.create(input)`        | `createWebhookEndpoint`        | `{ endpoint, secret }` |
-| `authClient.goodWebhooks.list(input)`          | `listWebhookEndpoints`         | `WebhookEndpointDTO[]` |
-| `authClient.goodWebhooks.get(input)`           | `getWebhookEndpoint`           | `WebhookEndpointDTO`   |
-| `authClient.goodWebhooks.update(input)`        | `updateWebhookEndpoint`        | `WebhookEndpointDTO`   |
-| `authClient.goodWebhooks.pause(input)`         | `pauseWebhookEndpoint`         | `WebhookEndpointDTO`   |
-| `authClient.goodWebhooks.resume(input)`        | `resumeWebhookEndpoint`        | `WebhookEndpointDTO`   |
-| `authClient.goodWebhooks.remove(input)`        | `removeWebhookEndpoint`        | `WebhookEndpointDTO`   |
-| `authClient.goodWebhooks.rotateSecret(input)`  | `rotateWebhookEndpointSecret`  | `{ endpoint, secret }` |
-| `authClient.goodWebhooks.sendTestEvent(input)` | `sendWebhookEndpointTestEvent` | `TestEventResult`      |
+| Client method   | Server method                  | `data`                 |
+| --------------- | ------------------------------ | ---------------------- |
+| `create`        | `createWebhookEndpoint`        | `{ endpoint, secret }` |
+| `list`          | `listWebhookEndpoints`         | `WebhookEndpointDTO[]` |
+| `get`           | `getWebhookEndpoint`           | `WebhookEndpointDTO`   |
+| `update`        | `updateWebhookEndpoint`        | `WebhookEndpointDTO`   |
+| `pause`         | `pauseWebhookEndpoint`         | `WebhookEndpointDTO`   |
+| `resume`        | `resumeWebhookEndpoint`        | `WebhookEndpointDTO`   |
+| `remove`        | `removeWebhookEndpoint`        | `WebhookEndpointDTO`   |
+| `rotateSecret`  | `rotateWebhookEndpointSecret`  | `{ endpoint, secret }` |
+| `sendTestEvent` | `sendWebhookEndpointTestEvent` | `TestEventResult`      |
+
+Call each client method as `authClient.goodWebhooks.<method>(input)`, for example `authClient.goodWebhooks.rotateSecret(input)`.
 
 Each input accepts optional `scope`. Omission selects the signed-in user's personal scope. `scope: null` requests application scope and requires server policy. The client does not weaken server authorization. See [scope authorization](#scope-authorization).
 

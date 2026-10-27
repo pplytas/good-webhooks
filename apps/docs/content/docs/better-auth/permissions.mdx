@@ -5,13 +5,11 @@ description: How the plugin authorizes personal, organization, application, and 
 
 Every plugin route requires a session, then checks whether the user may act in the requested [scope](/docs/concepts/scopes):
 
-| Requested `scope`              | Who may act                                                          |
-| ------------------------------ | -------------------------------------------------------------------- |
-| omitted                        | The signed-in user, in their personal scope                          |
-| `{ type: 'user', id }`         | Only if `id` is the signed-in user                                   |
-| `{ type: 'organization', id }` | Current members with the `webhookEndpoint` permission for the action |
-| `null` (application)           | Only if your `authorizeScope` policy allows it. Denied by default    |
-| any other `type`               | Only if your `authorizeScope` policy allows it. Denied by default    |
+- **`scope` omitted**: the signed-in user, in their personal scope.
+- **`{ type: 'user', id }`**: only if `id` is the signed-in user.
+- **`{ type: 'organization', id }`**: current members with the `webhookEndpoint` permission for the action.
+- **`null` (application)**: only if your `authorizeScope` policy allows it. Denied by default.
+- **Any other `type`**: only if your `authorizeScope` policy allows it. Denied by default.
 
 Each route maps to one action:
 

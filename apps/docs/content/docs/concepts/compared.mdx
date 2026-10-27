@@ -3,41 +3,137 @@ title: Compared with alternatives
 description: Good Webhooks against Svix, Outpost, Convoy, and pg-boss plus fetch. What each does, what this library does not have, and when to pick which.
 ---
 
-Four other ways to send webhooks from an application, checked against their own documentation, repositories, and pricing pages on 27 October 2026. The [sources](#sources) are listed at the end. Open an [issue](https://github.com/pplytas/good-webhooks/issues) if a claim is out of date.
+Four other ways to send webhooks from an application, checked against their own documentation, repositories, and pricing pages on 27 October 2026. The [notes on the table](#notes-on-the-table) give the detail behind each cell, and the [sources](#sources) are listed at the end. Open an [issue](https://github.com/pplytas/good-webhooks/issues) if a claim is out of date.
 
-| Option                                                    | What it is                                                                                                      |
-| --------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| [Svix](https://www.svix.com)                              | A hosted webhook service with an open-source Rust server that covers part of it.                                |
-| [Outpost](https://hookdeck.com/outpost)                   | A Go event-destinations gateway by Hookdeck, self-hosted or managed, that sends to webhooks and message queues. |
-| [Convoy](https://getconvoy.io)                            | A Go webhook gateway with a dashboard, self-hosted or cloud, with paid features behind a license key.           |
-| [pg-boss](https://github.com/timgit/pg-boss) plus `fetch` | A PostgreSQL job queue for Node.js plus about 50 lines of your own that sign and send each request.             |
+| Option               | What it is               |
+| -------------------- | ------------------------ |
+| Svix                 | Hosted service           |
+| Outpost              | Go event gateway         |
+| Convoy               | Go webhook gateway       |
+| pg-boss plus `fetch` | Job queue plus your code |
+
+[Svix](https://www.svix.com) is a hosted webhook service with an open-source Rust server that covers part of it.
+
+[Outpost](https://hookdeck.com/outpost) is a Go event-destinations gateway by Hookdeck, self-hosted or managed, that sends to webhooks and message queues.
+
+[Convoy](https://getconvoy.io) is a Go webhook gateway with a dashboard, self-hosted or cloud, with paid features behind a license key.
+
+[pg-boss](https://github.com/timgit/pg-boss) plus `fetch` is a PostgreSQL job queue for Node.js plus about 50 lines of your own that sign and send each request.
 
 ## What each does
 
-| Feature                        | Good Webhooks                                                                 | Svix                                                                                     | Outpost                                                                                  | Convoy                                                                                               | pg-boss plus `fetch`                                                       |
-| ------------------------------ | ----------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| Outbox in your own transaction | Yes, `publish()` joins your transaction.                                      | No, you call its HTTP API and keep your own outbox.                                      | No, you call its HTTP API or write to a queue.                                           | No, you call its HTTP API or a broker.                                                               | Yes, `send()` takes your transaction.                                      |
-| Signing standard               | Standard Webhooks with HMAC-SHA256.                                           | Standard Webhooks under `svix-*` names, `webhook-*` on paid plans or by a server switch. | Its own `x-outpost-signature` by default, Standard Webhooks as an option.                | Its own `X-Convoy-Signature`, not Standard Webhooks.                                                 | None, you sign each request yourself.                                      |
-| Retries and `Retry-After`      | Eight attempts over about 28 hours, and `Retry-After` on `429` and `503`.     | The same eight-step schedule, with `Retry-After` found only in the open-source code.     | Ten retries, exponential from 30 seconds (about 8.5 hours), and `Retry-After` not found. | Linear or exponential backoff per project, and `Retry-After` not found.                              | Two retries with no delay by default, and `Retry-After` is yours to parse. |
-| Pause on failing endpoints     | Automatic after five days of failures or a `410`, resume by API.              | Automatic after five days of failures, re-enable by API or in the dashboard.             | Off by default; when on, after 100 consecutive failures.                                 | Dead endpoints when `disable_endpoint` is on, plus a circuit breaker on paid plans.                  | None, exhausted jobs go to a dead letter queue if you set one.             |
-| Replay                         | One delivery or one page of an endpoint's deliveries, same event ID and body. | One message, recover failed from a date, or replay missing.                              | One event to one destination per call.                                                   | One delivery or a filtered batch, plus a force retry for successes.                                  | `retry()` on a failed job, and each retry overwrites the last attempt.     |
-| Per-endpoint headers           | Yes.                                                                          | Yes.                                                                                     | Yes, off in the portal by default.                                                       | Per event, plus one API-key header per endpoint.                                                     | You build it.                                                              |
-| Rate limiting to receivers     | No, only a per-endpoint `maxInFlight` cap.                                    | Yes, a messages-per-second `throttleRate` per endpoint.                                  | No, excluded by design.                                                                  | Yes, `rate_limit` per endpoint.                                                                      | No, only group concurrency and throttled sends.                            |
-| Dashboard or portal            | Neither.                                                                      | Both on the hosted service, neither in the open-source server.                           | A receiver portal ships in the open-source repository.                                   | A dashboard in the community edition, and Portal Links on paid plans.                                | A job dashboard package, no receiver portal.                               |
-| Receiver pull API              | No.                                                                           | Polling endpoints on the Enterprise plan.                                                | No.                                                                                      | No.                                                                                                  | No.                                                                        |
-| Transformations                | No.                                                                           | JavaScript on the hosted service.                                                        | No, only through the separate Hookdeck Event Gateway.                                    | JavaScript on paid plans.                                                                            | Whatever your handler does.                                                |
-| Storage                        | Your PostgreSQL.                                                              | PostgreSQL plus optional Redis when self-hosted, not documented when hosted.             | Redis, PostgreSQL or ClickHouse, and a message queue.                                    | PostgreSQL 15 or later, plus Redis 6 or later unless you use its experimental paid PostgreSQL queue. | Your PostgreSQL.                                                           |
-| Hosting model                  | A library in your app plus a worker you run.                                  | Hosted service, self-hosted Rust server, or on-prem on Enterprise.                       | Self-hosted Go service, or managed by Hookdeck.                                          | Self-hosted Go service, Convoy Cloud, or on-prem on Enterprise.                                      | A library in your app plus a worker you run.                               |
-| License                        | MIT.                                                                          | MIT for the server and SDKs.                                                             | Apache 2.0.                                                                              | Elastic License 2.0, which is source-available.                                                      | MIT.                                                                       |
-| Price                          | Free.                                                                         | Free to 50k messages a month, then from $20 or $490 a month plus $0.0001 per message.    | Free to self-host, managed from $10 per million events after 50k free.                   | Free to self-host with 1 user and 2 projects, then $999 a month, or $99 or $499 cloud.               | Free.                                                                      |
+| Feature      | Good Webhooks | Svix           | Outpost       | Convoy        | pg-boss     |
+| ------------ | ------------- | -------------- | ------------- | ------------- | ----------- |
+| Outbox       | Yes           | No             | No            | No            | Yes         |
+| Signing spec | Standard      | `svix-*` names | Optional      | Own           | Build it    |
+| Retries      | 8 over 28 h   | 8 over 28 h    | 10 over 8.5 h | Configurable  | 2, no delay |
+| Auto-pause   | Yes           | Yes            | Optional      | Optional      | No          |
+| Replay       | Yes           | Yes            | Per event     | Yes           | `retry()`   |
+| Headers      | Yes           | Yes            | Yes           | Per event     | Build it    |
+| Rate limits  | No            | Yes            | No            | Yes           | No          |
+| Dashboard    | No            | Hosted only    | Portal        | Yes           | Jobs only   |
+| Pull API     | No            | Enterprise     | No            | No            | No          |
+| Transforms   | No            | Hosted only    | No            | Paid          | Build it    |
+| Storage      | PostgreSQL    | PostgreSQL     | Redis, DB, MQ | PG and Redis  | PostgreSQL  |
+| Hosting      | Library       | Cloud or self  | Cloud or self | Cloud or self | Library     |
+| License      | MIT           | MIT            | Apache 2.0    | ELv2          | MIT         |
+| Price        | Free          | Free tier      | Free to run   | Free to run   | Free        |
 
-Notes on the table:
+### Notes on the table
 
+- **Outbox in your own transaction**
+  - Good Webhooks: yes, `publish()` joins your transaction.
+  - Svix: no, you call its HTTP API and keep your own outbox.
+  - Outpost: no, you call its HTTP API or write to a queue.
+  - Convoy: no, you call its HTTP API or a broker.
+  - pg-boss plus `fetch`: yes, `send()` takes your transaction.
+- **Signing standard**
+  - Good Webhooks: Standard Webhooks with HMAC-SHA256.
+  - Svix: Standard Webhooks under `svix-*` names, `webhook-*` on paid plans or by a server switch.
+  - Outpost: its own `x-outpost-signature` by default, Standard Webhooks as an option.
+  - Convoy: its own `X-Convoy-Signature`, not Standard Webhooks.
+  - pg-boss plus `fetch`: none, you sign each request yourself.
+- **Retries and `Retry-After`**
+  - Good Webhooks: eight attempts over about 28 hours, and `Retry-After` on `429` and `503`.
+  - Svix: the same eight-step schedule, with `Retry-After` found only in the open-source code.
+  - Outpost: ten retries, exponential from 30 seconds (about 8.5 hours), and `Retry-After` not found.
+  - Convoy: linear or exponential backoff per project, and `Retry-After` not found.
+  - pg-boss plus `fetch`: two retries with no delay by default, and `Retry-After` is yours to parse.
+- **Pause on failing endpoints**
+  - Good Webhooks: automatic after five days of failures or a `410`, resume by API.
+  - Svix: automatic after five days of failures, re-enable by API or in the dashboard.
+  - Outpost: off by default; when on, after 100 consecutive failures.
+  - Convoy: dead endpoints when `disable_endpoint` is on, plus a circuit breaker on paid plans.
+  - pg-boss plus `fetch`: none, exhausted jobs go to a dead letter queue if you set one.
+- **Replay**
+  - Good Webhooks: one delivery or one page of an endpoint's deliveries, same event ID and body.
+  - Svix: one message, recover failed from a date, or replay missing.
+  - Outpost: one event to one destination per call.
+  - Convoy: one delivery or a filtered batch, plus a force retry for successes.
+  - pg-boss plus `fetch`: `retry()` on a failed job, and each retry overwrites the last attempt.
+- **Per-endpoint headers**
+  - Good Webhooks: yes.
+  - Svix: yes.
+  - Outpost: yes, off in the portal by default.
+  - Convoy: per event, plus one API-key header per endpoint.
+  - pg-boss plus `fetch`: you build it.
+- **Rate limiting to receivers**
+  - Good Webhooks: no, only a per-endpoint `maxInFlight` cap.
+  - Svix: yes, a messages-per-second `throttleRate` per endpoint.
+  - Outpost: no, excluded by design.
+  - Convoy: yes, `rate_limit` per endpoint.
+  - pg-boss plus `fetch`: no, only group concurrency and throttled sends.
+- **Dashboard or portal**
+  - Good Webhooks: neither.
+  - Svix: both on the hosted service, neither in the open-source server.
+  - Outpost: a receiver portal ships in the open-source repository.
+  - Convoy: a dashboard in the community edition, and Portal Links on paid plans.
+  - pg-boss plus `fetch`: a job dashboard package, no receiver portal.
+- **Receiver pull API**
+  - Good Webhooks: no.
+  - Svix: polling endpoints on the Enterprise plan.
+  - Outpost: no.
+  - Convoy: no.
+  - pg-boss plus `fetch`: no.
+- **Transformations**
+  - Good Webhooks: no.
+  - Svix: JavaScript on the hosted service.
+  - Outpost: no, only through the separate Hookdeck Event Gateway.
+  - Convoy: JavaScript on paid plans.
+  - pg-boss plus `fetch`: whatever your handler does.
+- **Storage**
+  - Good Webhooks: your PostgreSQL.
+  - Svix: PostgreSQL plus optional Redis when self-hosted, not documented when hosted.
+  - Outpost: Redis, PostgreSQL or ClickHouse, and a message queue.
+  - Convoy: PostgreSQL 15 or later, plus Redis 6 or later unless you use its experimental paid PostgreSQL queue.
+  - pg-boss plus `fetch`: your PostgreSQL.
+- **Hosting model**
+  - Good Webhooks: a library in your app plus a worker you run.
+  - Svix: hosted service, self-hosted Rust server, or on-prem on Enterprise.
+  - Outpost: self-hosted Go service, or managed by Hookdeck.
+  - Convoy: self-hosted Go service, Convoy Cloud, or on-prem on Enterprise.
+  - pg-boss plus `fetch`: a library in your app plus a worker you run.
+- **License**
+  - Good Webhooks: MIT.
+  - Svix: MIT for the server and SDKs.
+  - Outpost: Apache 2.0.
+  - Convoy: Elastic License 2.0, which is source-available.
+  - pg-boss plus `fetch`: MIT.
+- **Price**
+  - Good Webhooks: free.
+  - Svix: free to 50k messages a month, then from $20 or $490 a month plus $0.0001 per message.
+  - Outpost: free to self-host, managed from $10 per million events after 50k free.
+  - Convoy: free to self-host with 1 user and 2 projects, then $999 a month, or $99 or $499 cloud.
+  - pg-boss plus `fetch`: free.
+
+General notes:
+
+- The pg-boss column means pg-boss plus `fetch`.
 - The default Good Webhooks retry schedule is the one Svix publishes.
 - Svix's open-source server caps a `Retry-After` wait at twice the scheduled delay, and the hosted service documents neither `Retry-After` nor `410`.
 - Endpoint management with the [Better Auth plugin](/docs/better-auth) lives in your Better Auth database, whatever its engine, and delivery stays on PostgreSQL.
 - Good Webhooks encrypts per-endpoint headers at rest and reserves `webhook-*`, `content-type`, and `user-agent`.
-- "Not found" in a cell means the feature appears in neither the documentation nor the source on the check date.
+- "Not found" in a note means the feature appears in neither the documentation nor the source on the check date.
 
 ## What Good Webhooks does not have
 

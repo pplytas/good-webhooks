@@ -67,12 +67,16 @@ Workers never delete history. Run `prune()` on a second, daily schedule, in the 
 
 ## Platform limits
 
-| Platform                            | Most frequent schedule                         | Longest run                   |
-| ----------------------------------- | ---------------------------------------------- | ----------------------------- |
-| Vercel Hobby                        | Once per day, within the hour                  | 300 s                         |
-| Vercel Pro and Enterprise           | Once per minute                                | 300 s by default, up to 800 s |
-| Railway cron                        | Every 5 minutes                                | Until the process exits       |
-| AWS Lambda on EventBridge Scheduler | `rate(1 minute)`, invoked within a 60 s window | 900 s                         |
+| Platform                            | Most frequent schedule | Longest run             |
+| ----------------------------------- | ---------------------- | ----------------------- |
+| Vercel Hobby                        | Once per day           | 300 s                   |
+| Vercel Pro and Enterprise           | Once per minute        | Up to 800 s             |
+| Railway cron                        | Every 5 minutes        | Until the process exits |
+| AWS Lambda on EventBridge Scheduler | Once per minute        | 900 s                   |
+
+- **Vercel Hobby**: the daily run starts within the hour.
+- **Vercel Pro and Enterprise**: a run gets 300 s by default and up to 800 s.
+- **AWS Lambda on EventBridge Scheduler**: the schedule is `rate(1 minute)`, and each run is invoked within a 60 s window.
 
 The Vercel durations apply with Fluid compute. These numbers were checked in October 2026; confirm them in each platform's documentation before you rely on them.
 

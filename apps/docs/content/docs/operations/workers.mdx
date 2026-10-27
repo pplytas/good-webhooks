@@ -40,15 +40,23 @@ The package ships a complete entrypoint. It validates configuration, listens for
 
 Configure it through the environment:
 
-| Variable                          | Required | Purpose                                                      |
-| --------------------------------- | -------- | ------------------------------------------------------------ |
-| `DATABASE_URL`                    | yes      | PostgreSQL connection string                                 |
-| `WEBHOOK_ENCRYPTION_KEY`          | yes      | The key that encrypted the registered endpoints              |
-| `WEBHOOK_SCHEMA`                  |          | Must match the migrations and the producer. Default `public` |
-| `WEBHOOK_POLL_INTERVAL_MS`        |          | Wait after an empty batch. Default 1000                      |
-| `WEBHOOK_DB_CONNECT_TIMEOUT_MS`   |          | Default 5000                                                 |
-| `WEBHOOK_DB_STATEMENT_TIMEOUT_MS` |          | Default 10000. The client query timeout is one second longer |
-| `WEBHOOK_ALLOW_LOCALHOST`         |          | `true` permits loopback HTTP receivers. Development only     |
+| Variable                          | Required | Default  |
+| --------------------------------- | -------- | -------- |
+| `DATABASE_URL`                    | yes      |          |
+| `WEBHOOK_ENCRYPTION_KEY`          | yes      |          |
+| `WEBHOOK_SCHEMA`                  |          | `public` |
+| `WEBHOOK_POLL_INTERVAL_MS`        |          | 1000     |
+| `WEBHOOK_DB_CONNECT_TIMEOUT_MS`   |          | 5000     |
+| `WEBHOOK_DB_STATEMENT_TIMEOUT_MS` |          | 10000    |
+| `WEBHOOK_ALLOW_LOCALHOST`         |          |          |
+
+- **`DATABASE_URL`**: the PostgreSQL connection string.
+- **`WEBHOOK_ENCRYPTION_KEY`**: the key that encrypted the registered endpoints.
+- **`WEBHOOK_SCHEMA`**: must match the migrations and the producer.
+- **`WEBHOOK_POLL_INTERVAL_MS`**: the wait after an empty batch.
+- **`WEBHOOK_DB_CONNECT_TIMEOUT_MS`**: the database connection timeout.
+- **`WEBHOOK_DB_STATEMENT_TIMEOUT_MS`**: the statement timeout. The client query timeout is one second longer.
+- **`WEBHOOK_ALLOW_LOCALHOST`**: `true` permits loopback HTTP receivers. Use it in development only.
 
 Run it from a checkout with `node packages/good-webhooks/examples/operations/worker.ts`, or copy it and replace the event map with yours. It logs JSON lines without payloads or secrets: `webhooks.worker.started`, `webhooks.worker.failed`, and `webhooks.worker.stopped`, plus `webhooks.attempt` and `webhooks.endpoint.paused` from its [hooks](/docs/guides/hooks). The library itself writes no logs. For Better Auth management, see [add delivery to Better Auth](/docs/better-auth/delivery#run-a-separate-worker).
 
@@ -79,19 +87,17 @@ Without `onError`, an internal failure rejects `run()` and the process exits; le
 
 For metrics and logs per attempt, pass an [`onAttempt` hook](/docs/guides/hooks#record-attempt-metrics) to the engine. It receives the outcome, status, error, and duration of every attempt.
 
-Every failure below ends with the delivery retried under the same event ID, or the process exiting for a supervisor to restart. Each row is [checked by a test](https://github.com/pplytas/good-webhooks/blob/main/docs/operations.md#where-each-failure-claim-is-checked).
+Every failure below ends with the delivery retried under the same event ID, or the process exiting for a supervisor to restart. Each case is [checked by a test](https://github.com/pplytas/good-webhooks/blob/main/docs/operations.md#where-each-failure-claim-is-checked).
 
-| Situation                                 | What happens                                                                                 |
-| ----------------------------------------- | -------------------------------------------------------------------------------------------- |
-| Worker killed mid-request                 | The attempt is `abandoned` when its lease expires, and another worker retries the delivery.  |
-| Worker killed after the receiver accepted | Same. The receiver sees the same `event.id` twice, and its deduplication absorbs it.         |
-| Receiver hangs                            | The request is cancelled at `timeoutMs` and retried on schedule.                             |
-| Database connection drops                 | `run()` rejects. The half-finished attempt is recovered when its lease expires.              |
-| Database unreachable or locked at startup | `check()` fails within your connection or statement timeout, before anything is claimed.     |
-| Wrong encryption key                      | The worker exits without consuming an attempt.                                               |
-| `SIGTERM` during a request                | The request gets `shutdownGraceMs` to finish, its outcome is recorded, and `run()` resolves. |
-| `SIGKILL`                                 | Leases are left behind and recovered by the next worker after `leaseMs`.                     |
-| Schema older or newer than the package    | `check()` throws `SCHEMA_MISMATCH` naming the SQL to apply.                                  |
+- **Worker killed mid-request**: the attempt is `abandoned` when its lease expires, and another worker retries the delivery.
+- **Worker killed after the receiver accepted**: the same happens. The receiver sees the same `event.id` twice, and its deduplication absorbs it.
+- **Receiver hangs**: the request is cancelled at `timeoutMs` and retried on schedule.
+- **Database connection drops**: `run()` rejects. The half-finished attempt is recovered when its lease expires.
+- **Database unreachable or locked at startup**: `check()` fails within your connection or statement timeout, before anything is claimed.
+- **Wrong encryption key**: the worker exits without consuming an attempt.
+- **`SIGTERM` during a request**: the request gets `shutdownGraceMs` to finish, its outcome is recorded, and `run()` resolves.
+- **`SIGKILL`**: leases are left behind and recovered by the next worker after `leaseMs`.
+- **Schema older or newer than the package**: `check()` throws `SCHEMA_MISMATCH` naming the SQL to apply.
 
 A worker claims a delivery by writing an attempt with a lease before sending. If it dies, the lease expires after `leaseMs` (60 seconds by default) and the next batch recovers it. Lease tokens are fenced: a late worker whose lease expired cannot record a result, so two workers never both record success for one attempt.
 

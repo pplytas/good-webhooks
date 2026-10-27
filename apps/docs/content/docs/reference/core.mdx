@@ -52,11 +52,17 @@ export const webhooks = createWebhooks({
 
 `WebhookOptions<E>` accepts every [delivery option](/docs/reference/delivery#createdelivery) except `source`, plus these fields:
 
-| Field           | Type                   | Meaning                                                                                                            |
-| --------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `encryptionKey` | `string \| Uint8Array` | Required for the default PostgreSQL management provider. Base64-encoded 32 bytes or a 32-byte array.               |
-| `management`    | `EndpointManagement`   | Optional existing provider. Its source supplies recipients and current endpoint state.                             |
-| `maxEndpoints`  | `EndpointLimit`        | Optional `(scope) => number \| Promise<number>` from 0 to 1,000 for the default provider. Default 1,000 per scope. |
+| Field           | Type                   |
+| --------------- | ---------------------- |
+| `encryptionKey` | `string \| Uint8Array` |
+| `management`    | `EndpointManagement`   |
+| `maxEndpoints`  | `EndpointLimit`        |
+
+`encryptionKey` is required for the default PostgreSQL management provider. It takes base64-encoded 32 bytes or a 32-byte array.
+
+`management` is an optional existing provider. Its source supplies recipients and current endpoint state.
+
+`maxEndpoints` is an optional `(scope) => number | Promise<number>` from 0 to 1,000 for the default provider. The default is 1,000 per scope.
 
 - **Without `management`**, the constructor creates standalone PostgreSQL management from `database`, `schema`, the configured event names, `encryptionKey`, and `allowLocalhost`. `schema` then applies to both the management and delivery tables.
 - **With `management`**, that provider keeps its own database, schema, encryption, URL-validation, and endpoint-limit configuration. Core options do not reconfigure it, `encryptionKey` is unused, and `maxEndpoints` throws `INVALID_CONFIG`.
@@ -67,20 +73,18 @@ Invalid options throw `INVALID_CONFIG`: a missing event map, a malformed key, a 
 
 The client exposes `publish`, `deliveries`, `deliverySettings`, and `worker` from the [delivery engine](/docs/reference/delivery), plus these members:
 
-| Member                                     | Behavior                                                                                         |
-| ------------------------------------------ | ------------------------------------------------------------------------------------------------ |
-| `endpoints.create(input)`                  | Creates an endpoint and returns `{ endpoint, secret }`.                                          |
-| `endpoints.list()`                         | Returns all nondeleted endpoints in application scope.                                           |
-| `endpoints.get(id)`                        | Returns one endpoint, including its deleted state.                                               |
-| `endpoints.update(id, patch)`              | Changes URL, description, events, or headers.                                                    |
-| `endpoints.pause(id)`                      | Records paused state with `pauseReason: 'owner'`.                                                |
-| `endpoints.resume(id)`                     | Records active state after URL validation, including after an automatic pause.                   |
-| `endpoints.remove(id)`                     | Deletes it, clearing secrets and headers.                                                        |
-| `endpoints.rotateSecret(id, { graceMs? })` | Returns a new signing secret and the endpoint.                                                   |
-| `endpoints.sendTestEvent(id)`              | Sends one signed test event and returns the receiver's answer. Records nothing.                  |
-| `check()`                                  | Checks the default management provider, if constructed here, then delivery schema compatibility. |
-| `describeEvents(options?)`                 | Event names and payload JSON Schemas                                                             |
-| `forScope(scope)`                          | Returns the same publication, history, settings, and endpoint methods bound to one named scope.  |
+- **`endpoints.create(input)`**: creates an endpoint and returns `{ endpoint, secret }`.
+- **`endpoints.list()`**: returns all nondeleted endpoints in application scope.
+- **`endpoints.get(id)`**: returns one endpoint, including its deleted state.
+- **`endpoints.update(id, patch)`**: changes URL, description, events, or headers.
+- **`endpoints.pause(id)`**: records paused state with `pauseReason: 'owner'`.
+- **`endpoints.resume(id)`**: records active state after URL validation, including after an automatic pause.
+- **`endpoints.remove(id)`**: deletes it, clearing secrets and headers.
+- **`endpoints.rotateSecret(id, { graceMs? })`**: returns a new signing secret and the endpoint.
+- **`endpoints.sendTestEvent(id)`**: sends one signed test event and returns the receiver's answer. It records nothing.
+- **`check()`**: checks the default management provider, if constructed here, then delivery schema compatibility.
+- **`describeEvents(options?)`**: returns the event names and payload JSON Schemas.
+- **`forScope(scope)`**: returns the same publication, history, settings, and endpoint methods bound to one named scope.
 
 ### endpoints
 
@@ -185,11 +189,9 @@ Returns 32 cryptographically random bytes encoded as base64. The key is the stor
 
 The root also exports these types:
 
-| Group       | Types                                                                                                                                                                                                                                                                            |
-| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Events      | `EventDefinitions`, `EventName`, `EventDescription`, `DescribeEventsOptions`, `JsonValue`, `PublishInput`, `PublishOptions`, `PublishResult`                                                                                                                                     |
-| Database    | `SqlClient`, `DatabaseClient`, `Database`                                                                                                                                                                                                                                        |
-| Endpoints   | `Endpoint`, `EndpointStatus`, `PauseReason`, `EndpointWithSecret`, `EndpointInput`, `EndpointPatch`                                                                                                                                                                              |
-| Delivery    | `Delivery`, `DeliveryDetail`, `DeliveryStatus`, `DeliveryQuery`, `DeliveryStats`, `ReplayManyInput`, `ReplayManyResult`, `Attempt`, `Page`, `WorkerResult`, `DeliveryOptions`, `DeliveryEngine`, `DeliveryHooks`, `AttemptEvent`, `EndpointPausedEvent`, `EndpointHealthOptions` |
-| Composition | `WebhookOptions`, `Webhooks`, `WebhookClient`, `EndpointManagement`, `EndpointSource`, `EndpointResolution`, `AutomaticPauseInput`, `AutomaticPauseReason`, `ManagementScope`, `Scope`                                                                                           |
-| Errors      | `WebhookErrorCode`                                                                                                                                                                                                                                                               |
+- **Events**: `EventDefinitions`, `EventName`, `EventDescription`, `DescribeEventsOptions`, `JsonValue`, `PublishInput`, `PublishOptions`, `PublishResult`
+- **Database**: `SqlClient`, `DatabaseClient`, `Database`
+- **Endpoints**: `Endpoint`, `EndpointStatus`, `PauseReason`, `EndpointWithSecret`, `EndpointInput`, `EndpointPatch`
+- **Delivery**: `Delivery`, `DeliveryDetail`, `DeliveryStatus`, `DeliveryQuery`, `DeliveryStats`, `ReplayManyInput`, `ReplayManyResult`, `Attempt`, `Page`, `WorkerResult`, `DeliveryOptions`, `DeliveryEngine`, `DeliveryHooks`, `AttemptEvent`, `EndpointPausedEvent`, `EndpointHealthOptions`
+- **Composition**: `WebhookOptions`, `Webhooks`, `WebhookClient`, `EndpointManagement`, `EndpointSource`, `EndpointResolution`, `AutomaticPauseInput`, `AutomaticPauseReason`, `ManagementScope`, `Scope`
+- **Errors**: `WebhookErrorCode`

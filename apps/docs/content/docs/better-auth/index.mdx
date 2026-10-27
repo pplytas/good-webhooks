@@ -106,14 +106,21 @@ An omitted `scope` means the signed-in user. Only create and rotate responses in
 
 ## Options
 
-| Option             | Default           | Purpose                                                                                               |
-| ------------------ | ----------------- | ----------------------------------------------------------------------------------------------------- |
-| `eventTypes`       | required          | Configured event names. Pass a literal tuple for typed clients                                        |
-| `authorizeScope`   | deny              | Policy for application scope and custom scope types. See [permissions](/docs/better-auth/permissions) |
-| `allowLocalhost`   | `false`           | Permit HTTP loopback URLs in development                                                              |
-| `maxEndpoints`     | 1,000 per scope   | `(scope) => number \| Promise<number>` from 0 to 1,000. Lower the endpoint limit per scope            |
-| `schema.modelName` | `webhookEndpoint` | Rename the model. Not a PostgreSQL namespace                                                          |
-| `schema.fields`    |                   | Rename individual fields                                                                              |
+| Option             | Default           |
+| ------------------ | ----------------- |
+| `eventTypes`       | required          |
+| `authorizeScope`   | deny              |
+| `allowLocalhost`   | `false`           |
+| `maxEndpoints`     | 1,000 per scope   |
+| `schema.modelName` | `webhookEndpoint` |
+| `schema.fields`    |                   |
+
+- **`eventTypes`**: configured event names. Pass a literal tuple for typed clients.
+- **`authorizeScope`**: policy for application scope and custom scope types. See [permissions](/docs/better-auth/permissions).
+- **`allowLocalhost`**: permit HTTP loopback URLs in development.
+- **`maxEndpoints`**: `(scope) => number | Promise<number>` from 0 to 1,000. Lower the endpoint limit per scope.
+- **`schema.modelName`**: rename the model. Not a PostgreSQL namespace.
+- **`schema.fields`**: rename individual fields.
 
 Regenerate and apply the schema after changing `schema`. Your Better Auth database or ORM configuration decides where the model lives. The [plugin reference](/docs/reference/better-auth) has every route and error.
 

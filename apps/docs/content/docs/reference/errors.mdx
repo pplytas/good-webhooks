@@ -44,21 +44,19 @@ try {
 
 ## Codes
 
-| Code                   | Meaning                                                                          | Thrown by                                                                                 |
-| ---------------------- | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `INVALID_CONFIG`       | Invalid constructor, encryption, migration, or receiver-validator configuration. | Constructors, `getPostgresMigration`, `parseWebhook`, `describeEvents`, secret decryption |
-| `INVALID_INPUT`        | Invalid operation arguments or producer payload.                                 | Most operations                                                                           |
-| `UNSAFE_URL`           | Destination fails URL or resolved-address validation.                            | Endpoint create, update, and resume                                                       |
-| `NOT_FOUND`            | Record or owner is absent in the selected scope.                                 | Endpoint and delivery lookups, `replayMany`                                               |
-| `INVALID_STATE`        | Operation conflicts with lifecycle, limits, retention, or concurrent state.      | Endpoint lifecycle, `replay`, `replayMany`, worker overlap                                |
-| `ENDPOINT_LIMIT`       | The scope already has its `maxEndpoints` limit of endpoints.                     | Endpoint create                                                                           |
-| `IDEMPOTENCY_CONFLICT` | An accepted key identifies different event content.                              | `publish`                                                                                 |
-| `REPLAY_IN_PROGRESS`   | An original delivery already has a pending or in-flight replay.                  | `replay`                                                                                  |
-| `SCHEMA_MISMATCH`      | Expected storage is missing or incompatible.                                     | `check()`, Better Auth record reads                                                       |
-| `SIGNATURE_INVALID`    | Webhook headers or signature are invalid.                                        | `verifyWebhook`, `parseWebhook`                                                           |
-| `SIGNATURE_EXPIRED`    | Webhook timestamp falls outside the configured tolerance.                        | `verifyWebhook`, `parseWebhook`                                                           |
-| `PAYLOAD_INVALID`      | An authenticated webhook body fails envelope or receiver-payload validation.     | `parseWebhook`                                                                            |
-| `TRANSACTION_REQUIRED` | A supplied publication client has no active PostgreSQL transaction.              | `publish` with `options.transaction`                                                      |
+- **`INVALID_CONFIG`**: invalid constructor, encryption, migration, or receiver-validator configuration. Thrown by constructors, `getPostgresMigration`, `parseWebhook`, `describeEvents`, and secret decryption.
+- **`INVALID_INPUT`**: invalid operation arguments or producer payload. Thrown by most operations.
+- **`UNSAFE_URL`**: destination fails URL or resolved-address validation. Thrown by endpoint create, update, and resume.
+- **`NOT_FOUND`**: record or owner is absent in the selected scope. Thrown by endpoint and delivery lookups, and `replayMany`.
+- **`INVALID_STATE`**: operation conflicts with lifecycle, limits, retention, or concurrent state. Thrown by endpoint lifecycle, `replay`, `replayMany`, and worker overlap.
+- **`ENDPOINT_LIMIT`**: the scope already has its `maxEndpoints` limit of endpoints. Thrown by endpoint create.
+- **`IDEMPOTENCY_CONFLICT`**: an accepted key identifies different event content. Thrown by `publish`.
+- **`REPLAY_IN_PROGRESS`**: an original delivery already has a pending or in-flight replay. Thrown by `replay`.
+- **`SCHEMA_MISMATCH`**: expected storage is missing or incompatible. Thrown by `check()` and Better Auth record reads.
+- **`SIGNATURE_INVALID`**: webhook headers or signature are invalid. Thrown by `verifyWebhook` and `parseWebhook`.
+- **`SIGNATURE_EXPIRED`**: webhook timestamp falls outside the configured tolerance. Thrown by `verifyWebhook` and `parseWebhook`.
+- **`PAYLOAD_INVALID`**: an authenticated webhook body fails envelope or receiver-payload validation. Thrown by `parseWebhook`.
+- **`TRANSACTION_REQUIRED`**: a supplied publication client has no active PostgreSQL transaction. Thrown by `publish` with `options.transaction`.
 
 Each reference page lists the exact conditions for its operations.
 
