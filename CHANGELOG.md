@@ -27,6 +27,10 @@ Pure code release on schema `6`, no SQL, tracked in [#123](https://github.com/pp
 - The worker sends headers a custom `EndpointSource` returns, and defers a delivery on a reserved name ([docs](apps/docs/content/docs/guides/custom-senders.mdx)).
 - The [comparison page](apps/docs/content/docs/concepts/compared.mdx) lists per-endpoint headers as shipped.
 
+### Docs
+
+- The pause retry-window reset is qualified as in [ADR 0015](docs/adr/0015-pause-resets-delivery-window.md) ([#133](https://github.com/pplytas/good-webhooks/issues/133)).
+
 ### Next: 0.7.0
 
 - No new features.

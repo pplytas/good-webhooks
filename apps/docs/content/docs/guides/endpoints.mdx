@@ -71,7 +71,9 @@ await organization.endpoints.remove(id)
 ```
 
 - **`update`**: changes URL, description, subscriptions, or headers. A new URL is checked again.
-- **`pause`**: keeps subscriptions and queued deliveries. The worker holds them until resume, then sends them with a full retry window.
+- **`pause`**: keeps subscriptions and queued deliveries.
+  - The worker holds them until resume, then sends them with a full retry window.
+  - The reset needs a running worker to see the pause while a delivery is due, or the old window stays and can expire after the resume.
 - **`resume`**: checks the URL again, then queued deliveries send.
 - **`rotateSecret`**: returns a new signing secret. Both sign requests during the overlap (default and max 24 h).
 - **`remove`**: permanent. Clears stored secrets, cancels queued deliveries, and keeps a deleted record.

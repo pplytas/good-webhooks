@@ -70,6 +70,7 @@ The worker pauses an endpoint when all its attempts have failed for five days, o
 | Rotate signing secret | Signs with current secrets     |
 
 - **Pause**: the retry window restarts at the first attempt after the resume, within `retentionMs`.
+  - The reset happens only when a running worker finds the endpoint paused while the delivery is due, and otherwise the old window stays and can expire after the resume.
 - **Delete**: pending work is cancelled when the worker sees it. Secrets are cleared.
 - **Change subscriptions**: already accepted recipients stay.
 - **Rotate signing secret**: the next attempt signs with the current secrets (both, during the overlap).
