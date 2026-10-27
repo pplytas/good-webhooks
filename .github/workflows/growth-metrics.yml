@@ -22,7 +22,8 @@ jobs:
           node-version: 24
       - name: Take the snapshot
         env:
-          # Traffic needs push access; METRICS_GITHUB_TOKEN is a fine-grained fallback with Administration read.
+          # Traffic needs push access. METRICS_GITHUB_TOKEN is a fine-grained token with Administration read.
+          # github.token is the fallback and gets 403 on the traffic endpoints.
           GITHUB_TOKEN: ${{ secrets.METRICS_GITHUB_TOKEN || github.token }}
         run: node scripts/growth-snapshot.mjs > "$RUNNER_TEMP/snapshot.json"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

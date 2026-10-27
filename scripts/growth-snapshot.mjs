@@ -15,11 +15,7 @@ const githubHeaders = {
   'X-GitHub-Api-Version': '2022-11-28',
   'User-Agent': 'good-webhooks-growth-snapshot',
 }
-const browserHeaders = {
-  'User-Agent':
-    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36',
-  Accept: 'text/html',
-}
+const pageHeaders = { 'User-Agent': 'good-webhooks-growth-snapshot', Accept: 'text/html' }
 
 // Fetches a URL and throws on any non-2xx response.
 async function request(url, headers) {
@@ -48,16 +44,18 @@ function traffic(data, key) {
 }
 
 // Returns a UTC date as YYYY-MM-DD, shifted by a number of days.
-function utcDate(offsetDays) {
-  const date = new Date()
+function utcDate(from, offsetDays) {
+  const date = new Date(from)
   date.setUTCDate(date.getUTCDate() + offsetDays)
   return date.toISOString().slice(0, 10)
 }
 
 // The npm last-week alias returns a stale window, so ask for an explicit range.
+// npm publishes a day's count during the next day, so the window ends two days ago.
 async function npmStats() {
-  const end = utcDate(-1)
-  const start = utcDate(-7)
+  const now = Date.now()
+  const end = utcDate(now, -2)
+  const start = utcDate(now, -8)
   const [downloads, registry] = await Promise.all([
     npm(`https://api.npmjs.org/downloads/point/${start}:${end}/${pkg}`),
     npm(`https://registry.npmjs.org/${pkg}`),
@@ -87,7 +85,7 @@ async function dependents() {
   const result = { source: 'github-dependents-page', repositories: null, packages: null }
   try {
     const url = `https://github.com/${repo}/network/dependents`
-    const text = htmlToText(await (await request(url, browserHeaders)).text())
+    const text = htmlToText(await (await request(url, pageHeaders)).text())
     const parse = (pattern) => {
       const match = text.match(pattern)
       return match ? Number(match[1].replace(/,/g, '')) : null
