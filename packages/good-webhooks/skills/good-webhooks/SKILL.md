@@ -111,7 +111,7 @@ const { endpoint, secret } = await customer.endpoints.create({
   eventTypes: ['invoice.paid'],
   headers: { 'x-api-key': '…' }, // optional, encrypted, sent on every attempt and test event
 })
-// headers: max 20, names + values at most 2048 characters in total; webhook-*, content-type, user-agent and hop-by-hop names are rejected
+// headers: max 20, at most 2 KiB in total as JSON (UTF-8); webhook-*, content-type, user-agent and hop-by-hop names are rejected
 // update(id, { headers }) replaces the set; headers: null clears it
 // update(id, patch) · pause(id) · resume(id) · rotateSecret(id, { graceMs }) · remove(id)
 // sendTestEvent(id): one signed test request, returns { ok, responseStatus, responseBody, error }

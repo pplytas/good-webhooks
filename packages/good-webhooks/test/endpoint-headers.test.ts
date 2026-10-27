@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   isReservedHeaderName,
-  MAX_ENDPOINT_HEADER_CHARACTERS,
+  MAX_ENDPOINT_HEADER_BYTES,
   RESERVED_HEADER_NAMES,
   TRANSPORT_HEADER_NAMES,
   validateEndpointHeaders,
@@ -67,33 +67,51 @@ describe('endpoint header validation', () => {
     expect(() => validateEndpointHeaders({ 'x-api-key': value })).toThrow(invalid)
   })
 
-  it('accepts a 2047-character value with a one-character name', () => {
-    expect(validateEndpointHeaders({ a: 'v'.repeat(2047) }).a).toHaveLength(2047)
+  it('accepts a value at the per-value limit when the JSON fits', () => {
+    expect(validateEndpointHeaders({ a: 'v'.repeat(2040) }).a).toHaveLength(2040)
   })
 
-  it('caps names and values together at 2048 characters', () => {
-    expect(MAX_ENDPOINT_HEADER_CHARACTERS).toBe(2048)
-    // Ten names of 4 characters plus values of 200 characters: exactly 2048.
-    const atCap = Object.fromEntries(
-      Array.from({ length: 10 }, (_, index) => [
-        `x-h${index}`,
-        'v'.repeat(index === 9 ? 208 : 200),
-      ]),
-    )
-    expect(
-      Object.entries(atCap).reduce((sum, [name, value]) => sum + name.length + value.length, 0),
-    ).toBe(2048)
-    expect(validateEndpointHeaders(atCap)).toEqual(atCap)
-    expect(() => validateEndpointHeaders({ ...atCap, 'x-h9': 'v'.repeat(209) })).toThrow(
-      expect.objectContaining({
-        code: 'INVALID_INPUT',
-        message: 'Endpoint header names and values may hold at most 2048 characters in total.',
-      }),
-    )
-    // One long bearer token still fits.
-    const bearer = `Bearer ${'t'.repeat(2048 - 'authorization'.length - 'Bearer '.length)}`
-    expect(validateEndpointHeaders({ authorization: bearer }).authorization).toBe(bearer)
-    expect(() => validateEndpointHeaders({ a: 'v'.repeat(2048) })).toThrow(invalid)
+  describe('total size as UTF-8 JSON', () => {
+    const bytes = (headers: Record<string, string>) =>
+      new TextEncoder().encode(JSON.stringify(headers)).length
+    const tooLarge = expect.objectContaining({
+      code: 'INVALID_INPUT',
+      message: 'Endpoint headers may hold at most 2048 bytes as JSON.',
+    })
+
+    it('accepts exactly 2048 bytes and rejects 2049', () => {
+      expect(MAX_ENDPOINT_HEADER_BYTES).toBe(2048)
+      // {"a":"…"} adds 8 bytes around the value.
+      const atCap = { a: 'v'.repeat(2040) }
+      expect(bytes(atCap)).toBe(2048)
+      expect(validateEndpointHeaders(atCap)).toEqual(atCap)
+      const over = { a: 'v'.repeat(2041) }
+      expect(bytes(over)).toBe(2049)
+      expect(() => validateEndpointHeaders(over)).toThrow(tooLarge)
+      // Several headers count their commas and quotes too.
+      const several = Object.fromEntries(
+        Array.from({ length: 10 }, (_, index) => [`x-h${index}`, 'v'.repeat(195)]),
+      )
+      expect(bytes(several)).toBe(2051)
+      expect(() => validateEndpointHeaders(several)).toThrow(tooLarge)
+    })
+
+    it('counts escaped quotes and two-byte accented characters', () => {
+      // Each " escapes to two bytes and each é encodes as two bytes: 1020 characters, 2040 bytes.
+      for (const value of ['"'.repeat(1020), 'é'.repeat(1020), '"é'.repeat(510)]) {
+        expect(value).toHaveLength(1020)
+        expect(bytes({ a: value })).toBe(2048)
+        expect(validateEndpointHeaders({ a: value }).a).toBe(value)
+        expect(() => validateEndpointHeaders({ a: `${value}v` })).toThrow(tooLarge)
+      }
+    })
+
+    it('fits one full-length bearer token', () => {
+      // {"authorization":"…"} adds 20 bytes around the value.
+      const bearer = `Bearer ${'t'.repeat(2048 - 20 - 'Bearer '.length)}`
+      expect(bytes({ authorization: bearer })).toBe(2048)
+      expect(validateEndpointHeaders({ authorization: bearer }).authorization).toBe(bearer)
+    })
   })
 
   it('rejects names that repeat with different case', () => {

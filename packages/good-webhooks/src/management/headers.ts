@@ -24,8 +24,11 @@ export const RESERVED_HEADER_NAMES: ReadonlySet<string> = new Set([
 export const MAX_ENDPOINT_HEADERS = 20
 const MAX_NAME_LENGTH = 100
 const MAX_VALUE_LENGTH = 2048
-/** Names and values together, so the encrypted blob fits narrow Better Auth columns. */
-export const MAX_ENDPOINT_HEADER_CHARACTERS = 2048
+/**
+ * UTF-8 bytes of the headers as JSON, the exact plaintext management encrypts. Keeps the encrypted
+ * blob inside narrow Better Auth columns such as SQL Server's varchar(8000), which stores it as hex.
+ */
+export const MAX_ENDPOINT_HEADER_BYTES = 2048
 /** RFC 9110 token. */
 const TOKEN = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/
 /** Tab, visible ASCII, space, and Latin-1 text. No other control characters, and nothing HTTP/1.1 cannot carry. */
@@ -53,7 +56,6 @@ export function validateEndpointHeaders(value: unknown): Record<string, string> 
   if (entries.length > MAX_ENDPOINT_HEADERS)
     invalid(`An endpoint may have at most ${MAX_ENDPOINT_HEADERS} headers.`)
   const seen = new Set<string>()
-  let total = 0
   for (const [name, header] of entries) {
     if (name.length > MAX_NAME_LENGTH || !TOKEN.test(name))
       invalid(`Header names must be HTTP tokens of 1–${MAX_NAME_LENGTH} characters.`)
@@ -65,12 +67,10 @@ export function validateEndpointHeaders(value: unknown): Record<string, string> 
       invalid(
         `Header ${name} must have a value of 1–${MAX_VALUE_LENGTH} characters with no control characters other than tab.`,
       )
-    total += name.length + header.length
   }
-  if (total > MAX_ENDPOINT_HEADER_CHARACTERS)
-    invalid(
-      `Endpoint header names and values may hold at most ${MAX_ENDPOINT_HEADER_CHARACTERS} characters in total.`,
-    )
   // fromEntries defines own properties, even for a name such as __proto__.
-  return Object.fromEntries(entries) as Record<string, string>
+  const headers = Object.fromEntries(entries) as Record<string, string>
+  if (new TextEncoder().encode(JSON.stringify(headers)).length > MAX_ENDPOINT_HEADER_BYTES)
+    invalid(`Endpoint headers may hold at most ${MAX_ENDPOINT_HEADER_BYTES} bytes as JSON.`)
+  return headers
 }
