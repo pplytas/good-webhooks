@@ -42,7 +42,7 @@ export function createApp({ pool, auth, delivery, management }: Context) {
   })
   app.get('/api/workspace', async (_req, res) => {
     const owner = res.locals.userId as string
-    const [invoices, receivers, outcomes, requests, deliveries] = await Promise.all([
+    const [invoices, receivers, outcomes, requests, deliveries, stats] = await Promise.all([
       pool.query(
         'SELECT * FROM billing_invoices WHERE owner_id = $1 ORDER BY created_at DESC LIMIT 100',
         [owner],
@@ -60,6 +60,7 @@ export function createApp({ pool, auth, delivery, management }: Context) {
         [owner],
       ),
       delivery.forScope({ type: 'user', id: owner }).deliveries.list({ limit: 50 }),
+      delivery.forScope({ type: 'user', id: owner }).deliveries.stats(),
     ])
     res.json({
       receiverOrigin: config.receiverOrigin,
@@ -68,6 +69,7 @@ export function createApp({ pool, auth, delivery, management }: Context) {
       outcomes: outcomes.rows,
       requests: requests.rows,
       deliveries,
+      stats,
     })
   })
   app.post('/api/invoices', async (req, res) => {

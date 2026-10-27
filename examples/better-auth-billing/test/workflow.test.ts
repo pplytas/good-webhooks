@@ -332,6 +332,9 @@ test(
           assert.equal(state.outcomes[0].status, 'open')
           assert.equal(await receiptCount(), 1)
           assert.equal(state.requests[0].outcome, 'accepted')
+          assert.equal(state.stats.deliveries.succeeded, 1)
+          assert.equal(state.stats.deliveries.pending, 0)
+          assert.equal(state.stats.attemptsLastHour.succeeded, 1)
         },
       )
       await t.test(

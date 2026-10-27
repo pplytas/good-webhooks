@@ -1,0 +1,365 @@
+---
+title: 'Tutorial: endpoints for signed-in users'
+description: Build a billing app where each signed-in user registers, manages, and monitors their own webhook endpoints.
+---
+
+You will build a billing app where each signed-in user creates, lists, pauses, and deletes their own webhook endpoints. Users can set an optional gateway key that goes out as a request header. They see their signing secret once, and they see stats for their own deliveries.
+
+The code comes from the [Better Auth billing example](https://github.com/pplytas/good-webhooks/tree/main/examples/better-auth-billing). The example pins `good-webhooks@0.6.0` and Better Auth `1.7.7`, and this page was checked against both. CI also runs the plugin against the newest 1.7 and 1.8 releases. You need Node.js 24, a PostgreSQL database, and a Better Auth app with email and password sign-in. To run the finished app instead of typing it all, use the commands on the [examples page](/docs/examples).
+
+| Process  | Role                  |
+| -------- | --------------------- |
+| App      | Pages and auth routes |
+| Worker   | Sends deliveries      |
+| Receiver | Accepts webhooks      |
+
+The app serves the pages, the Better Auth routes, and the plugin's endpoint routes. It also writes invoices and publishes their events. The worker claims those events and delivers them. The receiver stands in for the endpoint owner's server: it verifies each signature, and in the example it also echoes the gateway key back.
+
+<Steps>
+<Step>
+### Start from a Better Auth app
+
+The example's auth options add the plugin to email and password sign-in:
+
+```ts title="src/auth.ts"
+import { betterAuth } from 'better-auth'
+import { goodWebhooks } from 'good-webhooks/better-auth'
+import type { Pool } from 'pg'
+import { config } from './config.ts'
+import { eventTypes } from './event-types.ts'
+export function authOptions(database: Pool) {
+  return {
+    database,
+    baseURL: config.appOrigin,
+    secret: config.BETTER_AUTH_SECRET,
+    trustedOrigins: [config.appOrigin],
+    emailAndPassword: { enabled: true },
+    plugins: [goodWebhooks({ eventTypes, allowLocalhost: true })], // [!code highlight]
+  }
+}
+export function createAuth(database: Pool) {
+  return betterAuth(authOptions(database))
+}
+```
+
+```ts title="src/event-types.ts"
+// This module is safe to import in the browser.
+export const eventTypes = ['invoice.created', 'invoice.paid'] as const
+```
+
+`config.appOrigin` is `http://127.0.0.1:4312` in the example. `trustedOrigins` lists the origin the browser calls from. `allowLocalhost: true` lets endpoints point at the local receiver on `127.0.0.1`. Use it for local development only.
+
+`as const` keeps the literal event names, so the client types reject unknown names.
+
+</Step>
+<Step>
+### Apply the schema
+
+The plugin adds one model to your Better Auth database. The example's setup script applies Better Auth's migrations in code, because its database is disposable:
+
+```ts title="src/setup.ts"
+const { getMigrations } = await import('better-auth/db/migration')
+const { authOptions } = await import('./auth.ts')
+// ...
+await (await getMigrations(authOptions(pool))).runMigrations()
+```
+
+A real app runs the Better Auth CLI instead. See [generate and apply the schema](/docs/better-auth#generate-and-apply-the-schema).
+
+</Step>
+<Step>
+### Add the client plugin
+
+The browser client gets typed methods for the plugin's routes:
+
+```ts title="src/client.ts"
+import { createAuthClient } from 'better-auth/client'
+import { goodWebhooksClient } from 'good-webhooks/better-auth/client'
+import { eventTypes } from './event-types.ts'
+
+const auth = createAuthClient({
+  baseURL: location.origin,
+  plugins: [goodWebhooksClient({ eventTypes })],
+})
+```
+
+The example names the browser client `auth`; other pages call it `authClient`. Every client method returns `{ data, error }`. The example unwraps each result and turns an error into an exception:
+
+```ts title="src/client.ts"
+function unwrap<T>(result: { data: T | null; error: { message?: string } | null }): T {
+  if (result.error || result.data === null)
+    throw new Error(result.error?.message ?? 'Request failed')
+  return result.data
+}
+```
+
+The snippets below also use the example's small helpers from `src/client.ts`: `$` selects an element, `action` runs a handler and shows its error, `api` calls the app's own routes, and `updateMarkup` writes HTML.
+
+</Step>
+<Step>
+### Create an endpoint with an optional gateway key
+
+The endpoint form has a description, two event checkboxes, and an optional gateway API key. On submit, the client creates the endpoint and adds the key as an `x-api-key` header when the user filled it in:
+
+```ts title="src/client.ts"
+const apiKey = String(form.get('apiKey') ?? '').trim()
+const result = unwrap(
+  await auth.goodWebhooks.create({
+    description: String(form.get('description')),
+    url: `${workspace!.receiverOrigin}/webhooks/${crypto.randomUUID()}`,
+    eventTypes: selected,
+    ...(apiKey ? { headers: { 'x-api-key': apiKey } } : {}), // [!code highlight]
+  }),
+)
+```
+
+The headers go out on every delivery attempt, every retry, and every test event. The plugin stores them encrypted, like the signing secret. An endpoint has at most 20 headers, and 2 KiB in total as JSON. The [management reference](/docs/reference/management#endpoint-headers) has the full rules.
+
+Some names are reserved: names starting with `webhook-`, `content-type`, `user-agent`, and hop-by-hop names such as `host`. The route rejects them with HTTP 400 and the code `INVALID_INPUT`. The example's test checks the exact message:
+
+```ts title="test/workflow.test.ts"
+const reserved = await request('/api/auth/good-webhooks/create', alice.cookie, {
+  url: `${receiverOrigin}/webhooks/${randomUUID()}`,
+  eventTypes: ['invoice.created'],
+  headers: { 'webhook-id': 'x' },
+})
+assert.equal(reserved.status, 400)
+assert.equal(reserved.data.code, 'INVALID_INPUT')
+assert.equal(reserved.data.message, 'Header webhook-id is reserved.')
+```
+
+In the browser, `unwrap` throws that message and the page shows it.
+
+</Step>
+<Step>
+### Show the signing secret once
+
+The create result carries the signing secret. The client keeps it in `pendingSecret` and reveals the `#secret-panel`:
+
+```ts title="src/client.ts"
+pendingSecret = { endpointId: result.endpoint.id, secret: result.secret }
+$<HTMLInputElement>('#signing-secret').value = result.secret
+$('#secret-panel').hidden = false
+```
+
+The **Transfer to local receiver** button posts the secret to the example's receiver and hides the panel:
+
+```ts title="src/client.ts"
+$('#connect-receiver').addEventListener(
+  'click',
+  () =>
+    void action(async () => {
+      if (!pendingSecret) return
+      await api('/receivers/connect', pendingSecret)
+      pendingSecret = null
+      $<HTMLInputElement>('#signing-secret').value = ''
+      $('#secret-panel').hidden = true
+      message('Receiver connected. Create an invoice to send its first event.')
+      await refresh()
+    }),
+)
+```
+
+Only the create and rotate responses carry the secret. Lists and other reads never do. In a real app, the owner pastes the secret into their receiver's configuration. The example's transfer route exists only because the example also owns the receiver.
+
+To replace a secret, call `auth.goodWebhooks.rotateSecret({ id })`. It returns a new secret, and the old one stays valid for a grace period, 24 hours by default. See the [route reference](/docs/reference/better-auth#authenticated-routes).
+
+</Step>
+<Step>
+### List the owner's endpoints
+
+`refresh()` loads the app's own data and the owner's endpoints together:
+
+```ts title="src/client.ts"
+const [state, endpointResult] = await Promise.all([
+  api<Workspace>('/workspace'),
+  auth.goodWebhooks.list({}),
+])
+workspace = state
+endpoints = unwrap(endpointResult)
+render()
+```
+
+`render()` writes one card per endpoint. Trimmed and wrapped, the card shows the description, URL, event types, headers, status, and actions:
+
+```ts title="src/client.ts"
+const headerLines = (headers: Record<string, string>) =>
+  Object.entries(headers)
+    .map(([name, value]) => `<p>${html(`${name}: ${value}`)}</p>`)
+    .join('')
+
+// In render():
+updateMarkup(
+  '#endpoints',
+  endpoints.length
+    ? endpoints
+        .map(
+          (endpoint) =>
+            `<article class="endpoint">
+              <div class="topline"><strong>${html(endpoint.description || 'Invoice endpoint')}</strong>${badge(endpoint.status)}</div>
+              <p>${html(endpoint.url)}</p>
+              <p>${html(endpoint.eventTypes.join(', '))}</p>
+              ${headerLines(endpoint.headers)}
+              <div class="actions">
+                <button class="secondary small" data-endpoint="${html(endpoint.id)}" data-operation="${endpoint.status === 'paused' ? 'resume' : 'pause'}">${endpoint.status === 'paused' ? 'Resume' : 'Pause'}</button>
+                <button class="secondary small danger" data-endpoint="${html(endpoint.id)}" data-operation="remove">Remove</button>
+              </div>
+            </article>`,
+        )
+        .join('')
+    : empty('Create your first endpoint to receive invoice events.'),
+)
+```
+
+An omitted `scope` means the signed-in user. `headers` is always present, `{}` when there are none. It comes back to the owner who set it. Another user sees none of it: the example's test proves that their list is empty and their `get` returns 404.
+
+</Step>
+<Step>
+### Pause, resume, and delete
+
+The buttons carry the endpoint ID and the operation. One click handler on `#workspace` calls the matching method:
+
+```ts title="src/client.ts"
+$('#workspace').addEventListener('click', (event) => {
+  const button = (event.target as Element).closest<HTMLButtonElement>('button')
+  if (!button) return
+  const data = button.dataset
+  if (!Object.keys(data).length) return
+  void action(async () => {
+    if (data.endpoint) {
+      if (data.operation === 'pause') unwrap(await auth.goodWebhooks.pause({ id: data.endpoint }))
+      if (data.operation === 'resume') unwrap(await auth.goodWebhooks.resume({ id: data.endpoint }))
+      if (data.operation === 'remove') {
+        unwrap(await auth.goodWebhooks.remove({ id: data.endpoint }))
+        // ...
+      }
+    }
+    // ...
+    await refresh()
+  })
+})
+```
+
+A pause holds new deliveries as pending. A resume sends them. After a removal, new events no longer select that endpoint. The example's test "pause holds delivery, resume sends it, and removal stops future selection" checks all three.
+
+</Step>
+<Step>
+### Change the headers later
+
+`update` changes headers too. The plugin's route test covers these three cases; here they use the client method, since the example has no edit form:
+
+```ts
+// Replaces the whole set.
+await auth.goodWebhooks.update({ id, headers: { authorization: 'Bearer t' } })
+
+// Keeps the headers.
+await auth.goodWebhooks.update({ id, description: 'changed' })
+
+// Removes every header. `headers: {}` does the same.
+await auth.goodWebhooks.update({ id, headers: null })
+```
+
+</Step>
+<Step>
+### Check the header reaches the receiver
+
+After it verifies the signature and records the invoice, the example's receiver echoes the key back:
+
+```ts title="src/receiver-app.ts"
+// A real gateway would check this key before the request reaches the app.
+const apiKey = req.get('x-api-key') ?? null
+res.json({ accepted: true, duplicate, apiKey })
+```
+
+The test checks both ends. The created endpoint returns the header, and the first attempt's response body contains the key:
+
+```ts title="test/workflow.test.ts"
+assert.deepEqual(created.data.endpoint.headers, { 'x-api-key': 'demo-key-123' })
+// ...
+assert.equal(JSON.parse(detail.data.attempts[0].responseBody).apiKey, 'demo-key-123')
+```
+
+The attempt panel in the example shows the receiver's response body, so you can see the echoed key in the browser.
+
+</Step>
+<Step>
+### Publish in the owner's scope
+
+Creating an invoice publishes `invoice.created` in the owner's scope. It uses the same PostgreSQL client as the invoice insert, so both commit or roll back together:
+
+```ts title="src/billing.ts"
+const publication = await delivery
+  .forScope({ type: 'user', id: ownerId })
+  .publish(
+    { type: 'invoice.created', data, idempotencyKey: `invoice.created:${data.invoiceId}` },
+    { transaction: client },
+  )
+```
+
+Every `/api` route reads the owner from the session, never from the request body:
+
+```ts title="src/app.ts"
+app.use('/api', async (req, res, next) => {
+  const session = await auth.api.getSession({ headers: fromNodeHeaders(req.headers) })
+  if (!session) {
+    res.status(401).json({ error: 'Sign in first' })
+    return
+  }
+  res.locals.userId = session.user.id
+  next()
+})
+```
+
+Publishing on the root engine uses application scope and never reaches a personal endpoint. To build the engine and run the worker, see [add delivery](/docs/better-auth/delivery).
+
+</Step>
+<Step>
+### Show the owner their delivery stats
+
+The workspace route adds the owner's stats to its response:
+
+```ts title="src/app.ts"
+app.get('/api/workspace', async (_req, res) => {
+  const owner = res.locals.userId as string
+  const [invoices, receivers, outcomes, requests, deliveries, stats] = await Promise.all([
+    // ...
+    delivery.forScope({ type: 'user', id: owner }).deliveries.list({ limit: 50 }),
+    delivery.forScope({ type: 'user', id: owner }).deliveries.stats(), // [!code highlight]
+  ])
+  res.json({
+    // ...
+    deliveries,
+    stats,
+  })
+})
+```
+
+The client writes one line under the delivery history heading:
+
+```ts title="src/client.ts"
+const { deliveries: counts, attemptsLastHour } = state.stats
+const attempts = Object.values(attemptsLastHour).reduce((sum, count) => sum + count, 0)
+updateMarkup(
+  '#stats',
+  `${counts.succeeded} succeeded, ${counts.failed} failed, ${counts.pending} pending. ${attempts} ${attempts === 1 ? 'attempt' : 'attempts'} in the last hour.`,
+)
+```
+
+`deliveries.stats()` returns counts by status, the age of the oldest pending delivery, and the last hour's attempts by outcome. See [stats](/docs/reference/delivery#stats).
+
+It reads every retained delivery in the scope. One user's scope is small, so the example calls it on each refresh. For the application scope, call it from a status page or a periodic check instead.
+
+</Step>
+</Steps>
+
+<Cards>
+  <Card title="Permissions" href="/docs/better-auth/permissions#organization-endpoints">
+    Let organization members manage shared endpoints.
+  </Card>
+  <Card title="Add delivery" href="/docs/better-auth/delivery">
+    Build the delivery engine and run the worker.
+  </Card>
+  <Card title="Better Auth reference" href="/docs/reference/better-auth">
+    Every route, body, error, and client method.
+  </Card>
+</Cards>

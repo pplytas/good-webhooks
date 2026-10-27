@@ -201,7 +201,7 @@ if (error) throw new Error(error.message)
 console.log(data.secret) // Show once. No later response contains it.
 ```
 
-All methods return Better Auth's client result containing `data` and `error`. Request bodies and data shapes match the [server routes](#authenticated-routes).
+All methods return Better Auth's client result containing `data` and `error`. Request bodies and data shapes match the [server routes](#authenticated-routes). `create` and `update` accept `headers` like the server routes, and `WebhookEndpointDTO.headers` is always present.
 
 | Client method   | Server method                  | `data`                 |
 | --------------- | ------------------------------ | ---------------------- |

@@ -2,7 +2,7 @@ import { createAuthClient } from 'better-auth/client'
 import { goodWebhooksClient } from 'good-webhooks/better-auth/client'
 import { eventTypes } from './event-types.ts'
 import type { WebhookEndpointDTO } from 'good-webhooks/better-auth'
-import type { Delivery, DeliveryDetail } from 'good-webhooks'
+import type { Delivery, DeliveryDetail, DeliveryStats } from 'good-webhooks'
 
 const auth = createAuthClient({
   baseURL: location.origin,
@@ -56,6 +56,7 @@ type Workspace = {
   }[]
   requests: { endpoint_id: string; event_id: string | null; outcome: string; received_at: string }[]
   deliveries: { items: Delivery[]; nextCursor: string | null }
+  stats: DeliveryStats
 }
 function message(text: string, error = false) {
   $('#message').textContent = text
@@ -119,6 +120,7 @@ async function showSession() {
       'endpoints',
       'invoices',
       'deliveries',
+      'stats',
       'attempts',
       'receivers',
       'outcomes',
@@ -168,6 +170,12 @@ function render() {
     state.deliveries.items.length
       ? `<table><thead><tr><th>Delivery</th><th>Status</th><th>Attempts</th><th></th></tr></thead><tbody>${state.deliveries.items.map((delivery) => `<tr><td><button class="row-action" data-inspect="${delivery.id}">#${delivery.id} · ${html(endpointName(delivery.endpointId))}</button><span class="subtext">Event ${short(delivery.eventId)}${delivery.replayOf ? ` · Replay of #${delivery.replayOf}` : ''}</span></td><td>${badge(delivery.status)}</td><td>${delivery.attemptCount}</td><td>${!delivery.replayOf && ['succeeded', 'failed'].includes(delivery.status) && endpoints.some((endpoint) => endpoint.id === delivery.endpointId && endpoint.status === 'active') ? `<button class="secondary small" data-replay="${delivery.id}">Replay</button>` : ''}</td></tr>`).join('')}</tbody></table><p class="hint">Latest ${state.deliveries.items.length} deliveries${state.deliveries.nextCursor ? ' (limited to 50)' : ''}.</p>`
       : empty('No deliveries yet. Create an endpoint, then create an invoice.'),
+  )
+  const { deliveries: counts, attemptsLastHour } = state.stats
+  const attempts = Object.values(attemptsLastHour).reduce((sum, count) => sum + count, 0)
+  updateMarkup(
+    '#stats',
+    `${counts.succeeded} succeeded, ${counts.failed} failed, ${counts.pending} pending. ${attempts} ${attempts === 1 ? 'attempt' : 'attempts'} in the last hour.`,
   )
   updateMarkup(
     '#receivers',

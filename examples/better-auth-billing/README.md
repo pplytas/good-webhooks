@@ -25,7 +25,7 @@ Open [Ledger desk](http://127.0.0.1:4312). Use that exact address. The app requi
 6. Click **Reject deliveries**, then create another invoice. Inspect its three HTTP 503 attempts. Click **Restore receiver**, then **Replay** on the failed delivery.
 7. Replay a successful delivery. The receiver reports **duplicate** and leaves the existing business outcome unchanged.
 
-Pause, resume, and remove endpoints from the left column. A second account has separate invoices, endpoints, delivery history, and receiver controls. The history view shows the latest 50 deliveries and receiver requests, and the latest 100 invoices.
+Pause, resume, and remove endpoints from the left column. A second account has separate invoices, endpoints, delivery history, and receiver controls. The history view shows the latest 50 deliveries and receiver requests, and the latest 100 invoices. The delivery panel also shows a summary line from the owner's `deliveries.stats()`.
 
 No payment processor is connected. Recording payment updates this local database only.
 

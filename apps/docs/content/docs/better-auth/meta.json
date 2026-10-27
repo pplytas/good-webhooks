@@ -1,4 +1,4 @@
 {
   "title": "Better Auth",
-  "pages": ["index", "quick-start", "permissions", "delivery"]
+  "pages": ["index", "quick-start", "tutorial", "permissions", "delivery"]
 }
