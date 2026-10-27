@@ -109,8 +109,10 @@ const { deliveries, oldestPendingAgeMs, attemptsLastHour } = await webhooks.deli
 
 Alert on two numbers:
 
-- `deliveries.pending` keeps growing across checks. Workers are stopped or too slow for the volume.
-- `oldestPendingAgeMs` passes the delay you accept. Some delivery has waited longer than its receiver can tolerate.
+- `deliveries.pending` keeps growing across checks.
+  - Workers are stopped or too slow for the volume.
+- `oldestPendingAgeMs` passes the delay you accept.
+  - Some delivery has waited longer than its receiver can tolerate.
 
 `pending` also holds deliveries waiting for a retry and deliveries behind a paused endpoint. With the default schedule a delivery to a failing receiver stays pending for more than a day, so set the age threshold with that in mind. `attemptsLastHour` shows whether workers are making attempts at all.
 

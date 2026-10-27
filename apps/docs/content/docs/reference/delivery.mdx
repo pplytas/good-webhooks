@@ -212,11 +212,13 @@ const { deliveries, oldestPendingAgeMs, attemptsLastHour } = await delivery.deli
 // attemptsLastHour: { started: 2, succeeded: 140, retry: 6, failed: 1, abandoned: 0 }
 ```
 
-| `DeliveryStats` field | Meaning                                                                                                                               |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `deliveries`          | Retained deliveries by status. Every status is present, `0` when none.                                                                |
-| `oldestPendingAgeMs`  | Milliseconds since the oldest `pending` delivery was created, from the database clock. `null` when none is pending.                   |
-| `attemptsLastHour`    | Attempts started in the last hour by [outcome](#attempt-outcomes). `started` counts attempts not yet finished or recovered. All keys. |
+| `DeliveryStats` field | Meaning                                                   |
+| --------------------- | --------------------------------------------------------- |
+| `deliveries`          | Retained deliveries by status                             |
+| `oldestPendingAgeMs`  | Age of the oldest pending delivery                        |
+| `attemptsLastHour`    | Attempts in the last hour by [outcome](#attempt-outcomes) |
+
+Every status and outcome key is present, `0` when none. `oldestPendingAgeMs` is in milliseconds from the database clock, and `null` when nothing is pending. In `attemptsLastHour`, `started` counts attempts not yet finished or recovered.
 
 `pending` includes deliveries waiting for a retry and deliveries queued behind a paused endpoint. Replays count as deliveries. Deliveries and attempts come from two separate reads, so they can disagree slightly under load.
 
