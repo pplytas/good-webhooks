@@ -238,30 +238,34 @@ Every status and outcome key is present, `0` when none. `oldestPendingAgeMs` is 
 
 ### Delivery and attempt records
 
-| Delivery field  | Type or meaning                                                          |
-| --------------- | ------------------------------------------------------------------------ |
-| `id`            | String identifier.                                                       |
-| `endpointId`    | String identifier.                                                       |
-| `eventId`       | String identifier.                                                       |
-| `eventType`     | The event's type, such as `'invoice.paid'`.                              |
-| `status`        | `'pending'`, `'in_flight'`, `'succeeded'`, `'failed'`, or `'cancelled'`. |
-| `attemptCount`  | Number of recorded attempts.                                             |
-| `nextAttemptAt` | `Date`.                                                                  |
-| `createdAt`     | `Date`.                                                                  |
-| `replayOf`      | Original delivery ID, or `null`.                                         |
-| `lastError`     | Last error text, or `null`.                                              |
-| `lastStatus`    | Last HTTP status, or `null`.                                             |
-| `attempts`      | `Attempt[]`. Only on `DeliveryDetail`, the result of `get`.              |
+| Delivery field  | Type or meaning                             |
+| --------------- | ------------------------------------------- |
+| `id`            | String identifier.                          |
+| `endpointId`    | String identifier.                          |
+| `eventId`       | String identifier.                          |
+| `eventType`     | The event's type, such as `'invoice.paid'`. |
+| `status`        | One of five states                          |
+| `attemptCount`  | Number of recorded attempts.                |
+| `nextAttemptAt` | `Date`.                                     |
+| `createdAt`     | `Date`.                                     |
+| `replayOf`      | Original delivery ID, or `null`.            |
+| `lastError`     | Last error text, or `null`.                 |
+| `lastStatus`    | Last HTTP status, or `null`.                |
+| `attempts`      | `Attempt[]`, on `DeliveryDetail` only       |
 
-| Attempt field    | Type or meaning                                                      |
-| ---------------- | -------------------------------------------------------------------- |
-| `number`         | Attempt number, starting at 1.                                       |
-| `startedAt`      | `Date`.                                                              |
-| `finishedAt`     | `Date`, or `null` while the attempt runs.                            |
-| `outcome`        | `'started'`, `'succeeded'`, `'retry'`, `'failed'`, or `'abandoned'`. |
-| `responseStatus` | HTTP status, or `null`.                                              |
-| `responseBody`   | Captured response text bounded by `maxResponseBytes`, or `null`.     |
-| `error`          | Error text, or `null`.                                               |
+| Attempt field    | Type or meaning                                                  |
+| ---------------- | ---------------------------------------------------------------- |
+| `number`         | Attempt number, starting at 1.                                   |
+| `startedAt`      | `Date`.                                                          |
+| `finishedAt`     | `Date`, or `null` while the attempt runs.                        |
+| `outcome`        | One of five outcomes                                             |
+| `responseStatus` | HTTP status, or `null`.                                          |
+| `responseBody`   | Captured response text bounded by `maxResponseBytes`, or `null`. |
+| `error`          | Error text, or `null`.                                           |
+
+- **`status`**: `'pending'`, `'in_flight'`, `'succeeded'`, `'failed'`, or `'cancelled'`.
+- **`attempts`**: present only on `DeliveryDetail`, the result of `get`.
+- **`outcome`**: `'started'`, `'succeeded'`, `'retry'`, `'failed'`, or `'abandoned'`.
 
 ## deliverySettings
 
