@@ -90,7 +90,7 @@ const { endpoint, secret } = await webhooks.endpoints.create({
 await webhooks.endpoints.rotateSecret(endpoint.id, { graceMs: 60 * 60 * 1000 })
 ```
 
-Endpoint methods follow the [management contract and limits](/docs/reference/management#endpointmanagement), including its errors. `EndpointInput<E>` and `EndpointPatch<E>` restrict subscriptions to event names in `E`, and take optional [`headers`](/docs/reference/management#endpoint-headers). Every returned `Endpoint` carries its `headers`, `{}` when there are none. `removeScope` and `reencrypt` are direct provider operations, not members of this client. The [endpoints guide](/docs/guides/endpoints) covers the lifecycle.
+Endpoint methods follow the [management contract and limits](/docs/reference/management#endpointmanagement), including its errors. `EndpointInput<E>` and `EndpointPatch<E>` restrict subscriptions to event names in `E`, and take optional [`headers`](/docs/reference/management#endpoint-headers). Built-in management returns `headers` on every `Endpoint`, `{}` when there are none; a custom `EndpointManagement` may omit it. `removeScope` and `reencrypt` are direct provider operations, not members of this client. The [endpoints guide](/docs/guides/endpoints) covers the lifecycle.
 
 ### forScope
 
