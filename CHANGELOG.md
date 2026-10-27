@@ -2,7 +2,7 @@
 
 ## 0.6.0 (2026-10-27)
 
-Pure code release on schema `6`, tracked in [#123](https://github.com/pplytas/good-webhooks/issues/123). No SQL.
+Pure code release on schema `6`, no SQL, tracked in [#123](https://github.com/pplytas/good-webhooks/issues/123).
 
 ### Upgrade
 
@@ -11,18 +11,20 @@ Pure code release on schema `6`, tracked in [#123](https://github.com/pplytas/go
 
 ### Added
 
-- Per-endpoint headers: `headers` on endpoint create and update, sent on every attempt and test event ([docs](apps/docs/content/docs/guides/endpoints.mdx#send-extra-headers), #128).
+- Per-endpoint headers: `headers` on endpoint create and update, sent on every attempt and test event ([docs](apps/docs/content/docs/guides/endpoints.mdx#send-extra-headers), [#128](https://github.com/pplytas/good-webhooks/pull/128)).
   - Encrypted at rest with the storage key and returned to the owner.
-  - At most 20 headers and 2 KiB as JSON; `webhook-*`, `content-type`, `user-agent`, and hop-by-hop names are rejected.
-- `deliveries.stats()` returns counts by status, the oldest pending age, and the last hour's attempts by outcome ([docs](apps/docs/content/docs/reference/delivery.mdx#stats), #129).
+  - At most 20 headers and 2 KiB as JSON.
+  - `webhook-*`, `content-type`, `user-agent`, and hop-by-hop names are rejected.
+- `deliveries.stats()` returns counts by status, the oldest pending age, and the last hour's attempts by outcome ([docs](apps/docs/content/docs/reference/delivery.mdx#stats), [#129](https://github.com/pplytas/good-webhooks/pull/129)).
   - Two table reads per call, with the cost stated in the docs.
-- `describeEvents()` returns the event names with a JSON Schema per event through Standard JSON Schema ([docs](apps/docs/content/docs/guides/publish.mdx#describe-your-events), #130).
-  - Zod 4.2+ and ArkType 2.1.28+ work as is; Valibot needs `@valibot/to-json-schema`.
+- `describeEvents()` returns the event names with a JSON Schema per event through Standard JSON Schema ([docs](apps/docs/content/docs/guides/publish.mdx#describe-your-events), [#130](https://github.com/pplytas/good-webhooks/pull/130)).
+  - Zod 4.2+ and ArkType 2.1.28+ work as is, and Valibot needs `@valibot/to-json-schema`.
 - Better Auth create and update bodies accept `headers`, and the endpoint DTO returns them.
 
 ### Changed
 
-- Management reads decrypt stored headers, so a rotated storage key needs `decryptionKeys` for `get()` and `list()` too.
+- Management reads decrypt stored headers, so a rotated standalone storage key needs `decryptionKeys` for `get()` and `list()` too.
+- The worker sends headers a custom `EndpointSource` returns, and defers a delivery on a reserved name ([docs](apps/docs/content/docs/guides/custom-senders.mdx)).
 - The [comparison page](apps/docs/content/docs/concepts/compared.mdx) lists per-endpoint headers as shipped.
 
 ### Next: 0.7.0
