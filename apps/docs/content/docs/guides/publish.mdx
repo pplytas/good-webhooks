@@ -135,7 +135,7 @@ webhooks.describeEvents({ libraryOptions: { unrepresentable: 'any' } })
 | Valibot   | `{ errorMode: 'ignore' }`    |
 | ArkType   | `{ fallback }`               |
 
-With Zod's option, transforms and dates become `{}`. With Valibot's option, dates become `{}` and transforms are skipped, so the field shows its input type. With ArkType's option, your function returns the schema for each type it cannot express:
+With Zod's option, transforms and dates become `{}`. With Valibot's option, dates become `{}` and transforms are skipped, so the field shows its input type. That is wrong for a transform that changes the type, such as a string parsed into a number: `publish()` stores the number, and a receiver validating against the catalog would reject it. Give such an event an explicit output schema instead. With ArkType's option, your function returns the schema for each type it cannot express:
 
 ```ts
 webhooks.describeEvents({
