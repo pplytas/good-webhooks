@@ -19,6 +19,24 @@ function integer(name: string, value: unknown, fallback: number, min: number, ma
   return resolved
 }
 
+/** Throws INVALID_CONFIG unless `events` is a nonempty map of application event names to validators. */
+export function validateEventDefinitions(events: unknown): asserts events is EventDefinitions {
+  if (!events || typeof events !== 'object' || Object.keys(events).length === 0) {
+    throw new WebhookError(
+      'INVALID_CONFIG',
+      'Define at least one event with a Standard Schema validator.',
+    )
+  }
+  for (const [name, schema] of Object.entries(events as EventDefinitions)) {
+    if (!isApplicationEventName(name) || typeof schema?.['~standard']?.validate !== 'function') {
+      throw new WebhookError(
+        'INVALID_CONFIG',
+        `Invalid event definition: ${name}. Names starting with ${RESERVED_EVENT_PREFIX} are reserved.`,
+      )
+    }
+  }
+}
+
 export function resolveConfig<E extends EventDefinitions>(
   options: DeliveryOptions<E>,
 ): ResolvedConfig {
@@ -32,24 +50,7 @@ export function resolveConfig<E extends EventDefinitions>(
       'database must provide PostgreSQL query() and connect() methods.',
     )
   }
-  if (
-    !options.events ||
-    typeof options.events !== 'object' ||
-    Object.keys(options.events).length === 0
-  ) {
-    throw new WebhookError(
-      'INVALID_CONFIG',
-      'Define at least one event with a Standard Schema validator.',
-    )
-  }
-  for (const [name, schema] of Object.entries(options.events)) {
-    if (!isApplicationEventName(name) || typeof schema?.['~standard']?.validate !== 'function') {
-      throw new WebhookError(
-        'INVALID_CONFIG',
-        `Invalid event definition: ${name}. Names starting with ${RESERVED_EVENT_PREFIX} are reserved.`,
-      )
-    }
-  }
+  validateEventDefinitions(options.events)
   if (
     typeof options.source?.matchRecipients !== 'function' ||
     typeof options.source.resolveEndpoint !== 'function'

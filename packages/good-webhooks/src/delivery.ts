@@ -1,4 +1,5 @@
 import { resolveConfig } from './config.js'
+import { describeEvents, type DescribeEventsOptions } from './describe-events.js'
 import { WebhookError } from './errors.js'
 import { toJson } from './json.js'
 import { createStore } from './store.js'
@@ -22,6 +23,7 @@ export type {
   EndpointHealthOptions,
   EndpointPausedEvent,
 } from './types.js'
+export type { DescribeEventsOptions, EventDescription } from './describe-events.js'
 export type {
   AutomaticPauseInput,
   AutomaticPauseReason,
@@ -88,6 +90,9 @@ export function createDelivery<const E extends EventDefinitions>(options: Delive
     worker,
     /** Selecting a scope does not authorize access. */
     forScope: (scope: Scope) => bind(scopeKey(scope)),
+    /** Event names in map order with the JSON Schema of each payload receivers get. */
+    describeEvents: (describeOptions?: DescribeEventsOptions) =>
+      describeEvents(definitions, describeOptions),
   }
 }
 

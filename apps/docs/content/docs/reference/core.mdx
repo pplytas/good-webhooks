@@ -9,6 +9,7 @@ The root entry point combines endpoint management and PostgreSQL delivery in one
 import {
   createWebhooks,
   createDelivery,
+  describeEvents,
   generateEncryptionKey,
   verifyWebhook,
   WebhookError,
@@ -20,6 +21,8 @@ import type {
   EndpointInput,
   EndpointPatch,
   WebhookErrorCode,
+  EventDescription,
+  DescribeEventsOptions,
 } from 'good-webhooks'
 ```
 
@@ -76,6 +79,7 @@ The client exposes `publish`, `deliveries`, `deliverySettings`, and `worker` fro
 | `endpoints.rotateSecret(id, { graceMs? })` | Returns a new signing secret and the endpoint.                                                   |
 | `endpoints.sendTestEvent(id)`              | Sends one signed test event and returns the receiver's answer. Records nothing.                  |
 | `check()`                                  | Checks the default management provider, if constructed here, then delivery schema compatibility. |
+| `describeEvents(options?)`                 | Returns the event names and payload JSON Schemas. See [describeEvents](#describeevents).         |
 | `forScope(scope)`                          | Returns the same publication, history, settings, and endpoint methods bound to one named scope.  |
 
 ### endpoints
@@ -104,7 +108,7 @@ await organization.endpoints.list()
 
 `forScope` validates and snapshots its scope, so later changes to the argument have no effect. An invalid scope throws `INVALID_INPUT`. It does not authorize a caller. See [scopes](/docs/concepts/scopes).
 
-The scoped client has no `worker` or `check`: those operate at installation level. `WebhookClient<E>` is its type.
+The scoped client has no `worker`, `check`, or `describeEvents`: those operate at installation level. `WebhookClient<E>` is its type.
 
 ### check
 
@@ -115,6 +119,37 @@ await webhooks.check() // Throws SCHEMA_MISMATCH if tables are missing or outdat
 ```
 
 `check()` never applies migrations. When a provider is injected, it does not call that provider's optional health checks. The host stays responsible for checking its management storage.
+
+## describeEvents
+
+```ts
+describeEvents(events: EventDefinitions, options?: DescribeEventsOptions): EventDescription[]
+webhooks.describeEvents(options?: DescribeEventsOptions): EventDescription[]
+```
+
+```ts
+import { describeEvents } from 'good-webhooks'
+import { events } from './events.js'
+
+const catalog = describeEvents(events, { target: 'draft-07' })
+```
+
+Returns one entry per event, in the order of the event map. The client method describes the map passed to `createWebhooks()` or `createDelivery()`. The standalone function needs no database, so management-only hosts can use it. It runs synchronously and starts no work.
+
+| `EventDescription` field | Type                              | Meaning                                                                                                    |
+| ------------------------ | --------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `type`                   | `string`                          | The event name from the map.                                                                               |
+| `schema`                 | `Record<string, unknown> \| null` | JSON Schema of the validated output, or `null` when the validator does not implement Standard JSON Schema. |
+
+| `DescribeEventsOptions` field | Default           | Contract                                                                            |
+| ----------------------------- | ----------------- | ----------------------------------------------------------------------------------- |
+| `target`                      | `'draft-2020-12'` | JSON Schema dialect passed to the validator, such as `'draft-07'`. Nonempty string. |
+
+The schema comes from the validator's `~standard.jsonSchema.output()`, so defaulted fields are required. Good Webhooks imports no validator library. The [publish guide](/docs/guides/publish#describe-your-events) lists which validators support it.
+
+- An invalid event map throws `INVALID_CONFIG`, as in `createWebhooks()`.
+- Options that are not an object, or a `target` that is not a nonempty string, throw `INVALID_INPUT`.
+- A validator that cannot convert its schema, for example a transform, a date, or an unsupported `target`, throws `INVALID_CONFIG` naming the event. The validator's error is the `cause`.
 
 ## generateEncryptionKey
 
@@ -144,7 +179,7 @@ The root also exports these types:
 
 | Group       | Types                                                                                                                                                                                                                                                                            |
 | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Events      | `EventDefinitions`, `EventName`, `JsonValue`, `PublishInput`, `PublishOptions`, `PublishResult`                                                                                                                                                                                  |
+| Events      | `EventDefinitions`, `EventName`, `EventDescription`, `DescribeEventsOptions`, `JsonValue`, `PublishInput`, `PublishOptions`, `PublishResult`                                                                                                                                     |
 | Database    | `SqlClient`, `DatabaseClient`, `Database`                                                                                                                                                                                                                                        |
 | Endpoints   | `Endpoint`, `EndpointStatus`, `PauseReason`, `EndpointWithSecret`, `EndpointInput`, `EndpointPatch`                                                                                                                                                                              |
 | Delivery    | `Delivery`, `DeliveryDetail`, `DeliveryStatus`, `DeliveryQuery`, `DeliveryStats`, `ReplayManyInput`, `ReplayManyResult`, `Attempt`, `Page`, `WorkerResult`, `DeliveryOptions`, `DeliveryEngine`, `DeliveryHooks`, `AttemptEvent`, `EndpointPausedEvent`, `EndpointHealthOptions` |

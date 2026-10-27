@@ -55,6 +55,8 @@ export type EndpointPatch<E extends EventDefinitions> = Omit<UpdateEndpointInput
 }
 
 export { createDelivery } from './delivery.js'
+export { describeEvents } from './describe-events.js'
+export type { DescribeEventsOptions, EventDescription } from './describe-events.js'
 export type { DeliveryEngine } from './delivery.js'
 export type { DeliveryOptions } from './types.js'
 export type {

@@ -13,10 +13,12 @@ import type {
   DeliveryHooks,
   DeliveryOptions,
   DeliveryStats,
+  DescribeEventsOptions,
   EndpointHealthOptions,
   EndpointPausedEvent,
   EndpointSource,
   EndpointResolution,
+  EventDescription,
   ManagementScope,
 } from 'good-webhooks/delivery'
 ```
@@ -416,3 +418,7 @@ await organization.deliveries.list()
 `check()` verifies delivery schema version `6` and throws `SCHEMA_MISMATCH` otherwise, naming the SQL to apply. It never applies migrations and does not check management storage.
 
 `forScope(scope)` returns `publish`, `deliveries`, and `deliverySettings` bound to one named scope. An invalid scope throws `INVALID_INPUT`. The root methods use application scope. Scope selection does not authorize access. See [scopes](/docs/concepts/scopes).
+
+## describeEvents
+
+`describeEvents(options?)` returns the configured event names with the JSON Schema of each payload, for a receiver-facing catalog. The [core reference](/docs/reference/core#describeevents) documents it.

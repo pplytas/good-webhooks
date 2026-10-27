@@ -59,6 +59,8 @@ export const events = {
 }
 ```
 
+`webhooks.describeEvents()` returns each event name with the JSON Schema of its payload, for a receiver-facing catalog page.
+
 ## Publish in a transaction
 
 ```ts

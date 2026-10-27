@@ -4,7 +4,9 @@ import {
   createWebhooks,
   createDelivery,
   type DeliveryStats,
+  describeEvents,
   type EndpointSource,
+  type EventDescription,
   type WebhookClient,
   type Scope,
 } from '../src/index.js'
@@ -108,6 +110,22 @@ function consumerTypes(request: IncomingMessage) {
   // @ts-expect-error shutdown grace uses milliseconds as a number
   app.worker.runOnce({ shutdownGraceMs: '30s' })
   delivery.publish({ type: 'user.created', data: { email: 'receiver@example.com' } })
+  const catalog: EventDescription[] = app.describeEvents({ target: 'draft-07' })
+  for (const { type, schema } of [
+    ...catalog,
+    ...delivery.describeEvents(),
+    ...describeEvents(appEvents),
+  ]) {
+    const name: string = type
+    const jsonSchema: Record<string, unknown> | null = schema
+    // @ts-expect-error validators without Standard JSON Schema yield a null schema
+    const required: Record<string, unknown> = schema
+    void [name, jsonSchema, required]
+  }
+  // @ts-expect-error the JSON Schema target is a string
+  describeEvents(appEvents, { target: 7 })
+  // @ts-expect-error bound clients do not describe the installation's event map
+  scoped.describeEvents()
   // @ts-expect-error a sender receives no management CRUD capability
   delivery.endpoints.create({ url: 'https://example.com/hook', eventTypes: ['user.created'] })
   // @ts-expect-error delivery-only construction still infers event payloads

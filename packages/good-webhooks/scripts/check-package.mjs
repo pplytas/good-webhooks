@@ -79,7 +79,7 @@ try {
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
-import { createWebhooks } from 'good-webhooks'
+import { createWebhooks, describeEvents } from 'good-webhooks'
 import { createDelivery } from 'good-webhooks/delivery'
 import { createManagement } from 'good-webhooks/management'
 import { createPostgresManagement } from 'good-webhooks/management/postgres'
@@ -88,6 +88,7 @@ import { parseWebhook } from 'good-webhooks/verify'
 const require = createRequire(import.meta.url)
 assert.throws(() => require.resolve('better-auth'), { code: 'MODULE_NOT_FOUND' })
 for (const value of [createWebhooks, createDelivery, createManagement, createPostgresManagement, parseWebhook]) assert.equal(typeof value, 'function')
+assert.deepEqual(describeEvents({ 'order.created': { '~standard': { version: 1, vendor: 'plain', validate: (value) => ({ value }) } } }), [{ type: 'order.created', schema: null }])
 for (const [entry, name] of [['good-webhooks', 'createWebhooks'], ['good-webhooks/delivery', 'createDelivery'], ['good-webhooks/management', 'createManagement'], ['good-webhooks/management/postgres', 'createPostgresManagement'], ['good-webhooks/verify', 'parseWebhook'], ['good-webhooks/migrations', 'getPostgresMigration']]) assert.equal(typeof require(entry)[name], 'function')
 assert.ok(getPostgresMigration({schema:'custom',component:'delivery'}).includes('"custom"."webhook_events"'))
 assert.equal(POSTGRES_SCHEMA_VERSION, 6)

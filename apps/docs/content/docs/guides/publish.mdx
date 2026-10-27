@@ -1,6 +1,6 @@
 ---
 title: Publish events
-description: Define a typed event catalog, publish with idempotency keys, reach the right scope, and commit events with your own database writes.
+description: Define a typed event catalog, describe it for receivers, publish with idempotency keys, reach the right scope, and commit events with your own database writes.
 ---
 
 `publish()` records an event and one delivery per subscribed endpoint. It sends nothing itself; a [worker](/docs/operations/workers) does. The examples use the `webhooks` client from [installation](/docs/installation#create-the-client).
@@ -48,6 +48,77 @@ await webhooks.publish({ type: 'invoice.paid', data: { invoiceId: 'inv_1', amoun
 
 </Accordion>
 </Accordions>
+
+## Describe your events
+
+`describeEvents()` returns each event name with a JSON Schema of its payload. Use it to publish a catalog page for receivers.
+
+```ts
+import { webhooks } from './webhooks.js'
+
+const catalog = webhooks.describeEvents()
+```
+
+With the Zod map above, the first entry is:
+
+```json
+{
+  "type": "invoice.paid",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "invoiceId": { "type": "string" },
+      "amount": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+    },
+    "required": ["invoiceId", "amount"],
+    "additionalProperties": false
+  }
+}
+```
+
+Entries follow the order of the event map. The result depends only on the map, so you can serve it as JSON from any route:
+
+```ts title="app/webhooks/events/route.ts"
+import { webhooks } from '@/lib/webhooks'
+
+export function GET() {
+  return Response.json(webhooks.describeEvents())
+}
+```
+
+Or render each `type` with its `schema` on a docs page. Without a delivery engine, for example in a Better Auth app that only manages endpoints, call `describeEvents(events)` from `good-webhooks` with the same map.
+
+The schema describes the validated output, because that is the payload receivers get. A field with a default is therefore required. Pick the JSON Schema dialect with `target`:
+
+```ts
+webhooks.describeEvents({ target: 'draft-07' }) // default 'draft-2020-12'
+```
+
+The validator converts the schema itself. Support depends on the library:
+
+| Validator                       | Support                                                                             |
+| ------------------------------- | ----------------------------------------------------------------------------------- |
+| Zod 4.2+                        | Built in.                                                                           |
+| ArkType 2.1.28+                 | Built in. From 2.2.9, types JSON Schema cannot express, such as dates, become `{}`. |
+| Valibot                         | Wrap each schema with `toStandardJsonSchema()` from `@valibot/to-json-schema` 1.5+. |
+| Other Standard Schema libraries | Name only, with `schema: null`.                                                     |
+
+The Valibot wrapper still validates, so the same map works for `publish()` and `parseWebhook()`:
+
+```ts title="events.ts"
+import { toStandardJsonSchema } from '@valibot/to-json-schema'
+import * as v from 'valibot'
+
+export const events = {
+  'invoice.paid': toStandardJsonSchema(v.object({ invoiceId: v.string(), amount: v.number() })),
+}
+```
+
+Zod and Valibot cannot convert transforms or dates. `describeEvents()` then throws `INVALID_CONFIG` naming the event. To fix it:
+
+- Define the event with a JSON-shaped schema, such as `z.iso.datetime()` instead of `z.date()`.
+- Or build that event's schema yourself, for example with `z.toJSONSchema(schema, { unrepresentable: 'any' })`, and add it to your catalog.
 
 ## Make retries of your code safe
 
