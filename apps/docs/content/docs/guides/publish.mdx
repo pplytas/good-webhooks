@@ -97,14 +97,16 @@ webhooks.describeEvents({ target: 'draft-07' }) // default 'draft-2020-12'
 
 The validator converts the schema itself. Support depends on the library:
 
-| Validator                       | Support                                                                             |
-| ------------------------------- | ----------------------------------------------------------------------------------- |
-| Zod 4.2+                        | Built in.                                                                           |
-| ArkType 2.1.28+                 | Built in. From 2.2.9, types JSON Schema cannot express, such as dates, become `{}`. |
-| Valibot                         | Wrap each schema with `toStandardJsonSchema()` from `@valibot/to-json-schema` 1.5+. |
-| Other Standard Schema libraries | Name only, with `schema: null`.                                                     |
+| Validator                       | Support           |
+| ------------------------------- | ----------------- |
+| Zod 4.2+                        | Built in          |
+| ArkType 2.1.28+                 | Built in          |
+| Valibot                         | Through a wrapper |
+| Other Standard Schema libraries | Name only         |
 
-The Valibot wrapper still validates, so the same map works for `publish()` and `parseWebhook()`:
+From ArkType 2.2.9, types JSON Schema cannot express, such as dates, become `{}`. Other Standard Schema libraries get `schema: null`.
+
+Valibot needs each schema wrapped with `toStandardJsonSchema()` from `@valibot/to-json-schema` 1.5+. The wrapper still validates, so the same map works for `publish()` and `parseWebhook()`:
 
 ```ts title="events.ts"
 import { toStandardJsonSchema } from '@valibot/to-json-schema'
@@ -127,11 +129,21 @@ webhooks.describeEvents({ libraryOptions: { unrepresentable: 'any' } })
 
 `libraryOptions` goes to every event's converter unchanged:
 
-| Validator | `libraryOptions`             | Effect                                                                                                                 |
-| --------- | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| Zod       | `{ unrepresentable: 'any' }` | Transforms and dates become `{}`.                                                                                      |
-| Valibot   | `{ errorMode: 'ignore' }`    | Dates become `{}`. Transforms are skipped, so the field shows its input type.                                          |
-| ArkType   | `{ fallback }`               | Your function returns the schema, such as `{ date: (ctx) => ({ ...ctx.base, type: 'string', format: 'date-time' }) }`. |
+| Validator | `libraryOptions`             |
+| --------- | ---------------------------- |
+| Zod       | `{ unrepresentable: 'any' }` |
+| Valibot   | `{ errorMode: 'ignore' }`    |
+| ArkType   | `{ fallback }`               |
+
+With Zod's option, transforms and dates become `{}`. With Valibot's option, dates become `{}` and transforms are skipped, so the field shows its input type. With ArkType's option, your function returns the schema for each type it cannot express:
+
+```ts
+webhooks.describeEvents({
+  libraryOptions: {
+    fallback: { date: (ctx) => ({ ...ctx.base, type: 'string', format: 'date-time' }) },
+  },
+})
+```
 
 ## Make retries of your code safe
 

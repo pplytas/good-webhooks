@@ -79,7 +79,7 @@ The client exposes `publish`, `deliveries`, `deliverySettings`, and `worker` fro
 | `endpoints.rotateSecret(id, { graceMs? })` | Returns a new signing secret and the endpoint.                                                   |
 | `endpoints.sendTestEvent(id)`              | Sends one signed test event and returns the receiver's answer. Records nothing.                  |
 | `check()`                                  | Checks the default management provider, if constructed here, then delivery schema compatibility. |
-| `describeEvents(options?)`                 | Returns the event names and payload JSON Schemas. See [describeEvents](#describeevents).         |
+| `describeEvents(options?)`                 | Event names and payload JSON Schemas                                                             |
 | `forScope(scope)`                          | Returns the same publication, history, settings, and endpoint methods bound to one named scope.  |
 
 ### endpoints
@@ -136,22 +136,28 @@ const catalog = describeEvents(events, { target: 'draft-07' })
 
 Returns one entry per event, in the order of the event map. The client method describes the map passed to `createWebhooks()` or `createDelivery()`. The standalone function needs no database, so management-only hosts can use it. It runs synchronously and starts no work.
 
-| `EventDescription` field | Type                              | Meaning                                                                                                    |
-| ------------------------ | --------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `type`                   | `string`                          | The event name from the map.                                                                               |
-| `schema`                 | `Record<string, unknown> \| null` | JSON Schema of the validated output, or `null` when the validator does not implement Standard JSON Schema. |
+| `EventDescription` field | Type                              | Meaning                     |
+| ------------------------ | --------------------------------- | --------------------------- |
+| `type`                   | `string`                          | The event name              |
+| `schema`                 | `Record<string, unknown> \| null` | Output JSON Schema, or null |
 
-| `DescribeEventsOptions` field | Default           | Contract                                                                                                                                |
-| ----------------------------- | ----------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `target`                      | `'draft-2020-12'` | JSON Schema dialect passed to the validator, such as `'draft-07'`. Nonempty string.                                                     |
-| `libraryOptions`              | None              | Object passed to every validator's converter unchanged, such as Zod's `{ unrepresentable: 'any' }`. Omitted from the call when not set. |
+`type` is the key from the event map. `schema` describes the validated output. It is `null` when the validator does not implement Standard JSON Schema.
+
+| `DescribeEventsOptions` field | Default           | Contract                          |
+| ----------------------------- | ----------------- | --------------------------------- |
+| `target`                      | `'draft-2020-12'` | JSON Schema dialect               |
+| `libraryOptions`              | None              | Passed to the converter unchanged |
+
+`target` must be a nonempty string, such as `'draft-07'`. `libraryOptions` must be an object, such as Zod's `{ unrepresentable: 'any' }`. It goes to every event's converter, and is omitted from the call when not set.
 
 The schema comes from the validator's `~standard.jsonSchema.output()`. In Zod and ArkType, a field with a default is therefore required. Good Webhooks imports no validator library. The [publish guide](/docs/guides/publish#describe-your-events) lists which validators support it and their `libraryOptions`.
 
 - An invalid event map throws `INVALID_CONFIG`, as in `createWebhooks()`.
 - Options that are not an object, a `target` that is not a nonempty string, or `libraryOptions` that are not an object throw `INVALID_INPUT`.
-- A validator that cannot convert its schema, for example a transform or a date, throws `INVALID_CONFIG` naming the event. The validator's error is the `cause`.
-- A target the validator rejects throws the same way. Zod accepts unknown targets and omits `$schema`.
+- A validator that cannot convert its schema, for example a transform or a date, throws `INVALID_CONFIG` naming the event.
+  - The validator's error is the `cause`.
+- A target the validator rejects throws the same way.
+  - Zod accepts unknown targets and omits `$schema`.
 
 ## generateEncryptionKey
 
