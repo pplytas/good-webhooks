@@ -235,6 +235,15 @@ export interface ReplayManyResult {
   /** Pass as before to examine the next page, or null when none remain. */
   nextCursor: string | null
 }
+/** A point-in-time summary of one scope's deliveries, for status pages and backlog alerts. */
+export interface DeliveryStats {
+  /** Retained deliveries in this scope by status. Every status is present, zero when none. */
+  deliveries: Record<DeliveryStatus, number>
+  /** Milliseconds since the oldest pending delivery was created, or null when none is pending. */
+  oldestPendingAgeMs: number | null
+  /** Attempts started in the last hour by outcome. `started` counts attempts still in flight. Every outcome is present. */
+  attemptsLastHour: Record<Attempt['outcome'], number>
+}
 export interface Page<T> {
   items: T[]
   nextCursor: string | null

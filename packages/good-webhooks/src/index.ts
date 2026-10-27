@@ -24,6 +24,7 @@ export type {
   DeliveryDetail,
   DeliveryHooks,
   DeliveryQuery,
+  DeliveryStats,
   DeliveryStatus,
   Endpoint,
   EndpointHealthOptions,

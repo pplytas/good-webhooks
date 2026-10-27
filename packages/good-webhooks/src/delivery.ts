@@ -18,6 +18,7 @@ export type {
   AttemptEvent,
   DeliveryHooks,
   DeliveryOptions,
+  DeliveryStats,
   EndpointHealthOptions,
   EndpointPausedEvent,
 } from './types.js'
@@ -65,6 +66,11 @@ export function createDelivery<const E extends EventDefinitions>(options: Delive
          * Skips deliveries outside retention or with a replay already pending or in flight.
          */
         replayMany: (input: ReplayManyInput) => store.replayMany(key, input),
+        /**
+         * Counts this scope's retained deliveries by status, the oldest pending age, and attempts
+         * started in the last hour. Reads every retained delivery and attempt of the scope.
+         */
+        stats: () => store.stats(key),
       },
       deliverySettings: {
         get: (id: string) => store.getEndpointDeliveryOptions(key, id),

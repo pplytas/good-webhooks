@@ -96,3 +96,22 @@ Every failure below ends with the delivery retried under the same event ID, or t
 A worker claims a delivery by writing an attempt with a lease before sending. If it dies, the lease expires after `leaseMs` (60 seconds by default) and the next batch recovers it. Lease tokens are fenced: a late worker whose lease expired cannot record a result, so two workers never both record success for one attempt.
 
 These behaviors are verified on a single PostgreSQL instance with local receivers. They do not cover database failover or throughput limits. Workers never prune history; schedule [cleanup](/docs/operations/retries-and-replay#clean-up-history) separately.
+
+## Watch the backlog
+
+A single failed attempt is normal. Alert when the queue stops draining instead. `deliveries.stats()` reports one scope's backlog:
+
+```ts title="backlog.ts"
+import { webhooks } from './webhooks.js'
+
+const { deliveries, oldestPendingAgeMs, attemptsLastHour } = await webhooks.deliveries.stats()
+```
+
+Alert on two numbers:
+
+- `deliveries.pending` keeps growing across checks. Workers are stopped or too slow for the volume.
+- `oldestPendingAgeMs` passes the delay you accept. Some delivery has waited longer than its receiver can tolerate.
+
+`pending` also holds deliveries waiting for a retry and deliveries behind a paused endpoint. With the default schedule a delivery to a failing receiver stays pending for more than a day, so set the age threshold with that in mind. `attemptsLastHour` shows whether workers are making attempts at all.
+
+Each call covers one scope. Call it from a periodic check or a status page, not on every request: it reads the scope's whole retained history. See [the cost](/docs/reference/delivery#stats). For per-attempt metrics, use the [OpenTelemetry recipe](/docs/operations/opentelemetry).

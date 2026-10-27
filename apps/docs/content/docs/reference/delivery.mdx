@@ -12,6 +12,7 @@ import type {
   DeliveryEngine,
   DeliveryHooks,
   DeliveryOptions,
+  DeliveryStats,
   EndpointHealthOptions,
   EndpointPausedEvent,
   EndpointSource,
@@ -136,6 +137,7 @@ deliveries.list(query?: DeliveryQuery): Promise<Page<Delivery>>
 deliveries.get(id: string): Promise<DeliveryDetail>
 deliveries.replay(id: string): Promise<Delivery>
 deliveries.replayMany(input: ReplayManyInput): Promise<ReplayManyResult>
+deliveries.stats(): Promise<DeliveryStats>
 ```
 
 ```ts
@@ -196,6 +198,29 @@ if (detail.replayOf === null) await delivery.deliveries.replay(detail.id)
 | `INVALID_INPUT` | A missing or invalid field, an unknown `status`, or `since` later than `until`. |
 | `NOT_FOUND`     | The endpoint is deleted or unknown in the selected scope.                       |
 | `INVALID_STATE` | The endpoint is paused.                                                         |
+
+### stats
+
+`stats` summarizes the selected scope's retained deliveries for a status page or a backlog alert. The root client reports the application scope, and `forScope(scope).deliveries.stats()` reports that scope. There is no variant across scopes.
+
+```ts
+import { delivery } from './delivery.js'
+
+const { deliveries, oldestPendingAgeMs, attemptsLastHour } = await delivery.deliveries.stats()
+// deliveries: { pending: 12, in_flight: 2, succeeded: 4810, failed: 3, cancelled: 0 }
+// oldestPendingAgeMs: 95000, or null when nothing is pending
+// attemptsLastHour: { started: 2, succeeded: 140, retry: 6, failed: 1, abandoned: 0 }
+```
+
+| `DeliveryStats` field | Meaning                                                                                                                 |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `deliveries`          | Retained deliveries by status. Every status is present, `0` when none.                                                  |
+| `oldestPendingAgeMs`  | Milliseconds since the oldest `pending` delivery was created, from the database clock. `null` when none is pending.     |
+| `attemptsLastHour`    | Attempts started in the last hour by [outcome](#attempt-outcomes). `started` counts attempts still in flight. All keys. |
+
+`pending` includes deliveries waiting for a retry and deliveries queued behind a paused endpoint. Replays count as deliveries. Deliveries and attempts come from two separate reads, so they can disagree slightly under load.
+
+**Cost.** `stats` runs two indexed queries without a transaction. The deliveries query reads every retained delivery of the scope. The attempts query reads every retained attempt of the scope, because the last-hour filter has no index. Cost grows with retention, and [`prune()`](#prune) bounds it. Call it from a status page or a periodic check, not on every request.
 
 ### Delivery and attempt records
 

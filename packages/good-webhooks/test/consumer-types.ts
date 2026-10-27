@@ -3,6 +3,7 @@ import { z } from 'zod'
 import {
   createWebhooks,
   createDelivery,
+  type DeliveryStats,
   type EndpointSource,
   type WebhookClient,
   type Scope,
@@ -133,6 +134,15 @@ function consumerTypes(request: IncomingMessage) {
   scoped.deliveries.replayMany({ endpointId: 'opaque-endpoint-id', status: 'pending' })
   // @ts-expect-error date filters take Date objects
   app.deliveries.replayMany({ endpointId: 'opaque-endpoint-id', since: '2026-10-01' })
+  const stats: Promise<DeliveryStats> = scoped.deliveries.stats()
+  void stats.then(({ deliveries, oldestPendingAgeMs, attemptsLastHour }) => {
+    const counts: number[] = [deliveries.in_flight, attemptsLastHour.started]
+    const age: number | null = oldestPendingAgeMs
+    return [counts, age]
+  })
+  delivery.deliveries.stats()
+  // @ts-expect-error stats reports only the bound scope
+  app.deliveries.stats(owner)
   scoped.publish({ type: 'order.created', data: { id: 'o1', total: 1 } })
   scoped.endpoints.create({ url: 'https://example.com/hook', eventTypes: ['order.created'] })
   // @ts-expect-error event names are inferred, not arbitrary strings
