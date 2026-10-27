@@ -3,7 +3,9 @@
 
 const token = process.env.GITHUB_TOKEN
 if (!token) {
-  console.error('GITHUB_TOKEN is required. Set it to a token with push access to the repo.')
+  console.error(
+    'GITHUB_TOKEN is required. The traffic endpoints need push access, or a fine-grained token with Administration read on the repo.',
+  )
   process.exit(1)
 }
 const repo = process.env.GITHUB_REPOSITORY || 'pplytas/good-webhooks'
@@ -73,7 +75,7 @@ async function npmStats() {
 function htmlToText(html) {
   const entities = { nbsp: ' ', amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'" }
   return html
-    .replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<script\b[\s\S]*?<\/script\s*>|<style\b[\s\S]*?<\/style\s*>/gi, ' ')
     .replace(/<[^>]+>/g, ' ')
     .replace(/&(nbsp|amp|lt|gt|quot|#39);/g, (_, name) => entities[name])
     .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)))

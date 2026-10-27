@@ -129,7 +129,7 @@ Own-channel reach is near zero (the 0.1.0 thread on X reached 110 people from an
 
 The launch waits for its own gate (a zero-signup demo, the tutorial, and the comparison page), not for 0.5.0. If 0.5.0 is out by then, lead with bulk replay; if not, launch anyway.
 
-Rule: every posted link carries `?ref=<channel>` (for example `?ref=hn` or `?ref=reddit`), so a visit can be traced to its channel once the docs site records the parameter. See [growth metrics](growth-metrics.md).
+Rule: every posted link carries a `ref=<channel>` query parameter (`?ref=hn`, or `&ref=hn` when the URL already has a query), so a visit can be traced to its channel once the docs site records the parameter. See [growth metrics](growth-metrics.md).
 
 ### First two weeks (about 30 hours)
 

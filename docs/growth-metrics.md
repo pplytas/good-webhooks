@@ -59,4 +59,4 @@ Method: each prompt is sent once to `claude -p` (Claude Code 2.1.311) from an em
 | 2026-10-27 | Claude Code, claude-opus-5-5 | 5      | No                  | Svix server, Outpost, Hook0, Convoy                                    |
 | 2026-10-27 | Claude Code, claude-opus-5-5 | 6      | No                  | pg-boss, Graphile Worker, pg-transactional-outbox, pg-trx-outbox       |
 
-Baseline: 0 of 6 Claude Code answers name the library. Every answer points at the official `standardwebhooks` package for signing and a Postgres job queue for retries. That is the gap the tutorial and the comparison page should close.
+Baseline: 0 of 6 Claude Code answers name the library. Five answers point at the official `standardwebhooks` package for signing and a Postgres job queue for retries, and the Better Auth answer points at Svix or a custom plugin. That is the gap the tutorial and the comparison page should close.
