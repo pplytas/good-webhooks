@@ -169,11 +169,19 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.4
+      - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+        with:
+          deno-version: 2.9.8
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
       - run: pnpm format:check
       - name: Lint the archive and verify the packed consumers
         run: pnpm test:package
+      - name: Verify the receiver entry point on Bun and Deno
+        run: node packages/good-webhooks/scripts/check-runtimes.mjs
       - name: Save the verified package archive
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
