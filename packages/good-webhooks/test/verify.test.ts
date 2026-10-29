@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import type { StandardSchemaV1 } from '@standard-schema/spec'
 import { generateSecret, signWebhook } from '../src/crypto.js'
-import { parseWebhook, WebhookError } from '../src/verify.js'
+import { parseWebhook, verifyWebhook, WebhookError } from '../src/verify.js'
 
 const secret = generateSecret()
 const now = new Date('2026-10-06T12:00:00.000Z')
@@ -301,5 +301,80 @@ describe('typed receiver parsing', () => {
         parseWebhook({ ...signed(body), secret: generateSecret() }),
       ).rejects.toMatchObject({ code: 'SIGNATURE_INVALID' })
     }
+  })
+})
+
+describe('Standard Webhooks reference vectors', () => {
+  // Vectors from standard-webhooks/libraries/javascript/src/webhook.test.ts
+  // "sign function works" case at commit 7537d2a2d3d52d8f2e0ecd12527af4a9307fd81b.
+  // https://github.com/standard-webhooks/standard-webhooks/blob/7537d2a2d3d52d8f2e0ecd12527af4a9307fd81b/libraries/javascript/src/webhook.test.ts
+  const refSecret = 'whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw'
+  const refId = 'msg_p5jXN8AQM9LWM0D4loKWxJek'
+  const refTimestamp = 1614265330
+  const refPayload = '{"test": 2432232314}'
+  const refSignature = 'v1,g0hM9SsE+OTPJTGt/tmIKtSyZlE3uFJELVlNIOLJ1OE='
+
+  it('signWebhook reproduces the reference v1 signature', () => {
+    const headers = signWebhook({
+      id: refId,
+      timestamp: refTimestamp,
+      body: refPayload,
+      secrets: [refSecret],
+    })
+    expect(headers['webhook-signature']).toBe(refSignature)
+    expect(headers['webhook-id']).toBe(refId)
+    expect(headers['webhook-timestamp']).toBe(String(refTimestamp))
+  })
+
+  it('verifyWebhook accepts the reference headers and body', () => {
+    expect(() =>
+      verifyWebhook({
+        body: refPayload,
+        secret: refSecret,
+        headers: {
+          'webhook-id': refId,
+          'webhook-timestamp': String(refTimestamp),
+          'webhook-signature': refSignature,
+        },
+        now: new Date(refTimestamp * 1000),
+      }),
+    ).not.toThrow()
+  })
+
+  it('verifyWebhook rejects missing v1 signature, wrong signature, and tampered body', () => {
+    const base = {
+      body: refPayload,
+      secret: refSecret,
+      headers: {
+        'webhook-id': refId,
+        'webhook-timestamp': String(refTimestamp),
+        'webhook-signature': refSignature,
+      },
+      now: new Date(refTimestamp * 1000),
+    }
+    // missing v1,
+    expect(() =>
+      verifyWebhook({
+        ...base,
+        headers: { ...base.headers, 'webhook-signature': refSignature.replace('v1,', '') },
+      }),
+    ).toThrowError(expect.objectContaining({ code: 'SIGNATURE_INVALID' }))
+    // wrong signature
+    expect(() =>
+      verifyWebhook({
+        ...base,
+        headers: {
+          ...base.headers,
+          'webhook-signature': 'v1,AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
+        },
+      }),
+    ).toThrowError(expect.objectContaining({ code: 'SIGNATURE_INVALID' }))
+    // tampered body
+    expect(() =>
+      verifyWebhook({
+        ...base,
+        body: '{"test": 2432232315}',
+      }),
+    ).toThrowError(expect.objectContaining({ code: 'SIGNATURE_INVALID' }))
   })
 })
