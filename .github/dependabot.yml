@@ -30,3 +30,8 @@ updates:
       - dependency-name: auth
         update-types:
           [version-update:semver-major, version-update:semver-minor, version-update:semver-patch]
+      # @types/node stays on the lowest supported Node.js major (engines.node ">=24", Node 24 is
+      # Maintenance LTS until 2028-04-30) so tsc rejects APIs that newer lines added. Raise the
+      # major by hand when engines.node moves; minor and patch updates still flow.
+      - dependency-name: "@types/node"
+        update-types: [version-update:semver-major]
