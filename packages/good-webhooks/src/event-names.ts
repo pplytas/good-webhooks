@@ -13,3 +13,8 @@ export function isEventName(name: unknown): name is string {
 export function isApplicationEventName(name: unknown): name is string {
   return isEventName(name) && !name.startsWith(RESERVED_EVENT_PREFIX)
 }
+
+/** A `webhook-id` the receiver accepts: 1 to 255 printable ASCII characters without `.` or `,`. */
+export function isWebhookId(value: unknown): value is string {
+  return typeof value === 'string' && /^[\x21-\x7e]{1,255}$/.test(value) && !/[.,]/.test(value)
+}

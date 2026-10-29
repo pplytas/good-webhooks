@@ -3,6 +3,7 @@ import { scopeFromKey } from './scope.js'
 import { postgresTables, resolvePostgresSchema } from './postgres-schema.js'
 import { assertPostgresSchemaVersion } from './schema-version.js'
 import { WebhookError } from './errors.js'
+import { isWebhookId } from './event-names.js'
 import type {
   Attempt,
   Delivery,
@@ -266,15 +267,15 @@ export function createStore(config: ResolvedConfig) {
     scope(scopeKey)
     object(query, 'Delivery query')
     if (query.endpointId !== undefined) endpointId(query.endpointId)
-    if (
-      query.eventId !== undefined &&
-      (typeof query.eventId !== 'string' || !UUID.test(query.eventId))
-    )
-      invalid('Event id must be a UUID.')
+    if (query.eventId !== undefined && !isWebhookId(query.eventId))
+      invalid('Event id must be 1 to 255 printable ASCII characters without dots or commas.')
     if (query.before !== undefined) deliveryId(query.before)
     if (query.status !== undefined && !DELIVERY_STATUSES.has(query.status))
       invalid('Unknown delivery status.')
     const limit = pageLimit(query.limit ?? 25, 100, 'Delivery list limit')
+    // Receivers accept any well-formed webhook-id, but this store only issues UUIDs.
+    if (query.eventId !== undefined && !UUID.test(query.eventId))
+      return { items: [], nextCursor: null }
     // Sort the bigint column, not the text output named "id", to match the cursor comparison.
     const { rows } = await config.database.query<DeliveryRow>(
       `SELECT ${DELIVERY_FIELDS} FROM ${tables.deliveries} AS d WHERE scope_key=$1 AND ($2::text IS NULL OR endpoint_id=$2) AND ($3::text IS NULL OR status=$3) AND ($4::bigint IS NULL OR id<$4) AND ($6::uuid IS NULL OR event_id=$6) ORDER BY d.id DESC LIMIT $5`,

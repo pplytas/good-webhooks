@@ -6,6 +6,7 @@ import {
   timingSafeEqual,
 } from 'node:crypto'
 import { WebhookError } from './errors.js'
+import { isWebhookId } from './event-names.js'
 
 const SECRET_PREFIX = 'whsec_'
 const ENCRYPTION_CONTEXT = Buffer.from('webhook-secret:v1')
@@ -120,10 +121,6 @@ export function decryptSecret(ciphertext: string, key: Uint8Array): string {
   }
 }
 
-function validId(id: string): boolean {
-  return typeof id === 'string' && /^[\x21-\x7e]{1,255}$/.test(id) && !/[.,]/.test(id)
-}
-
 function digest(key: Uint8Array, id: string, timestamp: number, body: string | Uint8Array): Buffer {
   return createHmac('sha256', key).update(`${id}.${timestamp}.`).update(body).digest()
 }
@@ -135,7 +132,7 @@ export function signWebhook(input: {
   secrets: readonly string[]
 }): Record<string, string> {
   if (
-    !validId(input.id) ||
+    !isWebhookId(input.id) ||
     !Number.isSafeInteger(input.timestamp) ||
     input.timestamp < 0 ||
     typeof input.body !== 'string'
@@ -222,7 +219,7 @@ export function verifySignature(input: VerifyWebhookInput): { id: string } {
   const signatures = headers.get('webhook-signature')
   if (
     !id ||
-    !validId(id) ||
+    !isWebhookId(id) ||
     !timestampText ||
     !/^(0|[1-9][0-9]{0,15})$/.test(timestampText) ||
     !signatures ||

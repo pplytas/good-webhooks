@@ -161,9 +161,16 @@ describe('public server API', () => {
           .deliveries.list({ eventId: published.eventId })
       ).items,
     ).toEqual([])
-    await expect(scope.deliveries.list({ eventId: 'invalid' })).rejects.toMatchObject({
-      code: 'INVALID_INPUT',
+    // Receivers accept any well-formed webhook-id, so a non-UUID is a valid lookup with no match.
+    await expect(scope.deliveries.list({ eventId: 'x' })).resolves.toEqual({
+      items: [],
+      nextCursor: null,
     })
+    for (const eventId of ['', 'a.b', 'a,b', 'a b', 'x'.repeat(256), 5])
+      await expect(scope.deliveries.list({ eventId: eventId as string })).rejects.toMatchObject({
+        code: 'INVALID_INPUT',
+        message: 'Event id must be 1 to 255 printable ASCII characters without dots or commas.',
+      })
   })
 
   it('construction does not connect or start a worker', () => {
