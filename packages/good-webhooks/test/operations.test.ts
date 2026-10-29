@@ -581,12 +581,22 @@ describe('bounded run-once process', () => {
         outgoing.writeHead(200).end('ok')
       }),
     )
-    for (let i = 0; i < 3; i += 1) await queued(`http://127.0.0.1:${port}/hooks`)
+    const store = createStore(testConfig())
+    await store.createEndpoint('operations', {
+      url: `http://127.0.0.1:${port}/hooks`,
+      eventTypes: ['invoice.paid'],
+    })
+    for (let i = 0; i < 3; i += 1) {
+      await store.publish('operations', {
+        type: 'invoice.paid',
+        data: { invoiceId: `inv_${i}`, amount: 42 },
+      })
+    }
     const running = example('run-once')
     expect(await running.result).toEqual({ code: 0, signal: null })
     expect(records(running.stdout)).toContainEqual({
       event: 'webhooks.run-once.finished',
-      batches: 2,
+      batches: 3,
       claimed: 3,
       succeeded: 3,
       retried: 0,
@@ -601,6 +611,50 @@ describe('bounded run-once process', () => {
         .rows,
     ).toEqual([])
     await assertClosed('run-once')
+  })
+
+  it('finishes an active batch after SIGTERM and closes without starting another', async () => {
+    const port = await listen(
+      createHttpServer((request, outgoing) => {
+        request.resume()
+        outgoing.writeHead(200).end('ok')
+      }),
+    )
+    const store = createStore(testConfig())
+    await store.createEndpoint('operations', {
+      url: `http://127.0.0.1:${port}/hooks`,
+      eventTypes: ['invoice.paid'],
+    })
+    for (let i = 0; i < 3; i += 1) {
+      await store.publish('operations', {
+        type: 'invoice.paid',
+        data: { invoiceId: `inv_${i}`, amount: 42 },
+      })
+    }
+    const lock = await pool.connect()
+    try {
+      await lock.query('BEGIN')
+      await lock.query('LOCK TABLE public.webhook_deliveries IN ACCESS EXCLUSIVE MODE')
+      const running = example('run-once', { WEBHOOK_DB_STATEMENT_TIMEOUT_MS: '5000' })
+      await waitUntil(async () => {
+        const result = await pool.query(`SELECT pid FROM pg_stat_activity
+          WHERE datname=current_database() AND application_name='webhooks-example-run-once'
+          AND wait_event_type='Lock'`)
+        return result.rows.length === 1
+      }, 'a run-once batch to block inside its transaction')
+      expect(running.child.kill('SIGTERM')).toBe(true)
+      await lock.query('COMMIT')
+      expect(await running.result).toEqual({ code: 0, signal: null })
+      const finished = records(running.stdout).find(
+        (record) => record.event === 'webhooks.run-once.finished',
+      )
+      expect(finished).toMatchObject({ batches: 1, reason: 'signal' })
+      expect(running.stderr).toBe('')
+      await assertClosed('run-once')
+    } finally {
+      await lock.query('ROLLBACK')
+      lock.release()
+    }
   })
 
   it('stops at the time budget without starting another batch', async () => {

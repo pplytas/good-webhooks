@@ -2,21 +2,21 @@ import { createWebhooks } from 'good-webhooks'
 import { Pool } from 'pg'
 import { errorDetails, readOperationsConfig } from './config.ts'
 
+type Summary = {
+  batches: number
+  claimed: number
+  succeeded: number
+  retried: number
+  failed: number
+  stale: number
+  reason: 'empty' | 'time_budget' | 'signal'
+}
+
 const stop = new AbortController()
 let pool: Pool | undefined
 let failed = false
 let phase = 'configuration'
-let summary:
-  | {
-      batches: number
-      claimed: number
-      succeeded: number
-      retried: number
-      failed: number
-      stale: number
-      reason: string
-    }
-  | undefined
+let summary: Summary | undefined
 const requestStop = () => stop.abort()
 const fail = (error: unknown, at: string) => {
   failed = true
@@ -49,15 +49,15 @@ try {
     retried: 0,
     failed: 0,
     stale: 0,
-    reason: 'time_budget',
   }
+  let reason: Summary['reason']
   while (true) {
     if (stop.signal.aborted) {
-      totals.reason = 'signal'
+      reason = 'signal'
       break
     }
     if (performance.now() >= deadline) {
-      totals.reason = 'time_budget'
+      reason = 'time_budget'
       break
     }
     const result = await webhooks.worker.runOnce({ signal: stop.signal })
@@ -70,13 +70,13 @@ try {
     // A batch claims nothing when the queue is empty, or when the signal
     // interrupted the claim. Do not start another.
     if (result.claimed === 0) {
-      totals.reason = stop.signal.aborted ? 'signal' : 'empty'
+      reason = stop.signal.aborted ? 'signal' : 'empty'
       break
     }
   }
-  summary = totals
-  if (totals.reason === 'time_budget') {
-    console.warn(JSON.stringify({ event: 'webhooks.run-once.budget_exhausted', ...totals }))
+  summary = { ...totals, reason }
+  if (reason === 'time_budget') {
+    console.warn(JSON.stringify({ event: 'webhooks.run-once.budget_exhausted', ...summary }))
   }
 } catch (error) {
   fail(error, phase)
