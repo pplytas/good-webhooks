@@ -26,6 +26,8 @@ pnpm test:package
 
 The test suite applies its own schema. Default PostgreSQL tables use the `webhook_` prefix in `public`; schema-isolation tests also create custom schemas. Runtime constructors and `getPostgresMigration` must use the same schema name. Keep the shipped SQL files aligned with the generator's `public` output. For database-free tests, run `pnpm test:unit`. To format changes, run `pnpm format`.
 
+When an export changes, run `pnpm api-report` and commit `packages/good-webhooks/api-report.md`. CI's "Package consumers" job fails when the report is stale. Review its diff as the change to the public surface.
+
 Follow the [README example](README.md#try-the-example) to verify delivery, retry, replay, and durable receiver deduplication. Apply its separate receiver SQL before running the demo.
 
 CI runs the full suite and demo on PostgreSQL 16, 17, and 18 with Node.js 24, and on PostgreSQL 18 with Node.js 26. It also installs the package archive, lints it with `@arethetypeswrong/cli` and `publint --strict`, and checks all entry points through ESM and CommonJS, standalone installation without Better Auth, the exported migrations, and public TypeScript declarations. It does not publish to npm. The root and docs manifests remain private; only the library permits publication. Dependabot opens weekly grouped updates for GitHub Actions and the pnpm workspace, CodeQL scans the TypeScript and workflow code, and OpenSSF Scorecard rates the repository's supply-chain practices.

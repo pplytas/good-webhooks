@@ -29,7 +29,7 @@ The package ships ESM and also loads through CommonJS `require()`. Standalone co
 
 ### Public surface
 
-The [entry points](/docs/reference), every name they export, and the shipped SQL files are the public API. Imports from `dist/` or `src/`, anything not reachable from an entry point, and types with `Internal` in their name can change without notice.
+The [entry points](/docs/reference), every name they export, and the shipped SQL files are the public API. Imports from `dist/` or `src/`, anything not reachable from an entry point, and types with `Internal` in their name can change without notice. The exported surface of every entry point is recorded in [`api-report.md`](https://github.com/pplytas/good-webhooks/blob/main/packages/good-webhooks/api-report.md), and CI fails when an export changes without updating it.
 
 ### Releases
 

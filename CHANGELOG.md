@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### CI
+
+- A generated public API report (`packages/good-webhooks/api-report.md`) is checked in CI, so any export change is a visible diff.
+
 ## 0.6.0 (2026-10-27)
 
 Pure code release on schema `6`, no SQL, tracked in [#123](https://github.com/pplytas/good-webhooks/issues/123).

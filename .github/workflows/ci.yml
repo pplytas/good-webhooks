@@ -181,6 +181,8 @@ jobs:
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
       - run: pnpm format:check
+      - name: Check the public API report
+        run: pnpm api-report:check
       - name: Lint the archive and verify the packed consumers
         run: pnpm test:package
       - name: Verify the receiver entry point on Bun and Deno
