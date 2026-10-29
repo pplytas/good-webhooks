@@ -180,7 +180,7 @@ jobs:
       - run: pnpm format:check
       - name: Lint the archive and verify the packed consumers
         run: pnpm test:package
-      - name: Verify the receiver entry point on Bun and Deno
+      - name: Verify the receiver entry point on Bun, Deno, and Cloudflare Workers
         run: node packages/good-webhooks/scripts/check-runtimes.mjs
       - name: Save the verified package archive
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
