@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Tests
+
+- Signing is checked against the Standard Webhooks reference vectors, contributed by @HarshRajSinghania.
+- Property tests cover signature header parsing, timestamp tolerance, and more `Retry-After` formats.
+- A model-based property test checks the delivery state machine against Postgres.
+
 ## 0.6.0 (2026-10-27)
 
 Pure code release on schema `6`, no SQL, tracked in [#123](https://github.com/pplytas/good-webhooks/issues/123).
