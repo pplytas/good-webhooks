@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Tests
+
+- Signing is checked against the Standard Webhooks reference vectors, contributed by @HarshRajSinghania.
+- Property tests cover signature header parsing, timestamp tolerance, and more `Retry-After` formats.
+- A model-based property test checks the delivery state machine against Postgres.
+
 ### Docs
 
 - The compatibility page states which runtimes are verified, now including Cloudflare Workers ([compatibility](https://good-webhooks.dev/docs/operations/compatibility)).
