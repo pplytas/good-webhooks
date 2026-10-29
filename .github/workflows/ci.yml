@@ -75,7 +75,10 @@ jobs:
 
   adapters:
     name: Better Auth ${{ matrix.label }}
-    runs-on: ubuntu-latest
+    # ubuntu-24.04 runners moved to kernel 7.0, which the mongo:8 image refuses to start on
+    # (MongoDB SERVER-121912, fixed in kernel 7.0.14). ubuntu-22.04 runs kernel 6.8. Return to
+    # ubuntu-latest once its kernel is 7.0.14 or newer. See #140.
+    runs-on: ubuntu-22.04
     timeout-minutes: 20
     strategy:
       fail-fast: false
