@@ -16,11 +16,11 @@ description: Supported runtimes and databases, what each release promises, and h
 
 What CI verifies for each:
 
-- **Node.js**: ESM and CommonJS consumers on Node.js 24, and the full integration suite on Node.js 26.
+- **Node.js**: the full integration suite on Node.js 26 (Active LTS) for every PostgreSQL version, and on Node.js 24 (Maintenance LTS) with PostgreSQL 18. ESM and CommonJS consumers on Node.js 26.
 - **Bun**: Bun 1.4.4 runs `parseWebhook()` against a signed event and rejects a tampered body from the packed archive.
 - **Deno**: Deno 2.9.8 runs `parseWebhook()` against a signed event and rejects a tampered body from the packed archive.
 - **TypeScript**: 5.9.3, 6.0, and 7.0, with NodeNext and Bundler resolution.
-- **PostgreSQL**: the full integration suite on each supported version.
+- **PostgreSQL**: the full integration suite on 16, 17, and 18, and on the 19 release candidate as a non-required job. 19 joins the supported list when its GA image ships.
 - **Better Auth**: support covers 1.7.7 or a later 1.7, and 1.8 including the 1.8.0 betas. CI checks 1.7.7 and the newest 1.7 and 1.8 releases across the [adapter matrix](/docs/better-auth#supported-databases).
 
 The package ships ESM and also loads through CommonJS `require()`. Standalone consumers are checked with `strict: true` and `skipLibCheck: false`. Better Auth consumers need `skipLibCheck` for upstream declarations; their own types stay fully checked. The Bun and Deno checks cover only `parseWebhook()` from the packed `good-webhooks/verify` entry point, not publishing, delivery workers, or database-backed management.
