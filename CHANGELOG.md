@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- `deliveries.list({ eventId })` returns an empty page for a well-formed non-UUID `webhook-id` instead of throwing ([#74](https://github.com/pplytas/good-webhooks/issues/74)).
+- An invalid endpoint header name now appears in its error message ([#74](https://github.com/pplytas/good-webhooks/issues/74)).
+
+### Docs
+
+- The receive guide shows how to verify a stored request later with `now` ([#74](https://github.com/pplytas/good-webhooks/issues/74)).
+
 ## 0.6.0 (2026-10-27)
 
 Pure code release on schema `6`, no SQL, tracked in [#123](https://github.com/pplytas/good-webhooks/issues/123).

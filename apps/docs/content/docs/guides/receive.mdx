@@ -302,6 +302,22 @@ To keep only the newest state of each entity when events arrive out of order, [c
 
 Retries and replays can also deliver an event published before your latest deploy. Keep event names backward compatible: add `invoice.paid.v2` for a breaking payload change, and deploy receiver support before the sender publishes it.
 
+## Verify a stored request later
+
+`parseWebhook()` rejects a timestamp more than five minutes from `now`, which defaults to the current time. To verify a request you stored earlier, pass the time you received it:
+
+```ts
+const event = await parseWebhook({
+  body: row.body,
+  headers: row.headers,
+  secret: process.env.WEBHOOK_SECRET!,
+  events,
+  now: new Date(row.receivedAt),
+})
+```
+
+The tolerance is measured from `now`. To change it, see `toleranceSeconds` in the [verify reference](/docs/reference/verify).
+
 ## Verify another sender's format
 
 `verifyWebhook()` authenticates any [Standard Webhooks](https://www.standardwebhooks.com) request and leaves parsing to you. See the [verify reference](/docs/reference/verify).

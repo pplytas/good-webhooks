@@ -42,6 +42,12 @@ export function isReservedHeaderName(name: string): boolean {
   return normalized.startsWith('webhook-') || RESERVED_HEADER_NAMES.has(normalized)
 }
 
+/** A header name as it can be shown in an error: bare when readable, JSON-quoted otherwise. */
+function shownName(name: string): string {
+  if (name.length <= MAX_NAME_LENGTH && /^[\x21-\x7e]+$/.test(name)) return name
+  return JSON.stringify(name).slice(0, MAX_NAME_LENGTH)
+}
+
 function invalid(message: string): never {
   throw new WebhookError('INVALID_INPUT', message)
 }
@@ -60,7 +66,9 @@ export function validateEndpointHeaders(value: unknown): Record<string, string> 
   const seen = new Set<string>()
   for (const [name, header] of entries) {
     if (name.length > MAX_NAME_LENGTH || !TOKEN.test(name))
-      invalid(`Header names must be HTTP tokens of 1–${MAX_NAME_LENGTH} characters.`)
+      invalid(
+        `Header ${shownName(name)} must be an HTTP token of 1 to ${MAX_NAME_LENGTH} characters.`,
+      )
     const normalized = name.toLowerCase()
     if (seen.has(normalized)) invalid(`Header ${name} appears more than once.`)
     seen.add(normalized)
