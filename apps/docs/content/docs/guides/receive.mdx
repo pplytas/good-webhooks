@@ -1,6 +1,6 @@
 ---
 title: Receive webhooks
-description: Verify the raw request, decode a typed event, and process each event exactly once. Examples for Next.js, Hono, Express, Fastify, and Node.js.
+description: Verify the raw request, decode a typed event, and process each event exactly once. Examples for Next.js, Hono, Express, Fastify, NestJS, and Node.js.
 ---
 
 A receiver reads the raw body, verifies it with `parseWebhook()`, processes the event once, and responds. `good-webhooks/verify` loads no database or worker code, so it fits in any Node.js service.
@@ -9,7 +9,7 @@ A receiver reads the raw body, verifies it with `parseWebhook()`, processes the 
 
 Each handler is complete. Put your [event map](#share-the-event-map) in `events.ts` and the endpoint's signing secret in `WEBHOOK_SECRET`.
 
-<Tabs groupId="framework" persist items={['Next.js', 'Hono', 'Express', 'Fastify', 'Node.js http']}>
+<Tabs groupId="framework" persist items={['Next.js', 'Hono', 'Express', 'Fastify', 'NestJS', 'Node.js http']}>
 <Tab>
 
 ```ts title="app/webhooks/route.ts"
@@ -163,6 +163,63 @@ await app.listen({ port: 3000 })
 ```
 
 The parser applies only inside this `app.register()` scope, so the rest of the app keeps Fastify's JSON parsing. The route's `bodyLimit` answers `413` for any content type before the handler runs.
+
+</Tab>
+<Tab>
+
+```ts title="webhooks.controller.ts"
+import { BadRequestException, Controller, HttpCode, Post, Req } from '@nestjs/common'
+import type { RawBodyRequest } from '@nestjs/common'
+import type { Request } from 'express'
+import { parseWebhook, WebhookError } from 'good-webhooks/verify'
+import { events } from './events.js'
+
+@Controller()
+export class WebhooksController {
+  @Post('webhooks')
+  @HttpCode(204)
+  async handle(@Req() request: RawBodyRequest<Request>) {
+    try {
+      const event = await parseWebhook({
+        body: request.rawBody!,
+        headers: request.headers,
+        secret: process.env.WEBHOOK_SECRET!,
+        events,
+      })
+      console.log(event.type, event.id) // Process once: see below.
+    } catch (error) {
+      if (error instanceof WebhookError && isRejection(error)) {
+        throw new BadRequestException('Invalid webhook')
+      }
+      throw error // NestJS turns this into a 500: the sender retries.
+    }
+  }
+}
+
+const isRejection = (error: WebhookError) =>
+  ['SIGNATURE_INVALID', 'SIGNATURE_EXPIRED', 'PAYLOAD_INVALID'].includes(error.code)
+```
+
+```ts title="app.module.ts"
+import { Module } from '@nestjs/common'
+import { WebhooksController } from './webhooks.controller.js'
+
+@Module({ controllers: [WebhooksController] })
+export class AppModule {}
+```
+
+```ts title="main.ts"
+import { NestFactory } from '@nestjs/core'
+import type { NestExpressApplication } from '@nestjs/platform-express'
+import { AppModule } from './app.module.js'
+
+// rawBody: true keeps the bytes the signature covers.
+const app = await NestFactory.create<NestExpressApplication>(AppModule, { rawBody: true })
+app.useBodyParser('json', { limit: '512kb' })
+await app.listen(3000)
+```
+
+`rawBody: true` keeps the exact bytes the signature covers, because a parsed JSON body cannot be verified. `useBodyParser('json', { limit: '512kb' })` replaces Nest's default 100kb JSON parser, so an oversized body gets a `413` before the controller runs.
 
 </Tab>
 <Tab>
