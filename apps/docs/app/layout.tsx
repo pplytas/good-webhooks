@@ -4,6 +4,7 @@ import { Geist, Geist_Mono } from 'next/font/google'
 import { RootProvider } from 'fumadocs-ui/provider/next'
 import { Analytics } from '@vercel/analytics/next'
 import { SpeedInsights } from '@vercel/speed-insights/next'
+import { Referral } from '@/components/referral'
 import SearchDialog from '@/components/search'
 import { ogRevision, ogSize } from '@/lib/og'
 import { site } from '@/lib/site'
@@ -40,6 +41,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         {process.env.VERCEL_ENV === 'production' && (
           <>
             <Analytics />
+            <Referral />
             <SpeedInsights />
           </>
         )}

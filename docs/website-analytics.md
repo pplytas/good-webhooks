@@ -15,7 +15,7 @@ Collect automatic page views on production only. Use Vercel's standard reports t
 
 The shared layout mounts the Next.js component from `@vercel/analytics` only when `VERCEL_ENV=production`. Vercel supplies the variable during production builds. Local and preview builds omit the component. Web Analytics must also be enabled for the existing Vercel project.
 
-Defer all custom events, including copy actions, search interactions, outbound links, and AI destinations. Revisit them when there is enough traffic to answer a specific product question. Direct Markdown requests, MCP calls, and npm downloads are outside browser page-view analytics.
+Defer all other custom events, including copy actions, search interactions, outbound links, and AI destinations. Revisit them when there is enough traffic to answer a specific product question. The [referral event](#referral-event) is the only custom event so far. Direct Markdown requests, MCP calls, and npm downloads are outside browser page-view analytics.
 
 ## Verified starting point
 
@@ -50,3 +50,11 @@ The free tier reports the Real Experience Score and basic route breakdowns. It i
 The SDK integration does not upgrade the Vercel project to Plus. After a production deployment, verify that the collection script loads and Vercel receives performance events. Local checks can verify the production condition and script initialization, but cannot prove Vercel ingestion.
 
 Local verification on 15 October 2026 passed for builds with `VERCEL_ENV=preview` and `VERCEL_ENV=production`. Browser checks found no telemetry initialization in preview, including after navigation. The production build initialized one Speed Insights script and updated its route from `/` to `/docs` without adding another script. Docs type checks, formatting, link checks, and the browser smoke suite passed. React Doctor scored 100/100, and independent source review found no actionable issues. Vercel ingestion remains unverified until production deployment.
+
+## Referral event
+
+Added on 29 October 2026 for [issue #131](https://github.com/pplytas/good-webhooks/issues/131). It is the first custom event. Every posted link carries `ref=<channel>`, and Web Analytics drops query parameters, so page views alone cannot say which channel sent a visit.
+
+The shared layout mounts a small client component, `Referral`, next to `Analytics` under the same `VERCEL_ENV=production` condition. On the first page load it reads the `ref` query parameter. When the value matches `^[a-z0-9-]{1,32}$`, it sends one `referral` event with a `ref` property. Other values are dropped. Either way, it removes `ref` from the URL with `history.replaceState` and keeps the path, other parameters, and hash. The event is therefore not sent again on reload or carried into later navigation.
+
+The component creates the Web Analytics queue itself before it calls `track`, so the event waits for the script whatever order the effects run in. It sets no cookies, uses no storage, and adds no vendor. Custom events are part of Web Analytics on the Pro plan and do not need Plus. Read them in the project's Analytics tab under Events. See [growth metrics](growth-metrics.md#referral-events).
