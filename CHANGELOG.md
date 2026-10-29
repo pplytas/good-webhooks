@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-### CI
+### Docs and repository
 
 - CI runs on Node.js 26 as the primary line, keeps Node.js 24 on PostgreSQL 18, and adds a non-required PostgreSQL 19 RC1 job.
 

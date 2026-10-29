@@ -55,8 +55,7 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
       # Node.js 25 and later no longer bundle Corepack.
-      - if: matrix.node != 24
-        run: npm install --global corepack@latest
+      - run: npm install --global corepack@latest
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
       - run: pnpm check:package
