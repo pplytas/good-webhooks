@@ -5,25 +5,29 @@ description: Supported runtimes and databases, what each release promises, and h
 
 ## Supported configurations
 
-| Component   | Supported             |
-| ----------- | --------------------- |
-| Node.js     | 24 or later           |
-| Bun         | `parseWebhook()` only |
-| Deno        | `parseWebhook()` only |
-| TypeScript  | 5.9.3 or later        |
-| PostgreSQL  | 16, 17, and 18        |
-| Better Auth | 1.7.7 through 1.8     |
+| Component          | Supported             |
+| ------------------ | --------------------- |
+| Node.js            | 24 or later           |
+| Bun                | `parseWebhook()` only |
+| Deno               | `parseWebhook()` only |
+| Cloudflare Workers | `parseWebhook()` only |
+| TypeScript         | 5.9.3 or later        |
+| PostgreSQL         | 16, 17, and 18        |
+| Better Auth        | 1.7.7 through 1.8     |
+
+The worker, publishing, and management run on Node.js only. `parseWebhook()` is verified on Bun, Deno, and Cloudflare Workers. On Workers it needs Node.js compatibility ([`nodejs_compat`](https://developers.cloudflare.com/workers/configuration/compatibility-flags/), on by default from compatibility date 2026-08-04), because the verify entry point uses `node:crypto` and `Buffer`. No other runtime is verified.
 
 What CI verifies for each:
 
 - **Node.js**: ESM and CommonJS consumers on Node.js 24, and the full integration suite on Node.js 26.
 - **Bun**: Bun 1.4.4 runs `parseWebhook()` against a signed event and rejects a tampered body from the packed archive.
 - **Deno**: Deno 2.9.8 runs `parseWebhook()` against a signed event and rejects a tampered body from the packed archive.
+- **Cloudflare Workers**: workerd 1.20261006.1 through miniflare, on compatibility date 2026-10-01 with `nodejs_compat`, runs `parseWebhook()` against a signed event and rejects a tampered body from the packed archive.
 - **TypeScript**: 5.9.3, 6.0, and 7.0, with NodeNext and Bundler resolution.
 - **PostgreSQL**: the full integration suite on each supported version.
 - **Better Auth**: support covers 1.7.7 or a later 1.7, and 1.8 including the 1.8.0 betas. CI checks 1.7.7 and the newest 1.7 and 1.8 releases across the [adapter matrix](/docs/better-auth#supported-databases).
 
-The package ships ESM and also loads through CommonJS `require()`. Standalone consumers are checked with `strict: true` and `skipLibCheck: false`. Better Auth consumers need `skipLibCheck` for upstream declarations; their own types stay fully checked. The Bun and Deno checks cover only `parseWebhook()` from the packed `good-webhooks/verify` entry point, not publishing, delivery workers, or database-backed management.
+The package ships ESM and also loads through CommonJS `require()`. Standalone consumers are checked with `strict: true` and `skipLibCheck: false`. Better Auth consumers need `skipLibCheck` for upstream declarations; their own types stay fully checked. The Bun, Deno, and Cloudflare Workers checks cover only `parseWebhook()` from the packed `good-webhooks/verify` entry point, not publishing, delivery workers, or database-backed management.
 
 ## Stability policy
 

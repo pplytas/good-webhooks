@@ -39,7 +39,7 @@ You publish typed events. Good Webhooks stores them in your PostgreSQL database,
 npm install good-webhooks pg zod
 ```
 
-Requires Node.js 24 or later. Built-in delivery and standalone management need PostgreSQL 16, 17, or 18. Better Auth management uses your existing Better Auth database adapter. See [installation](https://good-webhooks.dev/docs/installation) for each setup's dependencies and the [compatibility policy](https://good-webhooks.dev/docs/operations/compatibility) for tested versions.
+The worker, publishing, and management run on Node.js 24 or later; `parseWebhook()` is also verified on Bun, Deno, and Cloudflare Workers (with Node.js compatibility). Built-in delivery and standalone management need PostgreSQL 16, 17, or 18. Better Auth management uses your existing Better Auth database adapter. See [installation](https://good-webhooks.dev/docs/installation) for each setup's dependencies and the [compatibility policy](https://good-webhooks.dev/docs/operations/compatibility) for tested versions.
 
 | You want                                          | Start with                                                                     |
 | ------------------------------------------------- | ------------------------------------------------------------------------------ |
