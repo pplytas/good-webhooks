@@ -114,7 +114,6 @@ describe('signature header parsing properties', () => {
       fc.property(candidates, fc.nat(), (entries, at) => {
         expect(signature(entries.join(' '))).toBe('SIGNATURE_INVALID')
         const withValid = entries.toSpliced(at % (entries.length + 1), 0, VALID).join(' ')
-        fc.pre(withValid.length <= 4096)
         expect(signature(withValid)).toBe('accepted')
       }),
     )
@@ -205,14 +204,12 @@ describe('signature header parsing properties', () => {
       }))
       .filter(({ lower, cased }) => lower !== cased)
     fc.assert(
-      fc.property(recased, fc.boolean(), ({ lower, cased }, asArray) => {
+      fc.property(recased, ({ lower, cased }) => {
         const valid = headers() as Record<string, string>
         const duplicated = headers({ [cased]: valid[lower] })
         expect(verify({ headers: duplicated })).toBe('SIGNATURE_INVALID')
-        if (asArray) {
-          const array = headers({ [lower]: [valid[lower]] })
-          expect(verify({ headers: array })).toBe('SIGNATURE_INVALID')
-        }
+        const array = headers({ [lower]: [valid[lower]] })
+        expect(verify({ headers: array })).toBe('SIGNATURE_INVALID')
       }),
     )
   })

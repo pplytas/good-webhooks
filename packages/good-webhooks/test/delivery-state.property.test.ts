@@ -1,6 +1,6 @@
-import { afterAll, beforeEach, describe, expect, it } from 'vitest'
+import { afterAll, describe, expect, it } from 'vitest'
 import fc from 'fast-check'
-import { WebhookError } from '../src/errors.js'
+import { WebhookError, type WebhookErrorCode } from '../src/errors.js'
 import { createWorkerStore, type DeliveryOutcome } from '../src/worker-store.js'
 import type { ClaimedDelivery } from '../src/types.js'
 import { closeDatabase, pool, resetDatabase, testConfig, testScopeKey, testStore } from './db.js'
@@ -20,14 +20,24 @@ type DeliveryRow = {
 }
 type AttemptRow = { delivery_id: string; number: number; outcome: string }
 
-const outcome: fc.Arbitrary<DeliveryOutcome> = fc.record({
-  status: fc.constantFrom(200, 201, 204, 400, 404, 410, 429, 500, 503, null),
-  responseBody: fc.constant(''),
-  error: fc.option(fc.constantFrom('connect ECONNREFUSED', 'timeout'), { nil: null }),
-  retryable: fc.boolean(),
-  abandoned: fc.constantFrom(false, false, false, true),
-  retryAfterMs: fc.option(fc.integer({ min: 0, max: 120_000 }), { nil: null }),
-})
+// A transport error comes with no status, as from the real transport, so 2xx outcomes succeed.
+const outcome: fc.Arbitrary<DeliveryOutcome> = fc
+  .record({
+    status: fc.constantFrom(200, 201, 204, 400, 404, 410, 429, 500, 503, null),
+    responseBody: fc.constant(''),
+    retryable: fc.boolean(),
+    abandoned: fc.constantFrom(false, false, false, true),
+    retryAfterMs: fc.option(fc.integer({ min: 0, max: 120_000 }), { nil: null }),
+  })
+  .map((fields) => ({ ...fields, error: fields.status === null ? 'timeout' : null }))
+const succeeded: DeliveryOutcome = {
+  status: 200,
+  responseBody: '',
+  error: null,
+  retryable: false,
+  abandoned: false,
+  retryAfterMs: null,
+}
 const operation = fc.oneof(
   { weight: 3, arbitrary: fc.constant({ kind: 'due' as const }) },
   { weight: 4, arbitrary: fc.constant({ kind: 'claim' as const }) },
@@ -41,9 +51,16 @@ const operation = fc.oneof(
     weight: 1,
     arbitrary: fc.constantFrom({ kind: 'pause' as const }, { kind: 'resume' as const }),
   },
-  { weight: 1, arbitrary: fc.constant({ kind: 'delete' as const }) },
 )
-type Operation = typeof operation extends fc.Arbitrary<infer T> ? T : never
+// Deleting the endpoint ends the useful part of a run, so it only appears as an optional tail.
+const deleteTail = [
+  { kind: 'delete' as const },
+  { kind: 'due' as const },
+  { kind: 'claim' as const },
+  { kind: 'complete' as const, pick: 0, outcome: succeeded },
+]
+type Operation =
+  (typeof operation extends fc.Arbitrary<infer T> ? T : never) | (typeof deleteTail)[number]
 
 async function snapshot() {
   const deliveries = await pool.query<DeliveryRow>(
@@ -54,20 +71,19 @@ async function snapshot() {
   const attempts = await pool.query<AttemptRow>(
     `SELECT a.delivery_id::text,a.number,a.outcome FROM public.webhook_attempts a
     JOIN public.webhook_deliveries d ON d.id=a.delivery_id WHERE d.scope_key=$1
-    ORDER BY a.delivery_id,a.started_at,a.number`,
+    ORDER BY a.delivery_id,a.number`,
     [testScopeKey(SCOPE)],
   )
   return { deliveries: deliveries.rows, attempts: attempts.rows }
 }
 
-/** Ignore the documented refusals (paused, deleted, replay already pending) and nothing else. */
-async function allowRefusal(action: Promise<unknown>) {
+/** Ignore only the documented refusals for the operation, such as a replay already pending. */
+async function allowRefusal(action: Promise<unknown>, codes: readonly WebhookErrorCode[]) {
   await action.catch((error: unknown) => {
-    if (!(error instanceof WebhookError)) throw error
+    if (!(error instanceof WebhookError) || !codes.includes(error.code)) throw error
   })
 }
 
-beforeEach(resetDatabase)
 afterAll(closeDatabase)
 
 describe('delivery state machine properties', () => {
@@ -75,7 +91,9 @@ describe('delivery state machine properties', () => {
     await fc.assert(
       fc.asyncProperty(
         fc.array(operation, { minLength: 10, maxLength: 25 }),
-        async (operations) => {
+        fc.boolean(),
+        async (generated, withDelete) => {
+          const operations: Operation[] = withDelete ? [...generated, ...deleteTail] : generated
           await resetDatabase()
           const store = testStore(config)
           const worker = createWorkerStore(config)
@@ -89,7 +107,7 @@ describe('delivery state machine properties', () => {
           let previous = new Map((await snapshot()).deliveries.map((row) => [row.id, row]))
           const take = (pick: number) => held.splice(pick % held.length, 1)[0]!
 
-          for (const op of operations as Operation[]) {
+          for (const op of operations) {
             const claimed = new Map<string, number>()
             if (op.kind === 'due') {
               await pool.query(
@@ -116,13 +134,16 @@ describe('delivery state machine properties', () => {
                 (row) => row.replay_of === null && TERMINAL.has(row.status),
               )
               if (originals.length)
-                await allowRefusal(store.replay(SCOPE, originals[op.pick % originals.length]!.id))
+                await allowRefusal(store.replay(SCOPE, originals[op.pick % originals.length]!.id), [
+                  'INVALID_STATE',
+                  'REPLAY_IN_PROGRESS',
+                ])
             } else if (op.kind === 'pause') {
-              await allowRefusal(store.pauseEndpoint(SCOPE, endpoint.id))
+              await allowRefusal(store.pauseEndpoint(SCOPE, endpoint.id), ['INVALID_STATE'])
             } else if (op.kind === 'resume') {
-              await allowRefusal(store.resumeEndpoint(SCOPE, endpoint.id))
+              await allowRefusal(store.resumeEndpoint(SCOPE, endpoint.id), ['INVALID_STATE'])
             } else if (op.kind === 'delete') {
-              await allowRefusal(store.removeEndpoint(SCOPE, endpoint.id))
+              await store.removeEndpoint(SCOPE, endpoint.id)
             }
 
             const { deliveries, attempts } = await snapshot()
