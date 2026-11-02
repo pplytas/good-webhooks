@@ -1,0 +1,49 @@
+---
+title: Upgrade matrix
+description: Which schema each package version needs, and which package versions may run together during a rollout.
+---
+
+Each package version needs one exact PostgreSQL schema version, as the [schema and rollout](/docs/operations/compatibility#schema-and-rollout) rules state.
+
+| Package         | Schema |
+| --------------- | ------ |
+| 0.1.0 and 0.1.1 | 4      |
+| 0.2.0 to 0.4.0  | 5      |
+| 0.5.0 and 0.6.0 | 6      |
+| 0.7.0 (planned) | 6      |
+| 1.0.0 (planned) | 6      |
+
+Every published upgrade so far (3 to 4, 4 to 5, and 5 to 6) is additive. [Migrations](/docs/operations/migrations#upgrades) has the SQL for each step.
+
+## Mixing versions during a rollout
+
+Follow the [rollout order](/docs/operations/migrations#rollout-order).
+
+- **Running processes keep working.** A process already running on the previous minor keeps working across an additive upgrade until it restarts.
+- **New processes need the matching package.** A process that starts after the SQL runs must be on a package that needs the recorded schema. A restarted process on the old package fails with `SCHEMA_MISMATCH`.
+- **Producers and workers.** They may run adjacent minors during a rollout. When the release needs SQL, apply it before any process starts on the new minor.
+- **Auth server and worker.** The Better Auth plugin and the delivery worker may run adjacent minors during a rollout. A feature added in the newer minor stays inactive until both are upgraded.
+- **Receivers.** A receiver on `good-webhooks/verify` does not need to match the sender's version.
+
+### Headers during a 0.5.0 to 0.6.0 rollout
+
+Per-endpoint headers arrived in 0.6.0, and the Better Auth model only gained optional fields. So the two processes can differ for the length of the rollout:
+
+- A 0.5.0 auth server with a 0.6.0 worker sends no headers, because none are stored.
+- A 0.6.0 auth server with a 0.5.0 worker stores headers, but the worker does not send them.
+
+Headers reach receivers once both run 0.6.0.
+
+### Receivers
+
+The signature scheme has not changed since 0.1.0. Later releases added to the request and the envelope:
+
+- 0.1.1 added the `user-agent` header, which is not signed.
+- 0.3.0 added the `good-webhooks.test` event type. A receiver needs `parseWebhook()` from 0.3.0 or later to [accept it](/docs/guides/receive#answer-test-events).
+- 0.6.0 added [per-endpoint headers](/docs/guides/endpoints#send-extra-headers), which are not signed.
+
+## Never supported
+
+- Skipping the SQL step. `check()` refuses a schema older than the package needs.
+- Downgrading the schema. `check()` also refuses a schema newer than the package needs.
+- Mixing versions for longer than a rollout.

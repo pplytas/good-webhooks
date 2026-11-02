@@ -100,12 +100,12 @@ The release candidate carries the 1.0 contract text, the upgrade matrix (which p
 
 Gate for 1.0.0, all required:
 
-- [ ] Stability policy rewritten for 1.x: public surface, breaking definition, deprecation rule, schema and rollout contract (including the additive-SQL allowance), support windows (previous major gets security fixes for six months after the next major).
+- [x] Stability policy rewritten for 1.x: public surface, breaking definition, deprecation rule, schema and rollout contract (including the additive-SQL allowance), support windows (previous major gets security fixes for six months after the next major).
 - [ ] Host-implemented interfaces reviewed and frozen; an API report checked in CI so any export change is a visible diff.
-- [ ] Support matrix with the drop policy published; PostgreSQL 19 and Node.js 26 verified.
+- [ ] Support matrix with the drop policy published; PostgreSQL 19 and Node.js 26 verified (policy published; Node.js 26 is the primary CI line; PostgreSQL 19 RC1 runs as a non-required job until GA).
 - [ ] 0.7.0 proof published: large history, multi-worker contention, soak.
-- [ ] `SECURITY.md` with response targets; Dependabot, CodeQL, and Scorecard running.
-- [ ] Releases survive the maintainer's absence: OIDC-only releases plus a written handover and a maintenance statement in the README, or a named second person with npm org membership and GitHub admin if one fits by the release candidate.
+- [x] `SECURITY.md` with response targets; Dependabot, CodeQL, and Scorecard running.
+- [x] Releases survive the maintainer's absence: OIDC-only releases plus a written handover and a maintenance statement in the README, or a named second person with npm org membership and GitHub admin if one fits by the release candidate (handover and README statement published; a second person is decided at the release candidate).
 - [ ] Two integrations outside the maintainer's apps with feedback incorporated, or a written decision to ship without them.
 
 Planned before 1.0 but not gating it: the remaining 0.4.x docs pages, the OTel recipe, the Console.dev pitch (they feature pre-1.0 tools only, so send it in November).
