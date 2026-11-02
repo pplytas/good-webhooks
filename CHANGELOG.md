@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Tests
+
+- Property tests cover signature header parsing, timestamp tolerance, and more `Retry-After` formats.
+- A model-based property test checks the delivery state machine against Postgres.
+- CI verifies `parseWebhook()` on Cloudflare Workers through miniflare.
+
+### Docs
+
+- The compatibility page states which runtimes are verified, now including Cloudflare Workers ([compatibility](https://good-webhooks.dev/docs/operations/compatibility)).
+
 ### Docs and repository
 
 - CI runs on Node.js 26 as the primary line, keeps Node.js 24 on PostgreSQL 18, and adds a non-required PostgreSQL 19 RC1 job.

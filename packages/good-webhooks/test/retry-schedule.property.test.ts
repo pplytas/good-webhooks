@@ -113,6 +113,73 @@ describe('parseRetryAfter properties', () => {
       ),
     )
   })
+
+  it('trims surrounding whitespace before parsing', () => {
+    const space = fc.string({ unit: fc.constantFrom(' ', '\t', '\n', '\r'), maxLength: 4 })
+    const value = fc.oneof(
+      fc.nat(1_000_000_000).map(String),
+      fc.integer({ min: 0, max: MAX_EPOCH_MS }).map((ms) => new Date(ms).toUTCString()),
+    )
+    fc.assert(
+      fc.property(
+        space,
+        value,
+        space,
+        fc.integer({ min: 0, max: MAX_EPOCH_MS }),
+        (before, text, after, now) => {
+          expect(parseRetryAfter(before + text + after, now)).toBe(parseRetryAfter(text, now))
+        },
+      ),
+    )
+  })
+
+  it('clamps digit strings longer than 16 digits to the maximum', () => {
+    const digits = fc.string({
+      unit: fc.constantFrom(...'0123456789'),
+      minLength: 16,
+      maxLength: 400,
+    })
+    fc.assert(
+      fc.property(fc.constantFrom(...'123456789'), digits, (lead, rest) => {
+        expect(parseRetryAfter(lead + rest, 0)).toBe(MAX_RETRY_AFTER_MS)
+      }),
+    )
+  })
+
+  it('parses RFC 850 and asctime dates like IMF-fixdate', () => {
+    // RFC 850 has two-digit years, which Date.parse maps to 1950–2049.
+    // asctime carries no zone, so Date.parse reads it as local time.
+    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+    const months = 'Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec'.split(' ')
+    const two = (n: number) => String(n).padStart(2, '0')
+    const instant = fc
+      .integer({ min: Date.UTC(1950, 0, 2) / 1000, max: Date.UTC(2049, 11, 30) / 1000 })
+      .map((s) => new Date(s * 1000))
+    const clamp = (ms: number) => Math.min(Math.max(0, ms), MAX_RETRY_AFTER_MS)
+    fc.assert(
+      fc.property(instant, instant, (date, now) => {
+        const rfc850 = `${days[date.getUTCDay()]}, ${two(date.getUTCDate())}-${months[date.getUTCMonth()]}-${two(date.getUTCFullYear() % 100)} ${two(date.getUTCHours())}:${two(date.getUTCMinutes())}:${two(date.getUTCSeconds())} GMT`
+        expect(parseRetryAfter(rfc850, now.getTime())).toBe(clamp(date.getTime() - now.getTime()))
+        const local = [date.getFullYear(), date.getMonth(), date.getDate()] as const
+        const time = [date.getHours(), date.getMinutes(), date.getSeconds()] as const
+        const asctime = `${days[date.getDay()]!.slice(0, 3)} ${months[local[1]]} ${String(local[2]).padStart(2, ' ')} ${time.map(two).join(':')} ${local[0]}`
+        expect(parseRetryAfter(asctime, now.getTime())).toBe(
+          clamp(new Date(...local, ...time).getTime() - now.getTime()),
+        )
+      }),
+    )
+  })
+
+  it('returns null for strings without letters that are not delta-seconds', () => {
+    const text = fc
+      .string({ unit: fc.constantFrom(...'0123456789 +-.:/,'), maxLength: 30 })
+      .filter((value) => !/^\d+$/.test(value.trim()))
+    fc.assert(
+      fc.property(text, fc.integer({ min: 0, max: MAX_EPOCH_MS }), (value, now) => {
+        expect(parseRetryAfter(value, now)).toBeNull()
+      }),
+    )
+  })
 })
 
 describe('retry schedule properties', () => {
