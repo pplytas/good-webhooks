@@ -12,7 +12,7 @@ Require these main-branch checks before merging:
 - `Package consumers`
 - `Documentation`
 
-After main CI passes, manually run `.github/workflows/release.yml` on `main`, enter the exact manifest version, and leave `publish` false. The workflow requires successful CI for that commit, checks that the version and `publishConfig.tag` agree (a pre-release channel such as `beta`, or `latest` for a stable `x.y.z` version), tests the archive in fresh consumers, audits runtime dependencies, and dry-runs npm publication. Download its `release-package` artifact. The run summary records the commit and archive SHA-256.
+After main CI passes, manually run `.github/workflows/release.yml` on `main`, enter the exact manifest version, and leave `publish` false. The workflow requires successful CI for that commit, checks that the version and `publishConfig.tag` agree (a pre-release channel, `alpha`, `beta`, or `rc`, or `latest` for a stable `x.y.z` version), tests the archive in fresh consumers, audits runtime dependencies, and dry-runs npm publication. Download its `release-package` artifact. The run summary records the commit and archive SHA-256.
 
 ```sh
 gh workflow run release.yml --ref main -f version=0.1.0-beta.1 -f publish=false

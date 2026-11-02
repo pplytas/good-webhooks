@@ -1,40 +1,58 @@
 # Changelog
 
-## Unreleased
+## 0.7.0 (2026-11-02)
 
-### Added
+Proof at scale, with schema `7` for one index ([roadmap](docs/roadmap.md#070-february-to-march-2027-proof-at-scale)).
 
-- A generated public API report (`packages/good-webhooks/api-report.md`) is checked in CI, so any export change is a visible diff.
-- `VerifyWebhookInput`, `CreateEndpointInput`, and `UpdateEndpointInput` are exported types.
+### Upgrade
 
-### Changed
-
-- `deliveries.list({ eventId })` returns an empty page for a well-formed non-UUID `webhook-id` instead of throwing ([#74](https://github.com/pplytas/good-webhooks/issues/74)).
+1. Run `getPostgresUpgrade({ from: 6 })` or `migrations/upgrades/007-all.sql`.
+   - `check()` refuses schema `6`.
+   - The index build blocks delivery writes while it reads the table.
+   - Large tables: build it concurrently first ([migrations](apps/docs/content/docs/operations/migrations.mdx#upgrades)).
+2. Restart producers, then workers.
+3. Better Auth: no migration is needed.
 
 ### Fixed
 
-- Schema 7 indexes replays, so `prune()` stays fast on large history ([#153](https://github.com/pplytas/good-webhooks/issues/153)).
-  - Run `getPostgresUpgrade({ from: 6 })` or `migrations/upgrades/007-all.sql`.
-- An invalid endpoint header name now appears in its error message ([#74](https://github.com/pplytas/good-webhooks/issues/74)).
+- `prune()` stays fast on large history ([#153](https://github.com/pplytas/good-webhooks/issues/153), [#155](https://github.com/pplytas/good-webhooks/pull/155)).
+- `deliveries.list({ eventId })` returns an empty page for a non-UUID ID ([#74](https://github.com/pplytas/good-webhooks/issues/74)).
+- Header validation errors name the header ([#74](https://github.com/pplytas/good-webhooks/issues/74)).
 
-### Tests
+### Added
 
-- Property tests cover signature header parsing, timestamp tolerance, and more `Retry-After` formats.
-- A model-based property test checks the delivery state machine against Postgres.
-- CI verifies `parseWebhook()` on Cloudflare Workers through miniflare.
+- `VerifyWebhookInput`, `CreateEndpointInput`, and `UpdateEndpointInput` types are exported.
+- A bounded [run-once delivery example](packages/good-webhooks/examples/operations/run-once.ts) ([#112](https://github.com/pplytas/good-webhooks/pull/112)).
+
+### Verified
+
+- Claims stay in the low milliseconds at 7 million deliveries ([performance](https://good-webhooks.dev/docs/operations/performance#large-history)).
+- One `prune()` call at 7 million deliveries: 50.3 s before, 0.06 s with the index ([performance](https://good-webhooks.dev/docs/operations/performance#with-the-schema-7-index)).
+- 8 and 32 workers under faults kept all five invariants ([performance](https://good-webhooks.dev/docs/operations/performance#many-workers-under-faults)).
+- `parseWebhook()` runs on Bun, Deno, and Cloudflare Workers ([compatibility](https://good-webhooks.dev/docs/operations/compatibility)).
+  - Publishing, workers, and management stay Node.js only.
+  - Bun and Deno checks by @dannyward630 ([#105](https://github.com/pplytas/good-webhooks/pull/105)).
+  - Workers check through miniflare ([#149](https://github.com/pplytas/good-webhooks/pull/149)).
+- Signing matches the Standard Webhooks reference vectors, by @HarshRajSinghania ([#103](https://github.com/pplytas/good-webhooks/pull/103)).
+- Each change runs Node.js 24 on PostgreSQL 16 ([#146](https://github.com/pplytas/good-webhooks/pull/146)).
+  - Node.js 26 on PostgreSQL 16 to 19 RC1 runs weekly.
+- CI checks a generated public API report ([#150](https://github.com/pplytas/good-webhooks/pull/150)).
 
 ### Docs
 
-- The receive guide shows how to verify a stored request later with `now` ([#74](https://github.com/pplytas/good-webhooks/issues/74)).
-- The compatibility page states which runtimes are verified, now including Cloudflare Workers ([compatibility](https://good-webhooks.dev/docs/operations/compatibility)).
-- The [performance page](https://good-webhooks.dev/docs/operations/performance) publishes claim timings against 7 million delivery rows and contention runs at 8 and 32 workers ([#154](https://github.com/pplytas/good-webhooks/pull/154)).
-- The same page reports that `prune()` slows as history grows on schema 6, tracked in [#153](https://github.com/pplytas/good-webhooks/issues/153).
-- [`docs/proof-0-7-0.md`](docs/proof-0-7-0.md) tracks the 0.7.0 proof for the 1.0 gate.
+- New pages: [stability policy](apps/docs/content/docs/operations/compatibility.mdx), [upgrade matrix](apps/docs/content/docs/upgrading/matrix.mdx), [0.x to 1.0](apps/docs/content/docs/upgrading/from-0x.mdx) ([#148](https://github.com/pplytas/good-webhooks/pull/148)).
+- Tutorials: [Better Auth endpoints](apps/docs/content/docs/better-auth/tutorial.mdx) and [outbound webhooks](apps/docs/content/docs/tutorials/outbound-webhooks.mdx).
+- NestJS tab in [receiving](apps/docs/content/docs/guides/receive.mdx) ([#102](https://github.com/pplytas/good-webhooks/pull/102)).
+- The receive guide verifies a stored request later with `now` ([#74](https://github.com/pplytas/good-webhooks/issues/74)).
+- [Maintainer handover](docs/handover.md) ([#147](https://github.com/pplytas/good-webhooks/pull/147)).
+- [`docs/proof-0-7-0.md`](docs/proof-0-7-0.md) tracks the 1.0 proof gate.
+  - The 72-hour soak is still pending.
 
-### Docs and repository
+### Next: 1.0.0
 
-- CI runs on Node.js 26 as the primary line, keeps Node.js 24 on PostgreSQL 18, and adds a non-required PostgreSQL 19 RC1 job.
-- `pnpm benchmark:history` and `pnpm test:chaos:contention` run the published large-history and contention proofs.
+- Release candidate on the `rc` channel.
+- No SQL and no code change from 0.7.0.
+- [Roadmap](docs/roadmap.md#100-rc1-march-2027-and-100-april-to-may-2027).
 
 ## 0.6.0 (2026-10-27)
 

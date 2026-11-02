@@ -52,9 +52,9 @@ jobs:
           import { readFileSync, appendFileSync } from 'node:fs'
           const pkg = JSON.parse(readFileSync('packages/good-webhooks/package.json', 'utf8'))
           assert.equal(pkg.name, 'good-webhooks')
-          const prerelease = /^\d+\.\d+\.\d+-(alpha|beta)\.\d+$/.exec(pkg.version)
+          const prerelease = /^\d+\.\d+\.\d+-(alpha|beta|rc)\.\d+$/.exec(pkg.version)
           const stable = /^\d+\.\d+\.\d+$/.test(pkg.version)
-          assert.ok(prerelease || stable, 'Version must be x.y.z or x.y.z-(alpha|beta).n.')
+          assert.ok(prerelease || stable, 'Version must be x.y.z or x.y.z-(alpha|beta|rc).n.')
           const tag = pkg.publishConfig?.tag ?? ''
           if (prerelease) assert.equal(tag, prerelease[1], 'publishConfig.tag must match the version pre-release channel.')
           else assert.equal(tag, 'latest', 'A stable version must publish to the latest dist-tag.')
