@@ -1,0 +1,51 @@
+---
+title: Upgrade from 0.x to 1.0
+description: Every breaking change and upgrade step from 0.4.x to 1.0.0, one release at a time.
+---
+
+1.0.0 is planned to need no code change and no SQL from 0.7.0. It has not shipped yet.
+
+Read the sections in order from the version you run. Each one lists the breaking changes and the steps for that release. Follow the [rollout order](/docs/operations/migrations#rollout-order) whenever a step needs SQL.
+
+## 0.4.x to 0.5.0
+
+0.5.0 is a breaking minor that moves the schema to version 6. [Changelog](https://github.com/pplytas/good-webhooks/blob/main/CHANGELOG.md#050-2026-10-26).
+
+Breaking changes:
+
+- `check()` refuses schema 5.
+- A pause resets the delivery's retry window ([ADR 0015](https://github.com/pplytas/good-webhooks/blob/main/docs/adr/0015-pause-resets-delivery-window.md)). Paused deliveries keep their full `retry.maxAgeMs` after resume, and a worker must run during the pause.
+- `ManagementRepository.create(scope, endpoint, { limit })` takes an options object instead of a third `limit` argument.
+- `StoredEndpoint` gains `encryptedHeaders`.
+- Built-in management needs no code change.
+
+Steps:
+
+1. Run `getPostgresUpgrade({ from: 5 })` or `migrations/upgrades/006-all.sql`. The step locks the deliveries table while it backfills, so prune first. Older schemas and separate namespaces are covered in [migrations](/docs/operations/migrations#upgrades).
+2. With Better Auth, run your Better Auth migration for the new optional `encryptedHeaders` field.
+3. Restart producers, then workers, on 0.5.0.
+4. A custom `ManagementRepository` implements `create(scope, endpoint, { limit })` and enforces the limit.
+5. A custom `ManagementRepository` stores `StoredEndpoint.encryptedHeaders` as is.
+
+## 0.5.0 to 0.6.0
+
+0.6.0 needs no SQL and has no breaking changes. [Changelog](https://github.com/pplytas/good-webhooks/blob/main/CHANGELOG.md#060-2026-10-27).
+
+Changed behavior:
+
+- Management reads decrypt stored headers. A rotated standalone storage key needs `decryptionKeys` for `get()` and `list()` too.
+- The worker sends headers that a custom `EndpointSource` returns, and defers a delivery when a header uses a reserved name.
+
+Steps:
+
+1. Restart producers, then workers, on 0.6.0. Better Auth needs no migration.
+2. If you [rotated the standalone storage key](/docs/operations/key-rotation#rotate-the-standalone-storage-key), keep the old key in `decryptionKeys` wherever management calls `get()` or `list()`.
+3. A custom `EndpointSource` that returns headers must avoid the [reserved names](/docs/guides/endpoints#send-extra-headers), because the worker defers a delivery that carries one.
+
+## 0.6.0 to 0.7.0
+
+0.7.0 adds no features. A default may change only if 0.6.1 announces it. This section is filled when 0.7.0 ships.
+
+## 0.7.0 to 1.0.0
+
+Planned: no breaking changes, no code change, and no SQL. 1.0.0 keeps schema 6.
