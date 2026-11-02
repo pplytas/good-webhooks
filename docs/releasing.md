@@ -4,13 +4,11 @@ The first public alpha is [`0.1.0-alpha.1`](https://www.npmjs.com/package/good-w
 
 ## Verify a candidate
 
-Review the changelog, public compatibility policy, and migration instructions. Run the normal CI checks, the packed-consumer checks, and `pnpm test:operations` against a disposable PostgreSQL database. The operational rehearsal checks bounded recovery scenarios; it is not a capacity benchmark.
+Review the changelog, public compatibility policy, and migration instructions. Run the weekly CI jobs on the candidate commit with `gh workflow run ci.yml --ref main`; they include the operations, upgrade, and chaos rehearsals and the Better Auth adapter matrix. The operational rehearsal checks bounded recovery scenarios; it is not a capacity benchmark.
 
 Require these main-branch checks before merging:
 
 - `Verify (PostgreSQL 16)`
-- `Verify (PostgreSQL 17)`
-- `Better Auth 1.7.7`
 - `Package consumers`
 - `Documentation`
 

@@ -5,7 +5,7 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
-  # Weekly run so new Better Auth releases in the "latest" matrix entries are tested without a push.
+  # Weekly run for the slow jobs, and so new Better Auth releases are tested without a push.
   schedule:
     - cron: '0 3 * * 1'
 permissions:
@@ -14,8 +14,51 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  # Fast gate on every change: the full suite on the lowest supported PostgreSQL and Node.js.
   verify:
-    name: Verify (${{ matrix.label || format('PostgreSQL {0}', matrix.postgres) }})
+    name: Verify (PostgreSQL 16)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      TEST_DATABASE_URL: postgres://postgres:webhooks_dev_only@127.0.0.1:55439/webhooks
+      DATABASE_URL: postgres://postgres:webhooks_dev_only@127.0.0.1:55439/webhooks_demo
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: webhooks_dev_only
+          POSTGRES_DB: webhooks
+        ports:
+          - 55439:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d webhooks"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check:package
+      - run: pnpm test
+      - name: Prepare a fresh demo database
+        run: |
+          psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -c 'CREATE DATABASE webhooks_demo'
+          psql "$DATABASE_URL" --single-transaction -v ON_ERROR_STOP=1 -f packages/good-webhooks/migrations/001-initial.sql
+          psql "$DATABASE_URL" --single-transaction -v ON_ERROR_STOP=1 -f packages/good-webhooks/examples/basic/receiver.sql
+      - name: Run the delivery and replay demo
+        run: pnpm example
+
+  # The jobs below run every Monday and on manual dispatch only, never on a push or pull request.
+  # Run them before a release: gh workflow run ci.yml --ref main
+  weekly:
+    name: Weekly (${{ matrix.label || format('PostgreSQL {0}', matrix.postgres) }})
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
@@ -24,10 +67,6 @@ jobs:
         postgres: [16, 17, 18]
         node: [26]
         include:
-          - postgres: 18
-            node: 24
-            label: PostgreSQL 18, Node.js 24
-          # Release candidate; not required by branch protection until 19 is GA.
           - postgres: 19rc1
             node: 26
             label: PostgreSQL 19 RC1
@@ -78,6 +117,7 @@ jobs:
 
   adapters:
     name: Better Auth ${{ matrix.label }}
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     # ubuntu-24.04 runners moved to kernel 7.0, which the mongo:8 image refuses to start on
     # (MongoDB SERVER-121912, fixed in kernel 7.0.14). ubuntu-22.04 runs kernel 6.8. Return to
     # ubuntu-latest once its kernel is 7.0.14 or newer. See #140.
@@ -222,8 +262,10 @@ jobs:
       - run: pnpm --filter @good-webhooks/docs exec playwright install --with-deps chromium
       - run: pnpm --filter @good-webhooks/docs check:browser
 
+  # The examples pin a published version, so they cannot catch a regression in this checkout.
   examples:
     name: Consumer integration (${{ matrix.example }})
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
