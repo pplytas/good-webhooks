@@ -28,6 +28,18 @@ To take a snapshot locally:
 GITHUB_TOKEN=$(gh auth token) node scripts/growth-snapshot.mjs
 ```
 
+## Referral events
+
+Every posted link carries `ref=<channel>` (see the [growth plan](roadmap.md#growth-plan)). Vercel Web Analytics drops query parameters, so the docs site sends the channel as a custom event.
+
+- The event is `referral`, with one property, `ref`.
+- It is sent once, on the first page load that carries the parameter.
+- Only values matching `^[a-z0-9-]{1,32}$` are recorded.
+  - The parameter is stripped from the URL either way.
+- Read it in the Vercel dashboard: project `consola-technologies/good-webhooks`, Analytics tab, Events panel, `referral` event, broken down by `ref`.
+- Custom events need no Plus plan.
+- The weekly snapshot does not collect it, so it is not in `snapshots.jsonl`.
+
 ## Caveats
 
 - The traffic endpoints need push access, and the built-in Actions token is refused.
@@ -41,10 +53,10 @@ GITHUB_TOKEN=$(gh auth token) node scripts/growth-snapshot.mjs
 - The dependents page counts repositories whose dependency graph GitHub has indexed.
   - Private repositories and lockfile-free projects are missing.
   - npmjs.com blocks scrapers, so its dependents tab is not used.
-- The `ref=<channel>` rule in the roadmap is not measurable yet.
-  - Vercel Web Analytics drops query parameters, and its UTM filters need the Plus plan.
-  - GitHub referrers show the domain only.
-  - A small custom event that records `ref` is the cheapest way to make it count.
+- The docs site records `ref=<channel>` as the `referral` custom event, because Web Analytics drops query parameters.
+  - It fires once per first load and then strips the parameter from the URL.
+  - See [Referral events](#referral-events) for where to read it.
+- GitHub referrers show the domain only, so `ref=` counts only for links to the docs site.
 
 ## Content
 

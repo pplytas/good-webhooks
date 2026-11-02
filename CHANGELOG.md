@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Docs and repository
+
+- CI runs on Node.js 26 as the primary line, keeps Node.js 24 on PostgreSQL 18, and adds a non-required PostgreSQL 19 RC1 job.
+
 ## 0.6.0 (2026-10-27)
 
 Pure code release on schema `6`, no SQL, tracked in [#123](https://github.com/pplytas/good-webhooks/issues/123).
