@@ -70,11 +70,13 @@ export function validateEndpointHeaders(value: unknown): Record<string, string> 
         `Header ${shownName(name)} must be an HTTP token of 1 to ${MAX_NAME_LENGTH} characters.`,
       )
     const normalized = name.toLowerCase()
-    if (seen.has(normalized)) invalid(`Header ${name} appears more than once.`)
+    if (seen.has(normalized)) invalid(`Header ${shownName(name)} appears more than once.`)
     seen.add(normalized)
-    if (isReservedHeaderName(name)) invalid(`Header ${name} is reserved.`)
+    if (isReservedHeaderName(name)) invalid(`Header ${shownName(name)} is reserved.`)
     if (typeof header !== 'string' || !FIELD_VALUE.test(header))
-      invalid(`Header ${name} must have a nonempty value of visible ASCII, spaces, and tabs.`)
+      invalid(
+        `Header ${shownName(name)} must have a nonempty value of visible ASCII, spaces, and tabs.`,
+      )
   }
   // fromEntries defines own properties, even for a name such as __proto__.
   const headers = Object.fromEntries(entries) as Record<string, string>
