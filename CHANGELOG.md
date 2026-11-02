@@ -4,7 +4,7 @@
 
 ### Docs
 
-- `parseWebhook()` is verified on Cloudflare Workers through miniflare in CI, and the compatibility page states which runtimes are verified ([compatibility](https://good-webhooks.dev/docs/operations/compatibility)).
+- The compatibility page states which runtimes are verified, now including Cloudflare Workers ([compatibility](https://good-webhooks.dev/docs/operations/compatibility)).
 
 ## 0.6.0 (2026-10-27)
 

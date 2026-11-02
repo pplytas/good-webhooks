@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -50,18 +50,23 @@ try {
     new Miniflare(convertV4MiniflareOptions({ ...options, modulesRoot: dist, modules }))
   const workerd = createRequire(import.meta.resolve('miniflare'))('workerd/package.json').version
 
-  const compatible = worker({
-    compatibilityDate: '2026-10-01',
-    compatibilityFlags: ['nodejs_compat'],
-  })
-  try {
-    const result = await (await compatible.dispatchFetch('http://localhost/')).json()
-    if (!result.ok) throw new Error(`Cloudflare Workers smoke check failed:\n${result.error}`)
-  } finally {
-    await compatible.dispose()
+  const smokeCheck = async (options) => {
+    const instance = worker(options)
+    try {
+      const result = await (await instance.dispatchFetch('http://localhost/')).json()
+      if (!result.ok) throw new Error(`Cloudflare Workers smoke check failed:\n${result.error}`)
+    } finally {
+      await instance.dispose()
+    }
   }
-  // Without Node.js compatibility the verify entry point cannot load node:crypto.
-  const incompatible = worker({ compatibilityDate: '2024-01-01' })
+  await smokeCheck({ compatibilityDate: '2026-10-01', compatibilityFlags: ['nodejs_compat'] })
+  // Same date with and without the flag, so only Node.js compatibility decides whether it starts.
+  // workerd's stderr is not reliably part of the rejection, so the paired run proves the cause.
+  await smokeCheck({ compatibilityDate: '2024-09-23', compatibilityFlags: ['nodejs_compat'] })
+  console.log(
+    'Expecting the next worker to fail to start: compatibility date 2024-09-23 without nodejs_compat.',
+  )
+  const incompatible = worker({ compatibilityDate: '2024-09-23' })
   try {
     const started = await incompatible.ready.then(
       () => true,
@@ -81,7 +86,8 @@ try {
 // The verify entry point and its imports, plus an entry that runs the smoke check per request.
 async function workerModules(dist) {
   if (!smoke.includes("from 'good-webhooks/verify'")) throw new Error('The smoke import moved.')
-  const names = ['verify.js', 'crypto.js', 'errors.js', 'event-names.js', 'json.js']
+  // Every built module, so a new import in verify.js resolves; unreferenced modules are harmless.
+  const names = (await readdir(dist)).filter((name) => name.endsWith('.js'))
   const modules = await Promise.all(
     names.map(async (name) => ({
       type: 'ESModule',
@@ -89,6 +95,7 @@ async function workerModules(dist) {
       contents: await readFile(join(dist, name), 'utf8'),
     })),
   )
+  // The static import makes a missing node:crypto fail at startup, which the negative run checks.
   const entry = `import './verify.js'
 export default {
   async fetch() {
