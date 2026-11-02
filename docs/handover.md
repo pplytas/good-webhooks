@@ -6,7 +6,7 @@ This page is for a second maintainer, or for anyone taking over if the current m
 
 ## What a release is
 
-1. Open a PR that bumps `version` in `packages/good-webhooks/package.json` and adds a dated changelog entry. `publishConfig.tag` must be `latest` for a stable version, or the channel (`alpha`, `beta`) for a pre-release.
+1. Open a PR that bumps `version` in `packages/good-webhooks/package.json` and adds a dated changelog entry. `publishConfig.tag` must be `latest` for a stable version, or the channel (`alpha`, `beta`, or `rc`) for a pre-release.
 2. Merge it once every check is green.
 3. Wait for main CI to pass on the merge commit. The release workflow refuses a commit without a successful main CI run.
 4. Run `pnpm --filter good-webhooks audit --prod` locally. The release workflow runs the same audit, and any advisory in a runtime dependency fails it.
@@ -37,7 +37,7 @@ This page is for a second maintainer, or for anyone taking over if the current m
 
 9. Move the [examples](../examples) and the [Playground](https://github.com/pplytas/good-webhooks-playground) to the new version the same day.
 
-A merge or a tag push never publishes. The workflow accepts `x.y.z` and `x.y.z-(alpha|beta).n` today, so it must learn an `rc` channel before 1.0.0-rc.1.
+A merge or a tag push never publishes. The workflow accepts `x.y.z` and `x.y.z-(alpha|beta|rc).n`.
 
 ## What is automated and what is not
 

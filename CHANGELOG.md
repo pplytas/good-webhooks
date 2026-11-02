@@ -16,13 +16,13 @@ Proof at scale, with schema `7` for one index ([roadmap](docs/roadmap.md#070-feb
 ### Fixed
 
 - `prune()` stays fast on large history ([#153](https://github.com/pplytas/good-webhooks/issues/153), [#155](https://github.com/pplytas/good-webhooks/pull/155)).
-- `deliveries.list({ eventId })` returns an empty page for a non-UUID ID ([#74](https://github.com/pplytas/good-webhooks/issues/74)).
+- `deliveries.list({ eventId })` returns an empty page for a well-formed ID that is not a UUID ([#74](https://github.com/pplytas/good-webhooks/issues/74)).
 - Header validation errors name the header ([#74](https://github.com/pplytas/good-webhooks/issues/74)).
 
 ### Added
 
 - `VerifyWebhookInput`, `CreateEndpointInput`, and `UpdateEndpointInput` types are exported.
-- A bounded [run-once delivery example](packages/good-webhooks/examples/operations/run-once.ts) ([#112](https://github.com/pplytas/good-webhooks/pull/112)).
+- A bounded [run-once delivery example](packages/good-webhooks/examples/operations/run-once.ts) by @yoreva-01 ([#112](https://github.com/pplytas/good-webhooks/pull/112)).
 
 ### Verified
 
@@ -34,15 +34,16 @@ Proof at scale, with schema `7` for one index ([roadmap](docs/roadmap.md#070-feb
   - Bun and Deno checks by @dannyward630 ([#105](https://github.com/pplytas/good-webhooks/pull/105)).
   - Workers check through miniflare ([#149](https://github.com/pplytas/good-webhooks/pull/149)).
 - Signing matches the Standard Webhooks reference vectors, by @HarshRajSinghania ([#103](https://github.com/pplytas/good-webhooks/pull/103)).
-- Each change runs Node.js 24 on PostgreSQL 16 ([#146](https://github.com/pplytas/good-webhooks/pull/146)).
-  - Node.js 26 on PostgreSQL 16 to 19 RC1 runs weekly.
+- Each change runs Node.js 24 on PostgreSQL 16 ([compatibility](https://good-webhooks.dev/docs/operations/compatibility)).
+  - Node.js 26 on PostgreSQL 16 to 19 RC1 runs weekly ([#146](https://github.com/pplytas/good-webhooks/pull/146)).
 - CI checks a generated public API report ([#150](https://github.com/pplytas/good-webhooks/pull/150)).
 
 ### Docs
 
-- New pages: [stability policy](apps/docs/content/docs/operations/compatibility.mdx), [upgrade matrix](apps/docs/content/docs/upgrading/matrix.mdx), [0.x to 1.0](apps/docs/content/docs/upgrading/from-0x.mdx) ([#148](https://github.com/pplytas/good-webhooks/pull/148)).
+- New pages: [what 1.0 promises](apps/docs/content/docs/upgrading/contract.mdx), [upgrade matrix](apps/docs/content/docs/upgrading/matrix.mdx), [0.x to 1.0](apps/docs/content/docs/upgrading/from-0x.mdx) ([#148](https://github.com/pplytas/good-webhooks/pull/148)).
+  - [Compatibility](apps/docs/content/docs/operations/compatibility.mdx) gains the 1.x stability and drop policies.
 - Tutorials: [Better Auth endpoints](apps/docs/content/docs/better-auth/tutorial.mdx) and [outbound webhooks](apps/docs/content/docs/tutorials/outbound-webhooks.mdx).
-- NestJS tab in [receiving](apps/docs/content/docs/guides/receive.mdx) ([#102](https://github.com/pplytas/good-webhooks/pull/102)).
+- NestJS tab in [receiving](apps/docs/content/docs/guides/receive.mdx) by @yoreva-01 ([#102](https://github.com/pplytas/good-webhooks/pull/102)).
 - The receive guide verifies a stored request later with `now` ([#74](https://github.com/pplytas/good-webhooks/issues/74)).
 - [Maintainer handover](docs/handover.md) ([#147](https://github.com/pplytas/good-webhooks/pull/147)).
 - [`docs/proof-0-7-0.md`](docs/proof-0-7-0.md) tracks the 1.0 proof gate.
