@@ -10,7 +10,7 @@ Require these main-branch checks before merging:
 
 - `Verify (PostgreSQL 16)`
 - `Verify (PostgreSQL 17)`
-- `Better Auth storage adapters`
+- `Better Auth 1.7.7`
 - `Package consumers`
 - `Documentation`
 

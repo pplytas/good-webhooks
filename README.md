@@ -75,7 +75,7 @@ Each example has its own npm lockfile, PostgreSQL setup, browser UI, receiver, a
 | [`examples`](examples)                             | Complete applications that install the published npm package |
 | [`docs`](docs)                                     | Engineering plans and architecture decisions                 |
 
-Use Node.js 24 and the repository's pinned pnpm version, 12.10.1. If Corepack is available, enable its shims with `corepack enable`; otherwise install that pnpm version using the [pnpm installation instructions](https://pnpm.io/installation).
+Use Node.js 24 or 26 and the repository's pinned pnpm version, 12.10.1. If Corepack is available, enable its shims with `corepack enable`; otherwise install that pnpm version using the [pnpm installation instructions](https://pnpm.io/installation).
 
 ```sh
 pnpm install --frozen-lockfile
@@ -128,6 +128,10 @@ npm install /absolute/path/to/packages/good-webhooks/good-webhooks-0.6.0.tgz
 ```
 
 `pnpm test:package` verifies the archive with fresh npm consumers, both with and without Better Auth, including the published declarations and SQL exports. Registry publication is a separate release step.
+
+## Maintenance
+
+One maintainer works on Good Webhooks part time. Releases run in GitHub Actions and publish through npm trusted publishing, so a release never depends on one person's laptop or npm token. The [support windows](https://good-webhooks.dev/docs/operations/compatibility#support-windows) and the [security response targets](SECURITY.md#response-targets) are published. If maintenance stops, the last release stays installable, the repository stays public under MIT, and the [handover guide](docs/handover.md) says how to take over.
 
 ## Contributing
 
