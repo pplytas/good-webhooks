@@ -13,6 +13,8 @@
 
 ### Fixed
 
+- Schema 7 indexes replays, so `prune()` stays fast on large history ([#153](https://github.com/pplytas/good-webhooks/issues/153)).
+  - Run `getPostgresUpgrade({ from: 6 })` or `migrations/upgrades/007-all.sql`.
 - An invalid endpoint header name now appears in its error message ([#74](https://github.com/pplytas/good-webhooks/issues/74)).
 
 ### Tests

@@ -63,7 +63,7 @@ const sql = await readFile(
 )
 ```
 
-The current schema version is `6`, exported as `POSTGRES_SCHEMA_VERSION`. Every `check()` expects exactly that version for its component. Fresh-install assets never upgrade existing data; use `getPostgresUpgrade` for that.
+The current schema version is `7`, exported as `POSTGRES_SCHEMA_VERSION`. Every `check()` expects exactly that version for its component. Fresh-install assets never upgrade existing data; use `getPostgresUpgrade` for that.
 
 ## getPostgresUpgrade
 
@@ -76,8 +76,8 @@ import { writeFile } from 'node:fs/promises'
 import { getPostgresUpgrade } from 'good-webhooks/migrations'
 
 await writeFile(
-  'migrations/004-webhooks-schema-6.sql',
-  getPostgresUpgrade({ schema: 'webhooks', component: 'all', from: 5 }),
+  'migrations/005-webhooks-schema-7.sql',
+  getPostgresUpgrade({ schema: 'webhooks', component: 'all', from: 6 }),
 )
 ```
 
@@ -85,7 +85,7 @@ Returns SQL that moves storage recorded at version `from` to the current version
 
 <auto-type-table path="../../reference-types.ts" name="PostgresUpgradeOptions" />
 
-`from` is the version recorded in the database: `3`, `4`, or `5`. From `3` or `4`, the SQL applies each published step in order up to version `6`. `from: 6` throws `INVALID_CONFIG` because no upgrade is needed. Versions before `3` were never published and need fresh storage.
+`from` is the version recorded in the database: `3`, `4`, `5`, or `6`. From `3`, `4`, or `5`, the SQL applies each published step in order up to version `7`. `from: 7` throws `INVALID_CONFIG` because no upgrade is needed. Versions before `3` were never published and need fresh storage.
 
 | Upgrade | Component    | Shipped asset for `public`                             |
 | ------- | ------------ | ------------------------------------------------------ |
@@ -98,6 +98,9 @@ Returns SQL that moves storage recorded at version `from` to the current version
 | 5 to 6  | `all`        | `good-webhooks/migrations/upgrades/006-all.sql`        |
 |         | `management` | `good-webhooks/migrations/upgrades/006-management.sql` |
 |         | `delivery`   | `good-webhooks/migrations/upgrades/006-delivery.sql`   |
+| 6 to 7  | `all`        | `good-webhooks/migrations/upgrades/007-all.sql`        |
+|         | `management` | `good-webhooks/migrations/upgrades/007-management.sql` |
+|         | `delivery`   | `good-webhooks/migrations/upgrades/007-delivery.sql`   |
 
 What each asset changes:
 
@@ -113,8 +116,12 @@ What each asset changes:
   - `all`: adds the delivery retry window and the endpoint headers column.
   - `management`: adds `webhook_endpoints.encrypted_headers`.
   - `delivery`: adds `webhook_deliveries.window_started_at` and sets it to `created_at` for every row.
+- **6 to 7**
+  - `all`: indexes replays for `prune()` and records version `7` in both components.
+  - `management`: records version `7` only.
+  - `delivery`: adds the partial index `webhook_deliveries_replays`.
 
-Shipped upgrade files never change, and each covers one step. For 3 to 4 in a shared namespace, apply `all`, or `delivery` before `management`; the management step needs the rewritten table and fails otherwise. The 4-to-5 and 5-to-6 components can run in either order. Each upgrade adds only a version record or nullable columns, so processes on the previous package keep working until they restart. The 5-to-6 delivery step also fills `window_started_at` from `created_at` in one `UPDATE` under the `ALTER TABLE` lock, so it blocks reads and writes of `webhook_deliveries` for a time that grows with the table's row count. Check the count and any pruning backlog first. The [migrations guide](/docs/operations/migrations#upgrades) gives the rollout order.
+Shipped upgrade files never change, and each covers one step. For 3 to 4 in a shared namespace, apply `all`, or `delivery` before `management`; the management step needs the rewritten table and fails otherwise. The 4-to-5, 5-to-6, and 6-to-7 components can run in either order. Each upgrade adds only a version record, nullable columns, or an index, so processes on the previous package keep working until they restart. The 5-to-6 delivery step also fills `window_started_at` from `created_at` in one `UPDATE` under the `ALTER TABLE` lock, so it blocks reads and writes of `webhook_deliveries` for a time that grows with the table's row count. Check the count and any pruning backlog first. The 6-to-7 delivery step builds an index, which blocks writes to `webhook_deliveries` while it reads the table. The [migrations guide](/docs/operations/migrations#upgrades) shows how to build it concurrently first and gives the rollout order.
 
 ## Schema names
 

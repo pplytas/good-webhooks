@@ -100,6 +100,7 @@ CREATE TABLE ${tables.deliveries} (
 );
 CREATE UNIQUE INDEX webhook_deliveries_original ON ${tables.deliveries}(event_id,endpoint_id) WHERE replay_of IS NULL;
 CREATE UNIQUE INDEX webhook_deliveries_active_replay ON ${tables.deliveries}(replay_of) WHERE replay_of IS NOT NULL AND status IN ('pending','in_flight');
+CREATE INDEX webhook_deliveries_replays ON ${tables.deliveries}(scope_key,replay_of) WHERE replay_of IS NOT NULL;
 CREATE INDEX webhook_deliveries_due ON ${tables.deliveries}(next_attempt_at,id) WHERE status='pending';
 CREATE INDEX webhook_deliveries_leases ON ${tables.deliveries}(lease_expires_at) WHERE status='in_flight';
 CREATE INDEX webhook_deliveries_endpoint ON ${tables.deliveries}(scope_key,endpoint_id,status,id);
@@ -198,6 +199,26 @@ UPDATE ${tables.schemaVersion} SET version = 6 WHERE component = 'delivery';`,
 ALTER TABLE ${tables.endpoints}
   ADD COLUMN encrypted_headers text;
 UPDATE ${tables.schemaVersion} SET version = 6 WHERE component = 'management';`,
+  },
+  // Schema 7 indexes replay_of, so the replay cascade behind prune() stops scanning deliveries (#153).
+  6: {
+    // The build blocks delivery writes while it scans the table. Hosts with large tables may build the
+    // same index CONCURRENTLY beforehand; IF NOT EXISTS then skips it, and the guard rejects a failed build.
+    delivery: (tables) => {
+      const index = tables.deliveries
+        .replace(/"webhook_deliveries"$/, '"webhook_deliveries_replays"')
+        .replaceAll("'", "''")
+      return `${expectVersion(tables, 'delivery', 6)}
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_index WHERE indexrelid = to_regclass('${index}') AND NOT indisvalid) THEN
+    RAISE EXCEPTION 'good-webhooks: index ${index} is invalid; drop it before upgrading to 7';
+  END IF;
+END $$;
+CREATE INDEX IF NOT EXISTS webhook_deliveries_replays ON ${tables.deliveries}(scope_key,replay_of) WHERE replay_of IS NOT NULL;
+UPDATE ${tables.schemaVersion} SET version = 7 WHERE component = 'delivery';`
+    },
+    management: (tables) => `${expectVersion(tables, 'management', 6)}
+UPDATE ${tables.schemaVersion} SET version = 7 WHERE component = 'management';`,
   },
 }
 

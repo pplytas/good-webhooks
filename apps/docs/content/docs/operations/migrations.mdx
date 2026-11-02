@@ -74,7 +74,7 @@ const delivery = createDelivery({
 
 An injected management provider keeps its own schema; delivery's `schema` option never moves it. For Better Auth, generate only the delivery SQL.
 
-Call `await webhooks.check()` at startup in the app and in every worker. It verifies the tables and that each component records schema version `6`, and throws `SCHEMA_MISMATCH` naming the SQL to apply. It never changes anything.
+Call `await webhooks.check()` at startup in the app and in every worker. It verifies the tables and that each component records schema version `7`, and throws `SCHEMA_MISMATCH` naming the SQL to apply. It never changes anything.
 
 ## Upgrades
 
@@ -85,16 +85,25 @@ Generate the upgrade from the version your database records:
 ```ts
 import { getPostgresUpgrade } from 'good-webhooks/migrations'
 
-const sql = getPostgresUpgrade({ from: 5 }) // both components in 'public'
+const sql = getPostgresUpgrade({ from: 6 }) // both components in 'public'
 ```
 
-The shipped equivalent is `good-webhooks/migrations/upgrades/006-all.sql`. From an older version, `from: 3` or `from: 4` applies each published step from that version in order, up to `6`. Separate namespaces take `component` with their own `schema`. The SQL checks the recorded version first, so applying it twice or against the wrong version rolls back.
+The shipped equivalent is `good-webhooks/migrations/upgrades/007-all.sql`. From an older version, `from: 3`, `4`, or `5` applies each published step from that version in order, up to `7`. Separate namespaces take `component` with their own `schema`. The SQL checks the recorded version first, so applying it twice or against the wrong version rolls back.
 
 The 5-to-6 step fills `webhook_deliveries.window_started_at` from `created_at` for every existing delivery, under the lock its `ALTER TABLE` takes. Producers and workers that touch the deliveries table wait until it commits, for a time that grows with the table's row count. `prune()` keeps the table near `retentionMs` only when it runs, so check the row count and any pruning backlog before you apply the step. Existing deliveries keep the age they already had.
 
+The 6-to-7 step adds the index `webhook_deliveries_replays`, which `prune()` needs to delete history quickly ([#153](https://github.com/pplytas/good-webhooks/issues/153)). Building it blocks writes to the deliveries table while it reads the table once. On a large table, build it first outside a transaction, with exactly this definition, then apply the step as usual:
+
+```sql
+CREATE INDEX CONCURRENTLY IF NOT EXISTS webhook_deliveries_replays
+  ON "public"."webhook_deliveries"(scope_key, replay_of) WHERE replay_of IS NOT NULL;
+```
+
+The step then keeps that index. If the concurrent build fails, it leaves an invalid index, and the step refuses to run until you drop it with `DROP INDEX "public"."webhook_deliveries_replays"`.
+
 ### Rollout order
 
-1. Deploy nothing yet. Apply the upgrade SQL with your migration runner in one transaction. Processes on the previous package keep running when the release notes say the upgrade is compatible with them. The 3 to 4, 4 to 5, and 5 to 6 upgrades are. With Better Auth management, also run your Better Auth migration in this step. `0.2.0` added the optional `pauseReason` field to the endpoint model, and `0.5.0` adds the optional `encryptedHeaders` field.
+1. Deploy nothing yet. Apply the upgrade SQL with your migration runner in one transaction. Processes on the previous package keep running when the release notes say the upgrade is compatible with them. The 3 to 4, 4 to 5, 5 to 6, and 6 to 7 upgrades are. With Better Auth management, also run your Better Auth migration in this step. `0.2.0` added the optional `pauseReason` field to the endpoint model, and `0.5.0` adds the optional `encryptedHeaders` field.
 2. Restart producers on the new package. Their `check()` now passes.
 3. Restart workers and cleanup jobs on the new package. A restarted process on the old package fails fast with `SCHEMA_MISMATCH`, so finish the rollout rather than mixing versions for long.
 

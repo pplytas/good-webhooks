@@ -13,7 +13,7 @@ import { quotePostgresSchema } from '../src/postgres-schema.js'
 import { scopeKey } from '../src/scope.js'
 import { closeDatabase, dropWebhookTables, pool, TEST_ENCRYPTION_KEY } from './db.js'
 
-const fixture = (name: string, version: 3 | 4 | 5 = 3) =>
+const fixture = (name: string, version: 3 | 4 | 5 | 6 = 3) =>
   readFile(new URL(`./fixtures/schema-${version}-${name}.sql`, import.meta.url), 'utf8')
 const events = { 'invoice.paid': z.object({ id: z.string() }) }
 const app = () =>
@@ -27,6 +27,14 @@ const versions = async (schema = 'public') =>
   (
     await pool.query(
       `SELECT component, version FROM ${quotePostgresSchema(schema)}."webhook_schema_version" ORDER BY component`,
+    )
+  ).rows
+
+const replaysIndex = async (schema = 'public') =>
+  (
+    await pool.query(
+      'SELECT indisvalid AS valid FROM pg_index WHERE indexrelid = to_regclass($1)',
+      [`${quotePostgresSchema(schema)}."webhook_deliveries_replays"`],
     )
   ).rows
 
@@ -92,10 +100,10 @@ afterAll(async () => {
   await closeDatabase()
 })
 
-describe('schema upgrade to version 6', () => {
+describe('schema upgrade to version 7', () => {
   it('generates upgrade SQL only for a recorded version it can upgrade', () => {
-    expect(() => getPostgresUpgrade({ from: 6 })).toThrow(/current/)
-    expect(() => getPostgresUpgrade({ from: 2 })).toThrow(/from must be one of 3, 4, 5/)
+    expect(() => getPostgresUpgrade({ from: 7 })).toThrow(/current/)
+    expect(() => getPostgresUpgrade({ from: 2 })).toThrow(/from must be one of 3, 4, 5, 6/)
     expect(() => getPostgresUpgrade({ from: '4' as unknown as number })).toThrow(/from must be/)
     expect(() => getPostgresUpgrade({ from: 3, component: 'both' as 'all' })).toThrow(/component/)
     expect(() => getPostgresUpgrade(undefined as unknown as { from: 3 })).toThrow(/from/)
@@ -108,28 +116,34 @@ describe('schema upgrade to version 6', () => {
     expect(getPostgresUpgrade({ from: 5, component: 'management' })).not.toContain('delivery')
     expect(getPostgresUpgrade({ from: 5, component: 'delivery' })).not.toContain('management')
     expect(getPostgresUpgrade({ from: 5 })).not.toContain('failing_since')
+    expect(getPostgresUpgrade({ from: 6, component: 'management' })).not.toContain('delivery')
+    expect(getPostgresUpgrade({ from: 6, component: 'delivery' })).not.toContain('management')
+    expect(getPostgresUpgrade({ from: 6 })).not.toContain('window_started_at')
   })
 
-  it('refuses to start on version 5 storage and names the upgrade', async () => {
-    await apply(await fixture('all', 5))
-    await expect(app().check()).rejects.toMatchObject({
-      code: 'SCHEMA_MISMATCH',
-      message: expect.stringContaining(
-        'getPostgresUpgrade({ schema: "public", component: \'management\', from: 5 })',
-      ),
-    })
-    const management = createPostgresManagement({
-      database: pool,
-      encryptionKey: TEST_ENCRYPTION_KEY,
-      eventTypes: ['invoice.paid'],
-    })
-    await expect(
-      createDelivery({ database: pool, source: management.source, events }).check(),
-    ).rejects.toMatchObject({
-      code: 'SCHEMA_MISMATCH',
-      message: expect.stringContaining("component: 'delivery', from: 5 })"),
-    })
-  })
+  it.each([5, 6] as const)(
+    'refuses to start on version %i storage and names the upgrade',
+    async (from) => {
+      await apply(await fixture('all', from))
+      await expect(app().check()).rejects.toMatchObject({
+        code: 'SCHEMA_MISMATCH',
+        message: expect.stringContaining(
+          `getPostgresUpgrade({ schema: "public", component: 'management', from: ${from} })`,
+        ),
+      })
+      const management = createPostgresManagement({
+        database: pool,
+        encryptionKey: TEST_ENCRYPTION_KEY,
+        eventTypes: ['invoice.paid'],
+      })
+      await expect(
+        createDelivery({ database: pool, source: management.source, events }).check(),
+      ).rejects.toMatchObject({
+        code: 'SCHEMA_MISMATCH',
+        message: expect.stringContaining(`component: 'delivery', from: ${from} })`),
+      })
+    },
+  )
 
   it('refuses to start on version 4 storage and names the upgrade', async () => {
     await apply(await fixture('all', 4))
@@ -176,7 +190,7 @@ describe('schema upgrade to version 6', () => {
     await expect(app().check()).rejects.toMatchObject({ code: 'SCHEMA_MISMATCH' })
   })
 
-  it.each([3, 4, 5] as const)(
+  it.each([3, 4, 5, 6] as const)(
     'upgrades a shared installation from version %i and keeps a pending backlog deliverable',
     async (from) => {
       await apply(await fixture('all', from))
@@ -193,9 +207,10 @@ describe('schema upgrade to version 6', () => {
 
         await apply(getPostgresUpgrade({ from }))
         expect(await versions()).toEqual([
-          { component: 'delivery', version: 6 },
-          { component: 'management', version: 6 },
+          { component: 'delivery', version: 7 },
+          { component: 'management', version: 7 },
         ])
+        expect(await replaysIndex()).toEqual([{ valid: true }])
         // The backlog keeps the age it already had (ADR 0015).
         expect(
           (
@@ -231,6 +246,27 @@ describe('schema upgrade to version 6', () => {
           server.close((error) => (error ? reject(error) : resolve())),
         )
       }
+    },
+  )
+
+  it.each([3, 4, 5, 6] as const)(
+    'ends with the same indexes as a fresh install after upgrading from version %i',
+    async (from) => {
+      const indexes = async () =>
+        (
+          await pool.query(
+            "SELECT indexdef FROM pg_indexes WHERE schemaname = 'public' AND tablename LIKE 'webhook\\_%' ORDER BY indexname",
+          )
+        ).rows
+      await apply(getPostgresMigration())
+      const fresh = await indexes()
+      expect(fresh).toContainEqual({
+        indexdef: expect.stringContaining('webhook_deliveries_replays'),
+      })
+      await cleanup()
+      await apply(await fixture('all', from))
+      await apply(getPostgresUpgrade({ from }))
+      expect(await indexes()).toEqual(fresh)
     },
   )
 
@@ -291,6 +327,9 @@ describe('schema upgrade to version 6', () => {
     await expect(apply(getPostgresUpgrade({ from: 5 }))).rejects.toThrow(
       /expected delivery schema version 5/,
     )
+    await expect(apply(getPostgresUpgrade({ from: 6 }))).rejects.toThrow(
+      /expected delivery schema version 6/,
+    )
     expect(await versions()).toHaveLength(2)
   })
 
@@ -299,7 +338,7 @@ describe('schema upgrade to version 6', () => {
     await apply(getPostgresUpgrade({ from: 4, component: 'management' }))
     expect(await versions()).toEqual([
       { component: 'delivery', version: 4 },
-      { component: 'management', version: 6 },
+      { component: 'management', version: 7 },
     ])
     await apply(getPostgresUpgrade({ from: 4, component: 'delivery' }))
     await app().check()
@@ -309,7 +348,7 @@ describe('schema upgrade to version 6', () => {
     await apply(await fixture('all', 5))
     await apply(getPostgresUpgrade({ from: 5, component: 'delivery' }))
     expect(await versions()).toEqual([
-      { component: 'delivery', version: 6 },
+      { component: 'delivery', version: 7 },
       { component: 'management', version: 5 },
     ])
     await apply(getPostgresUpgrade({ from: 5, component: 'management' }))
@@ -353,8 +392,48 @@ describe('schema upgrade to version 6', () => {
     await apply(getPostgresUpgrade({ from: 3, schema: deliverySchema, component: 'delivery' }))
     await management.check()
     await webhooks.check()
-    expect(await versions(managementSchema)).toEqual([{ component: 'management', version: 6 }])
-    expect(await versions(deliverySchema)).toEqual([{ component: 'delivery', version: 6 }])
+    expect(await versions(managementSchema)).toEqual([{ component: 'management', version: 7 }])
+    expect(await versions(deliverySchema)).toEqual([{ component: 'delivery', version: 7 }])
+    expect(await replaysIndex(deliverySchema)).toEqual([{ valid: true }])
+  })
+
+  it('upgrades the version 6 components of a shared schema in either order', async () => {
+    await apply(await fixture('all', 6))
+    await apply(getPostgresUpgrade({ from: 6, component: 'management' }))
+    expect(await versions()).toEqual([
+      { component: 'delivery', version: 6 },
+      { component: 'management', version: 7 },
+    ])
+    expect(await replaysIndex()).toEqual([])
+    await apply(getPostgresUpgrade({ from: 6, component: 'delivery' }))
+    await app().check()
+  })
+
+  it('keeps an index built concurrently before the version 7 step', async () => {
+    await apply(await fixture('all', 6))
+    // CONCURRENTLY cannot run in a transaction, so a host builds it on its own first.
+    await pool.query(
+      'CREATE INDEX CONCURRENTLY webhook_deliveries_replays ON public.webhook_deliveries(scope_key,replay_of) WHERE replay_of IS NOT NULL',
+    )
+    await apply(getPostgresUpgrade({ from: 6 }))
+    expect(await replaysIndex()).toEqual([{ valid: true }])
+    await app().check()
+  })
+
+  it('refuses the version 7 step over an invalid index left by a failed concurrent build', async () => {
+    await apply(await fixture('all', 6))
+    await pool.query(
+      'CREATE INDEX webhook_deliveries_replays ON public.webhook_deliveries(scope_key,replay_of) WHERE replay_of IS NOT NULL',
+    )
+    // A failed CREATE INDEX CONCURRENTLY leaves the index in this state.
+    await pool.query(
+      "UPDATE pg_index SET indisvalid = false WHERE indexrelid = 'public.webhook_deliveries_replays'::regclass",
+    )
+    await expect(apply(getPostgresUpgrade({ from: 6 }))).rejects.toThrow(/is invalid; drop it/)
+    expect(await versions()).toEqual([
+      { component: 'delivery', version: 6 },
+      { component: 'management', version: 6 },
+    ])
   })
 
   it('refuses the management step before the delivery step in a shared schema', async () => {
@@ -372,7 +451,7 @@ describe('schema upgrade to version 6', () => {
   it('refuses storage newer than the package and asks for a package upgrade', async () => {
     await apply(getPostgresMigration())
     await pool.query(
-      "UPDATE public.webhook_schema_version SET version = 7 WHERE component = 'delivery'",
+      "UPDATE public.webhook_schema_version SET version = 8 WHERE component = 'delivery'",
     )
     await expect(app().check()).rejects.toMatchObject({
       code: 'SCHEMA_MISMATCH',
