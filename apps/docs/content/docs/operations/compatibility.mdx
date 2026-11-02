@@ -22,7 +22,7 @@ What CI verifies for each:
 - **Node.js**: the full integration suite on Node.js 26 (Active LTS) for every PostgreSQL version, and on Node.js 24 (Maintenance LTS) with PostgreSQL 18. ESM and CommonJS consumers on Node.js 24 and 26.
 - **Bun**: Bun 1.4.4 runs `parseWebhook()` against a signed event and rejects a tampered body from the packed archive.
 - **Deno**: Deno 2.9.8 runs `parseWebhook()` against a signed event and rejects a tampered body from the packed archive.
-- **Cloudflare Workers**: workerd 1.20261006.1 through miniflare, on compatibility date 2026-10-01, and on 2024-09-23 with `nodejs_compat`, runs `parseWebhook()` against a signed event and rejects a tampered body from the packed archive. The same date without the flag must fail to start.
+- **Cloudflare Workers**: workerd 1.20261006.1 through miniflare, on compatibility date 2026-10-01 with no flags, and on 2024-09-23 with `nodejs_compat`, runs `parseWebhook()` against a signed event and rejects a tampered body from the packed archive. The same date without the flag must fail to start.
 - **TypeScript**: 5.9.3, 6.0, and 7.0, with NodeNext and Bundler resolution.
 - **PostgreSQL**: the full integration suite on 16, 17, and 18, and on the 19 release candidate as a non-required job. 19 joins the supported list when its GA image ships.
 - **Better Auth**: 1.7.7, the newest 1.7, and the newest 1.8 including betas, across the [adapter matrix](/docs/better-auth#supported-databases). CI also runs every Monday, so new Better Auth releases are tested without a change here.

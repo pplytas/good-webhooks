@@ -84,6 +84,8 @@ async function allowRefusal(action: Promise<unknown>, codes: readonly WebhookErr
   })
 }
 
+// Statuses seen across all runs, so a generator change cannot quietly skip a terminal state.
+const seen = new Set<string>()
 afterAll(closeDatabase)
 
 describe('delivery state machine properties', () => {
@@ -147,6 +149,7 @@ describe('delivery state machine properties', () => {
             }
 
             const { deliveries, attempts } = await snapshot()
+            for (const row of deliveries) seen.add(row.status)
             for (const row of deliveries) {
               const before = previous.get(row.id)
               if (before && TERMINAL.has(before.status)) {
@@ -175,5 +178,6 @@ describe('delivery state machine properties', () => {
       ),
       { numRuns: 25 },
     )
+    expect([...seen]).toEqual(expect.arrayContaining(['succeeded', 'failed', 'cancelled']))
   })
 })

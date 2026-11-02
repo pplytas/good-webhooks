@@ -59,7 +59,8 @@ try {
       await instance.dispose()
     }
   }
-  await smokeCheck({ compatibilityDate: '2026-10-01', compatibilityFlags: ['nodejs_compat'] })
+  // From 2026-08-04 Node.js compatibility is on by default, so this run passes no flag.
+  await smokeCheck({ compatibilityDate: '2026-10-01' })
   // Same date with and without the flag, so only Node.js compatibility decides whether it starts.
   // workerd's stderr is not reliably part of the rejection, so the paired run proves the cause.
   await smokeCheck({ compatibilityDate: '2024-09-23', compatibilityFlags: ['nodejs_compat'] })

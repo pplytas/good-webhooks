@@ -6,6 +6,7 @@
 
 - Property tests cover signature header parsing, timestamp tolerance, and more `Retry-After` formats.
 - A model-based property test checks the delivery state machine against Postgres.
+- CI verifies `parseWebhook()` on Cloudflare Workers through miniflare.
 
 ### Docs
 

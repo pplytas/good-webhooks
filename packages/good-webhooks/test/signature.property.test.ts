@@ -1,3 +1,4 @@
+import { createHmac } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
 import fc from 'fast-check'
 import { generateSecret, signWebhook, verifyWebhook } from '../src/crypto.js'
@@ -165,7 +166,9 @@ describe('signature header parsing properties', () => {
     const tooLong = fc
       .tuple(fc.constantFrom(...'123456789'), digits(16, 30))
       .map(([lead, rest]) => lead + rest)
-    const leadingZero = digits(1, 15).map((rest) => `0${rest}`)
+    // The digest signs Number(timestamp), so zero padding keeps the signature valid and only
+    // the format rule can reject it. Over 16 digits also fails the tolerance; kept as a guard.
+    const leadingZero = fc.integer({ min: 1, max: 6 }).map((k) => '0'.repeat(k) + TIMESTAMP)
     fc.assert(
       fc.property(fc.oneof(tooLong, leadingZero), (timestamp) => {
         expect(verify({ headers: headers({ 'webhook-timestamp': timestamp }) })).toBe(
@@ -189,7 +192,13 @@ describe('signature header parsing properties', () => {
       )
     fc.assert(
       fc.property(fc.oneof(tooLong, forbidden), (value) => {
-        expect(verify({ headers: headers({ 'webhook-id': value }) })).toBe('SIGNATURE_INVALID')
+        // Sign the malformed ID by hand, so only the ID rule can reject it.
+        const digest = createHmac('sha256', Buffer.from(SECRET.slice('whsec_'.length), 'base64'))
+          .update(`${value}.${TIMESTAMP}.`)
+          .update(BODY)
+          .digest('base64')
+        const signed = headers({ 'webhook-id': value, 'webhook-signature': `v1,${digest}` })
+        expect(verify({ headers: signed })).toBe('SIGNATURE_INVALID')
       }),
     )
   })
