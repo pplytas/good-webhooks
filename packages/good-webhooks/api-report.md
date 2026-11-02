@@ -1723,7 +1723,7 @@ export declare function getPostgresUpgrade(options: PostgresUpgradeOptions): str
 ### POSTGRES_SCHEMA_VERSION
 
 ```ts
-export declare const POSTGRES_SCHEMA_VERSION = 6;
+export declare const POSTGRES_SCHEMA_VERSION = 7;
 ```
 
 ### PostgresComponent

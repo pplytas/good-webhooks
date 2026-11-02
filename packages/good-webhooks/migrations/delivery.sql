@@ -4,7 +4,7 @@ CREATE SCHEMA IF NOT EXISTS "public";
 
 CREATE TABLE IF NOT EXISTS "public"."webhook_schema_version" (component text PRIMARY KEY, version integer NOT NULL CHECK (version > 0));
 
-INSERT INTO "public"."webhook_schema_version" (component, version) VALUES ('delivery', 6);
+INSERT INTO "public"."webhook_schema_version" (component, version) VALUES ('delivery', 7);
 
 CREATE TABLE "public"."webhook_endpoint_state" (
   scope_key text NOT NULL,
@@ -51,6 +51,7 @@ CREATE TABLE "public"."webhook_deliveries" (
 );
 CREATE UNIQUE INDEX webhook_deliveries_original ON "public"."webhook_deliveries"(event_id,endpoint_id) WHERE replay_of IS NULL;
 CREATE UNIQUE INDEX webhook_deliveries_active_replay ON "public"."webhook_deliveries"(replay_of) WHERE replay_of IS NOT NULL AND status IN ('pending','in_flight');
+CREATE INDEX webhook_deliveries_replays ON "public"."webhook_deliveries"(scope_key,replay_of) WHERE replay_of IS NOT NULL;
 CREATE INDEX webhook_deliveries_due ON "public"."webhook_deliveries"(next_attempt_at,id) WHERE status='pending';
 CREATE INDEX webhook_deliveries_leases ON "public"."webhook_deliveries"(lease_expires_at) WHERE status='in_flight';
 CREATE INDEX webhook_deliveries_endpoint ON "public"."webhook_deliveries"(scope_key,endpoint_id,status,id);

@@ -72,6 +72,9 @@
     "./migrations/upgrades/006-all.sql": "./migrations/upgrades/006-all.sql",
     "./migrations/upgrades/006-management.sql": "./migrations/upgrades/006-management.sql",
     "./migrations/upgrades/006-delivery.sql": "./migrations/upgrades/006-delivery.sql",
+    "./migrations/upgrades/007-all.sql": "./migrations/upgrades/007-all.sql",
+    "./migrations/upgrades/007-management.sql": "./migrations/upgrades/007-management.sql",
+    "./migrations/upgrades/007-delivery.sql": "./migrations/upgrades/007-delivery.sql",
     "./migrations": {
       "types": "./dist/migrations.d.ts",
       "default": "./dist/migrations.js"

@@ -91,7 +91,7 @@ for (const value of [createWebhooks, createDelivery, createManagement, createPos
 assert.deepEqual(describeEvents({ 'order.created': { '~standard': { version: 1, vendor: 'plain', validate: (value) => ({ value }) } } }), [{ type: 'order.created', schema: null }])
 for (const [entry, name] of [['good-webhooks', 'createWebhooks'], ['good-webhooks', 'describeEvents'], ['good-webhooks/delivery', 'createDelivery'], ['good-webhooks/management', 'createManagement'], ['good-webhooks/management/postgres', 'createPostgresManagement'], ['good-webhooks/verify', 'parseWebhook'], ['good-webhooks/migrations', 'getPostgresMigration']]) assert.equal(typeof require(entry)[name], 'function')
 assert.ok(getPostgresMigration({schema:'custom',component:'delivery'}).includes('"custom"."webhook_events"'))
-assert.equal(POSTGRES_SCHEMA_VERSION, 6)
+assert.equal(POSTGRES_SCHEMA_VERSION, 7)
 assert.ok(getPostgresUpgrade({schema:'custom',component:'delivery',from:3}).includes('"custom"."webhook_schema_version"'))
 for (const name of ['001-initial', 'management', 'delivery']) {
   const sql = await readFile(new URL(import.meta.resolve('good-webhooks/migrations/' + name + '.sql')), 'utf8')
@@ -99,12 +99,12 @@ for (const name of ['001-initial', 'management', 'delivery']) {
 }
 for (const name of ['all', 'management', 'delivery']) {
   // Shipped steps are immutable; only the newest one still matches the generator on its own.
-  for (const [step, from] of [['004', 3], ['005', 4]]) {
+  for (const [step, from] of [['004', 3], ['005', 4], ['006', 5]]) {
     const sql = await readFile(new URL(import.meta.resolve('good-webhooks/migrations/upgrades/' + step + '-' + name + '.sql')), 'utf8')
     assert.ok(sql.includes('Upgrades schema version ' + from + ' to ' + (from + 1)))
   }
-  const step6 = await readFile(new URL(import.meta.resolve('good-webhooks/migrations/upgrades/006-' + name + '.sql')), 'utf8')
-  assert.equal(step6, getPostgresUpgrade({ component: name, from: 5 }))
+  const step7 = await readFile(new URL(import.meta.resolve('good-webhooks/migrations/upgrades/007-' + name + '.sql')), 'utf8')
+  assert.equal(step7, getPostgresUpgrade({ component: name, from: 6 }))
 }
 `,
   )

@@ -30,13 +30,13 @@ Time in queue reflects the backlog: the median event waited for half of it. With
 
 ## Large history
 
-Claims stayed in the low milliseconds from an empty table to 7 million deliveries. `prune()` did not: on schema 6, one call slows down as history grows, because no index serves the `replay_of` foreign key's cascade. [#153](https://github.com/pplytas/good-webhooks/issues/153) tracks the fix.
+Claims stayed in the low milliseconds from an empty table to 7 million deliveries. `prune()` did not on schema 6: one call slowed down as history grew, because no index served the `replay_of` foreign key's cascade. Schema 7 adds that index ([#153](https://github.com/pplytas/good-webhooks/issues/153)).
 
 **Method:** `pnpm benchmark:history` seeds succeeded deliveries by SQL in stages, each with one event and one attempt, spread over the 20 scopes of the profile and over the last 10 days. 30% of them are older than the default seven-day `retentionMs`, so `prune()` always has work. After each stage it runs `VACUUM (ANALYZE)`, a discarded warm-up, then the profile's live phase of 5,000 deliveries with `prune()` idle. It then times one `prune()` call on its own pool with a 120 s statement timeout.
 
 Claim timings are `pg_stat_statements` means of server-side execution time over each live phase. Each phase runs about 160 endpoint picks and 640 delivery picks. They exclude network and pool wait.
 
-Measured on 2 November 2026 on the same machine as above, with PostgreSQL 18.6 in Docker. One run per size:
+Measured on schema 6 on 2 November 2026 on the same machine as above, with PostgreSQL 18.6 in Docker. One run per size:
 
 | Deliveries in the table      | 0           | 1.0 M   | 3.0 M   | 7.0 M   |
 | ---------------------------- | ----------- | ------- | ------- | ------- |
@@ -53,9 +53,9 @@ The endpoint and delivery picks read only partial indexes on pending and in-flig
 
 A `prune()` call deletes up to 100 events and cascades to their deliveries. For each deleted delivery, PostgreSQL looks for replays that point at it, and with no index for that lookup it scans the scope's deliveries. At 7 million rows the lookup became a parallel full scan. A `prune()` loop running beside the workers at 1 million rows exceeded a 10 s statement timeout. While it ran, it also held locks that slowed claims.
 
-### With the missing index
+### With the schema 7 index
 
-The last experiment adds `CREATE INDEX ON webhook_deliveries(scope_key, replay_of) WHERE replay_of IS NOT NULL` at 7 million rows. It then runs the live phase with `prune()` looping back to back, the shape of the shipped cleanup entry point:
+The last experiment added `CREATE INDEX ON webhook_deliveries(scope_key, replay_of) WHERE replay_of IS NOT NULL` at 7 million rows, the index schema 7 ships. It then runs the live phase with `prune()` looping back to back, the shape of the shipped cleanup entry point:
 
 | Measurement at 7.0 M         | Schema 6, prune idle | With index, prune looping |
 | ---------------------------- | -------------------- | ------------------------- |
@@ -67,13 +67,13 @@ The last experiment adds `CREATE INDEX ON webhook_deliveries(scope_key, replay_o
 | Attempt latency, p95         | 33 ms                | 34 ms                     |
 | Drain rate                   | 1,041/s              | 956/s                     |
 
-With the index, claims stayed flat while `prune()` deleted events beside them. Until the fix ships, run cleanup off-peak and watch its duration, or add the index above by hand.
+With the index, claims stayed flat while `prune()` deleted events beside them. On schema 6, run cleanup off-peak or [upgrade to schema 7](/docs/operations/migrations#upgrades).
 
 **Caveats:**
 
 - **One run per size on a busy machine.** Other work kept the load average between 5 and 27, and Docker had 4 CPUs and 4 GB.
 - **One shape of history.** Every seeded delivery succeeded on its first attempt, with no failures and no replays. Claims do not read those rows, but `prune()` does.
-- **The index is an experiment.** Schema 6 does not ship it.
+- **Measured before it shipped.** The run added the index by hand; schema 7 ships the same definition.
 
 ## Many workers under faults
 
