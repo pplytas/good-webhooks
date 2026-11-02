@@ -14,6 +14,16 @@ try {
   const page = await context.newPage()
   page.setDefaultTimeout(10_000)
   const errors = []
+  const settled = () =>
+    page.evaluate(() =>
+      Promise.all(
+        document
+          .getAnimations()
+          .filter((animation) => animation.effect?.getComputedTiming().endTime !== Infinity)
+          // A cancelled animation rejects `finished`; it no longer affects layout either way.
+          .map((animation) => animation.finished.catch(() => {})),
+      ),
+    )
   page.on('pageerror', (error) => errors.push(error.message))
 
   const landing = await page.goto(url)
@@ -49,6 +59,8 @@ try {
 
   await page.getByRole('button', { name: 'Toggle Theme', exact: true }).click()
   await page.waitForFunction(() => document.documentElement.classList.contains('dark'))
+  // The theme switch runs a view transition; resizing mid-transition aborts it with a page error.
+  await settled()
 
   await page.setViewportSize({ width: 390, height: 844 })
   await page.getByRole('button', { name: 'Open Sidebar', exact: true }).click()
@@ -57,15 +69,7 @@ try {
     .getByRole('button', { name: 'Close Sidebar', exact: true })
     .waitFor()
   // The drawer overflows while it slides in. Measure the settled layout, not a frame mid-animation.
-  await page.evaluate(() =>
-    Promise.all(
-      document
-        .getAnimations()
-        .filter((animation) => animation.effect?.getComputedTiming().endTime !== Infinity)
-        // A cancelled animation rejects `finished`; it no longer affects layout either way.
-        .map((animation) => animation.finished.catch(() => {})),
-    ),
-  )
+  await settled()
   assert.equal(
     await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
     true,
