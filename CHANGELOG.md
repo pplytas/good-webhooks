@@ -3,18 +3,13 @@
 ## 1.0.0-rc.1 (2026-11-02)
 
 Release candidate for 1.0.0, with the same code and schema `7` as 0.7.0.
+It carries [what 1.0 promises](apps/docs/content/docs/upgrading/contract.mdx), the [upgrade matrix](apps/docs/content/docs/upgrading/matrix.mdx), and [0.x to 1.0](apps/docs/content/docs/upgrading/from-0x.mdx).
 
 ### Upgrade
 
-1. Install `good-webhooks@rc`, then restart producers and workers.
+1. Install `good-webhooks@rc`, then restart producers, then workers.
    - From 0.7.0: no SQL and no code change.
    - Older: follow [0.x to 1.0](apps/docs/content/docs/upgrading/from-0x.mdx).
-
-### Docs
-
-- [What 1.0 promises](apps/docs/content/docs/upgrading/contract.mdx).
-- The [upgrade matrix](apps/docs/content/docs/upgrading/matrix.mdx).
-- The [0.x to 1.0 guide](apps/docs/content/docs/upgrading/from-0x.mdx).
 
 ### Hold
 
@@ -25,7 +20,7 @@ Release candidate for 1.0.0, with the same code and schema `7` as 0.7.0.
 
 ### Feedback wanted
 
-- Promises you could not keep relying on for 1.x.
+- A 1.x promise that is missing or too weak.
 - Names or types to change before the freeze.
 - Upgrade steps that failed or read unclearly.
 - Report them in [issues](https://github.com/pplytas/good-webhooks/issues).
