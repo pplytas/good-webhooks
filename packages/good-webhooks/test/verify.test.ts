@@ -2,8 +2,8 @@ import { createHmac } from 'node:crypto'
 import { describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import type { StandardSchemaV1 } from '@standard-schema/spec'
-import { generateSecret, signWebhook } from '../src/crypto.js'
-import { parseWebhook, verifyWebhook, WebhookError } from '../src/verify.js'
+import { generateSecret, signWebhook, verifyWebhook } from '../src/crypto.js'
+import { parseWebhook, WebhookError } from '../src/verify.js'
 
 const secret = generateSecret()
 const now = new Date('2026-10-06T12:00:00.000Z')

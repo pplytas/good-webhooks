@@ -1,0 +1,26 @@
+---
+title: What 1.0 promises
+description: The promises Good Webhooks makes from 1.0.0, and where each one is defined.
+---
+
+1.0.0 has not shipped yet. It is planned for April to May 2027, after a release candidate held for at least four weeks. This page is updated when 1.0.0-rc.1 ships.
+
+## The promises
+
+From 1.0.0, Good Webhooks promises:
+
+1. **A frozen public surface for 1.x.** The entry points, every exported name, and the interfaces a host implements stay compatible until 2.0.0. See [public surface](/docs/operations/compatibility#public-surface).
+2. **Breaking changes only in a major, after a deprecation.** A deprecated API keeps working for the rest of the major. See [releases](/docs/operations/compatibility#releases) and [deprecation](/docs/operations/compatibility#deprecation).
+3. **Only additive SQL in a 1.x minor.** New nullable columns or indexes need an announcement in the previous minor, upgrade SQL, and a rollout order. Destructive schema changes wait for 2.0.0. See [schema and rollout](/docs/operations/compatibility#schema-and-rollout).
+4. **A published support matrix with a drop policy.** Node.js and PostgreSQL lines are dropped only in a major, after upstream end of life. See [supported configurations](/docs/operations/compatibility#supported-configurations) and the [drop policy](/docs/operations/compatibility#drop-policy).
+5. **Support windows.** The previous minor gets security fixes for three months, and the last 1.x minor gets them for six months after 2.0.0. See [support windows](/docs/operations/compatibility#support-windows).
+6. **Security response targets.** An initial response within 14 days, and a fix for medium or higher severity within 60 days of confirmation. See the [security policy](https://github.com/pplytas/good-webhooks/blob/main/SECURITY.md).
+7. **Releases that survive the maintainer's absence.** Releases run in GitHub Actions and publish through npm trusted publishing, with no stored token, and a [written handover](https://github.com/pplytas/good-webhooks/blob/main/docs/handover.md) says how another maintainer takes over.
+
+See also the [upgrade matrix](/docs/upgrading/matrix) and [Upgrade from 0.x](/docs/upgrading/from-0x).
+
+## What 1.0 does not promise
+
+- **Throughput beyond the published benchmark.** The [performance page](/docs/operations/performance) states the measured profile and what it does not cover.
+- **Ordering.** Deliveries can arrive out of order. See [delivery guarantees](/docs/concepts/delivery-guarantees).
+- **Deferred features.** Features the [roadmap](https://github.com/pplytas/good-webhooks/blob/main/docs/roadmap.md#deferred-with-the-evidence-that-would-unblock-each) lists as deferred are not part of 1.0.

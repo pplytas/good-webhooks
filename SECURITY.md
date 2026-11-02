@@ -4,7 +4,7 @@ Report suspected vulnerabilities through [GitHub's private vulnerability reporti
 
 ## Response targets
 
-One maintainer works on Good Webhooks part time, so these targets are ceilings, not averages. They apply to reports against [supported versions](#supported-versions); alpha and beta versions receive no fixes.
+One maintainer works on Good Webhooks part time, so these targets are ceilings, not averages. They apply to reports against [supported versions](#supported-versions).
 
 - You get an initial response within 14 days of your report.
 - A fix for medium or higher severity ships within 60 days of confirmation. Severity follows CVSS 4.0 or the maintainer's judgement.
@@ -14,7 +14,24 @@ The advisory credits you unless you decline.
 
 ## Supported versions
 
-Security fixes reach the latest minor and the previous minor for three months after the next minor ships, as described in the [compatibility policy](https://good-webhooks.dev/docs/operations/compatibility#stability-policy). Alpha and beta versions receive no fixes. Upgrade guidance and affected versions belong in the advisory and release notes.
+| Version               | Fixes              |
+| --------------------- | ------------------ |
+| Latest minor          | All fixes          |
+| Previous minor        | Security, 3 months |
+| Last 1.x, after 2.0.0 | Security, 6 months |
+| Alpha, beta, and rc   | None               |
+
+The windows start when the next minor or major ships. 1.0.0 has not shipped yet.
+
+The [compatibility policy](https://good-webhooks.dev/docs/operations/compatibility#support-windows) is the source for these windows. Upgrade guidance and affected versions belong in the advisory and release notes.
+
+## Automated checks
+
+- Dependabot opens dependency updates weekly and raises vulnerability alerts.
+- CodeQL scans every push and pull request to `main`, and runs weekly.
+- OpenSSF Scorecard runs on every push to `main` and weekly.
+- Releases publish through npm trusted publishing with provenance, so no npm token is stored.
+- Workflows pin every action to a full commit SHA.
 
 ## Threat model
 

@@ -5,43 +5,107 @@ description: Supported runtimes and databases, what each release promises, and h
 
 ## Supported configurations
 
-| Component          | Supported             |
-| ------------------ | --------------------- |
-| Node.js            | 24 or later           |
-| Bun                | `parseWebhook()` only |
-| Deno               | `parseWebhook()` only |
-| Cloudflare Workers | `parseWebhook()` only |
-| TypeScript         | 5.9.3 or later        |
-| PostgreSQL         | 16, 17, and 18        |
-| Better Auth        | 1.7.7 through 1.8     |
+| Component          | Supported             | Verified in CI            |
+| ------------------ | --------------------- | ------------------------- |
+| Node.js            | LTS lines from 24     | 24 and 26                 |
+| Bun                | `parseWebhook()` only | 1.4.4                     |
+| Deno               | `parseWebhook()` only | 2.9.8                     |
+| Cloudflare Workers | `parseWebhook()` only | workerd 1.20261006.1      |
+| TypeScript         | 5.9.3 or later        | 5.9.3, 6.0, and 7.0       |
+| PostgreSQL         | 16, 17, and 18        | 16 to 18, and 19 RC1      |
+| Better Auth        | 1.7.7 through 1.8     | 1.7.7, newest 1.7 and 1.8 |
 
 The worker, publishing, and management run on Node.js only. `parseWebhook()` is verified on Bun, Deno, and Cloudflare Workers. On Workers it needs Node.js compatibility, because the verify entry point uses `node:crypto` and the `Buffer` global: compatibility date 2026-08-04 or later turns it on by default, and from 2024-09-23 the [`nodejs_compat`](https://developers.cloudflare.com/workers/configuration/compatibility-flags/) flag does. Earlier dates lack the `Buffer` global even with the flag. No other runtime is verified.
 
 What CI verifies for each:
 
-- **Node.js**: ESM and CommonJS consumers on Node.js 24, and the full integration suite on Node.js 26.
+- **Node.js**: the full integration suite on Node.js 26 (Active LTS) for every PostgreSQL version, and on Node.js 24 (Maintenance LTS) with PostgreSQL 18. ESM and CommonJS consumers on Node.js 24 and 26.
 - **Bun**: Bun 1.4.4 runs `parseWebhook()` against a signed event and rejects a tampered body from the packed archive.
 - **Deno**: Deno 2.9.8 runs `parseWebhook()` against a signed event and rejects a tampered body from the packed archive.
 - **Cloudflare Workers**: workerd 1.20261006.1 through miniflare, on compatibility date 2026-10-01, and on 2024-09-23 with `nodejs_compat`, runs `parseWebhook()` against a signed event and rejects a tampered body from the packed archive. The same date without the flag must fail to start.
 - **TypeScript**: 5.9.3, 6.0, and 7.0, with NodeNext and Bundler resolution.
-- **PostgreSQL**: the full integration suite on each supported version.
-- **Better Auth**: support covers 1.7.7 or a later 1.7, and 1.8 including the 1.8.0 betas. CI checks 1.7.7 and the newest 1.7 and 1.8 releases across the [adapter matrix](/docs/better-auth#supported-databases).
+- **PostgreSQL**: the full integration suite on 16, 17, and 18, and on the 19 release candidate as a non-required job. 19 joins the supported list when its GA image ships.
+- **Better Auth**: 1.7.7, the newest 1.7, and the newest 1.8 including betas, across the [adapter matrix](/docs/better-auth#supported-databases). CI also runs every Monday, so new Better Auth releases are tested without a change here.
 
 The package ships ESM and also loads through CommonJS `require()`. Standalone consumers are checked with `strict: true` and `skipLibCheck: false`. Better Auth consumers need `skipLibCheck` for upstream declarations; their own types stay fully checked. The Bun, Deno, and Cloudflare Workers checks cover only `parseWebhook()` from the packed `good-webhooks/verify` entry point, not publishing, delivery workers, or database-backed management.
 
+### Drop policy
+
+- A major release drops a Node.js or PostgreSQL line only after its upstream end of life.
+- CI tests LTS lines only. `engines` does not block Node.js 25, but nothing checks it.
+- Better Auth and TypeScript publish no end-of-life dates, so at least the current and previous release line of each stay supported.
+- When a new Better Auth or TypeScript line ships, the next minor release may drop the oldest supported line. The release before it announces the drop, and the drop is not a breaking change.
+
+Upstream end of life for the supported lines:
+
+| Line          | End of life |
+| ------------- | ----------- |
+| Node.js 24    | 2028-04-30  |
+| Node.js 26    | 2029-04-30  |
+| PostgreSQL 16 | 2028-11-09  |
+| PostgreSQL 17 | 2029-11-08  |
+| PostgreSQL 18 | 2030-11-14  |
+
+Node.js 26 has been Active LTS since 2026-10-28 and is CI's primary line. PostgreSQL 19 is at release candidate 1, and CI runs it as a non-required job until GA. Today's TypeScript range, 5.9.3 or later, is wider than the policy's minimum.
+
 ## Stability policy
+
+1.0.0 has not shipped yet. This section states the contract from 1.0.0, and [Before 1.0.0](#before-100) lists the 0.x rules that still apply today.
 
 ### Public surface
 
-The [entry points](/docs/reference), every name they export, and the shipped SQL files are the public API. Imports from `dist/` or `src/`, anything not reachable from an entry point, and types with `Internal` in their name can change without notice.
+These are public, and the rest of this policy applies to them:
+
+- The [entry points](/docs/reference) and every name they export, including types.
+- The interfaces a host implements: `EndpointSource`, `EndpointManagement`, `ManagementRepository`, `EndpointResolution`, `StoredEndpoint`, and `DeliveryHooks`.
+- The [Better Auth plugin](/docs/reference/better-auth): its routes, request and response bodies, client methods, and stored model.
+- The shipped SQL files and the schema version sequence.
+- The wire format: request headers, the signature scheme, and the event envelope.
+
+These are not public and can change without notice:
+
+- Imports from `dist/` or `src/`, and anything not reachable from an entry point.
+- Names that contain `Internal`.
+- The docs site, the examples, and the Playground.
 
 ### Releases
 
-- Releases follow [semantic versioning](https://semver.org). While the major version is `0`, a minor release may contain breaking changes; a patch release never does.
-- Breaking means a passing consumer type-check fails, existing runtime behavior changes, a supported runtime or database version is dropped, or SQL must run before upgrading. Existing behavior includes option defaults, error codes, the request format, and the signature scheme.
+- Releases follow [semantic versioning](https://semver.org). A patch release never contains a breaking change.
+- Breaking means a passing consumer type-check fails, existing runtime behavior changes, a supported Node.js or PostgreSQL version is dropped, or SQL must run before upgrading. Existing behavior includes option defaults, error codes, the request format, and the signature scheme.
 - Additions are not breaking: new optional options, new fields in results (optional in types that hosts implement), new exports, and new request headers. Changing or removing an existing one is.
-- Any schema change ships upgrade SQL and a [rollout order](/docs/operations/migrations#rollout-order). Package and schema versions are independent, and downgrading is never assumed safe.
-- Every breaking change is deprecated in at least one earlier minor with a runtime or type-level warning, and the release notes state the migration. Before `1.0`, a minor may instead change a default or require upgrade SQL without a deprecation period. In that case the previous release announces the change, and the release notes give the migration.
-- The latest minor receives all fixes. Security fixes also reach the previous minor for three months after the next minor ships.
-- `0.1.0` claims a stable API and upgrade path, not verified behavior at throughput beyond the [measured profile](/docs/operations/performance).
-- Alpha and beta versions receive no fixes. Upgrade to the latest release.
+- Dropping a Better Auth or TypeScript line follows the [drop policy](#drop-policy) and is not breaking.
+- From 1.0.0, a breaking change ships only in a major release.
+
+### Deprecation
+
+- A deprecated API keeps working for the rest of the major.
+- The release notes of the minor that deprecates it announce the deprecation and name the replacement.
+- The API gets a `@deprecated` tag in its types and, where it can, a runtime warning once per process.
+- Removal happens only in the next major release.
+
+### Schema and rollout
+
+- Each package version requires one exact schema version. `check()` throws `SCHEMA_MISMATCH` when the recorded version is lower or higher.
+- Installing a package never runs SQL.
+- A 1.x minor may require additive upgrade SQL, such as new nullable columns or new indexes, when the previous minor announced it. It ships the upgrade SQL and a [rollout order](/docs/operations/migrations#rollout-order), and processes on the previous package keep running until they restart.
+- Destructive schema changes ship only in a major release.
+- A schema downgrade is never supported, and a package downgrade is never assumed safe.
+
+The [upgrade matrix](/docs/upgrading/matrix) lists which package versions may run together during a rollout.
+
+### Support windows
+
+- The latest minor receives all fixes.
+- Security fixes also reach the previous minor for three months after the next minor ships.
+- After 2.0.0 ships, the last 1.x minor receives security fixes for six months.
+- Pre-release versions (alpha, beta, and release candidates) receive no fixes. Upgrade to the latest release.
+
+The [security policy](https://github.com/pplytas/good-webhooks/blob/main/SECURITY.md) has the reporting channel and response targets.
+
+### Before 1.0.0
+
+These 0.x rules apply until 1.0.0 ships:
+
+- A minor release may contain breaking changes, change a default, or require upgrade SQL without a deprecation period, when the release before it announced the change and the release notes give the migration.
+- 0.7.0 is the last release that may change a default without a deprecation.
+- The stable API claim covers the API and upgrade path, not throughput beyond the [measured profile](/docs/operations/performance).
