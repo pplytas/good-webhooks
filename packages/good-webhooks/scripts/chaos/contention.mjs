@@ -203,11 +203,20 @@ export async function runContention({ harness, pool, schema, workers }) {
   sampler.resume()
   await waitUntil(() => allReady(workers), 'workers after the lock', 60_000)
 
-  await waitUntil(
-    async () => (await succeeded()) === total,
-    `${total} deliveries to succeed`,
-    contention.budgetMs,
-  )
+  try {
+    await waitUntil(
+      async () => (await succeeded()) === total,
+      `${total} deliveries to succeed`,
+      contention.budgetMs,
+    )
+  } catch (error) {
+    // Say how far the drain got, so a timeout separates slow progress from stuck work.
+    const left = await pool.query(
+      `SELECT status, count(*)::int AS n FROM "${schema}".webhook_deliveries GROUP BY status`,
+    )
+    progress(`drain stopped: ${JSON.stringify(left.rows)}`)
+    throw error
+  }
   const drainMs = performance.now() - drainStarted
   const sampled = await sampler.stop()
   if (failures.length) throw new AggregateError(failures, 'Receiver or sampler failed.')

@@ -13,7 +13,7 @@ import { generateEncryptionKey } from 'good-webhooks'
 import { getPostgresMigration } from 'good-webhooks/migrations'
 import { verifyWebhook } from 'good-webhooks/verify'
 import { database, history, profile, webhooks } from './benchmark/config.mjs'
-import { seedHistory, startPruneLoop, tableStats } from './benchmark/history.mjs'
+import { probePrune, seedHistory, startPruneLoop, tableStats } from './benchmark/history.mjs'
 import {
   hasStatementStats,
   missingExtension,
@@ -271,9 +271,11 @@ async function livePhase(index, pruning) {
   }
 }
 
-// Each stage runs the live phase three times on the same history: a discarded warm-up, then with
-// prune() idle, to isolate the cost of history size, then with prune() looping back to back, the
-// documented cleanup shape.
+// Each stage runs a discarded warm-up live phase, then a measured one with prune() idle, to isolate
+// the cost of history size, then times one prune() call. On schema 6 a prune() call scans the
+// deliveries of a scope once per deleted delivery: no index serves the replay_of foreign key's
+// cascade. After the last stage, an experiment adds that index, times prune() again, and runs a
+// live phase with prune() looping back to back, the documented cleanup shape.
 async function runHistory() {
   await setup()
   if (!(await hasStatementStats(pool))) throw new Error(missingExtension)
@@ -293,10 +295,8 @@ async function runHistory() {
     await livePhase(index, 'warmup')
     const pruneIdle = await livePhase(index, 'idle')
     progress(`${label}: prune idle, ${pruneIdle.drain.deliveriesPerSecond}/s`)
-    const pruneLoop = await livePhase(index, 'loop')
-    progress(
-      `${label}: prune looping, ${pruneLoop.drain.deliveriesPerSecond}/s, ${pruneLoop.prune.eventsDeleted} events pruned`,
-    )
+    const prune = await probePrune(pool, schema, encryptionKey)
+    progress(`${label}: one prune() call ${JSON.stringify(prune)}`)
     stages.push({
       seededRows,
       deliveriesAtStart: atStart.deliveries,
@@ -304,11 +304,22 @@ async function runHistory() {
       tableBytes: atStart.tableBytes,
       seedSeconds,
       pruneIdle,
-      pruneLoop,
+      prune,
     })
     // The full stage as JSON on stderr, so an interrupted run still leaves its finished stages.
     progress(`${label}: ${JSON.stringify(stages.at(-1))}`)
   }
+  // Experiment, not the shipped schema: the index the cascade needs, then prune() under load.
+  progress('experiment: adding an index for the replay_of cascade')
+  await pool.query(
+    `CREATE INDEX bench_deliveries_replay ON "${schema}".webhook_deliveries(scope_key,replay_of)
+     WHERE replay_of IS NOT NULL`,
+  )
+  const indexedPrune = await probePrune(pool, schema, encryptionKey)
+  progress(`experiment: one prune() call ${JSON.stringify(indexedPrune)}`)
+  await livePhase(history.stages.length, 'warmup')
+  const indexedLoop = await livePhase(history.stages.length, 'loop')
+  progress(`experiment: prune looping, ${indexedLoop.drain.deliveriesPerSecond}/s`)
   return {
     mode: 'history',
     profile,
@@ -319,6 +330,12 @@ async function runHistory() {
         'claim timings are pg_stat_statements server-side execution times, reset before each live phase',
     },
     stages,
+    replayIndexExperiment: {
+      index: 'webhook_deliveries(scope_key,replay_of) WHERE replay_of IS NOT NULL',
+      deliveriesAtStart: (await tableStats(pool, schema)).deliveries,
+      prune: indexedPrune,
+      pruneLoop: indexedLoop,
+    },
   }
 }
 

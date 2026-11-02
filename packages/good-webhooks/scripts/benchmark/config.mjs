@@ -40,12 +40,12 @@ export const events = {
   'benchmark.event': z.object({ endpoint: z.int(), sequence: z.int() }),
 }
 
-export function database(connectionString) {
+export function database(connectionString, { statementTimeoutMs = 10_000 } = {}) {
   return new Pool({
     connectionString,
     max: 20,
     connectionTimeoutMillis: 5000,
-    statement_timeout: 10_000,
+    statement_timeout: statementTimeoutMs,
     application_name: 'good-webhooks-benchmark',
   })
 }

@@ -1,6 +1,6 @@
 // Large-history helpers: seed succeeded deliveries by SQL and prune concurrently with the live phase.
 import { setTimeout as sleep } from 'node:timers/promises'
-import { history } from './config.mjs'
+import { database, history, webhooks } from './config.mjs'
 
 const spreadMs = Math.round(history.retentionMs / (1 - history.agedShare))
 
@@ -92,5 +92,41 @@ export function startPruneLoop(app, onError) {
       eventsDeleted: stats.eventsDeleted,
       meanMs: stats.calls ? +(stats.totalMs / stats.calls).toFixed(2) : null,
     }
+  }
+}
+
+/**
+ * Time one prune() call on its own pool with a 120 s statement timeout, and record the plan of the
+ * foreign-key cascade lookup that every deleted delivery runs.
+ */
+export async function probePrune(pool, schema, encryptionKey) {
+  const scopeKey = (
+    await pool.query(`SELECT scope_key FROM "${schema}".webhook_endpoint_state LIMIT 1`)
+  ).rows[0].scope_key
+  const plan = (
+    await pool.query(
+      `EXPLAIN (FORMAT JSON) SELECT 1 FROM ONLY "${schema}".webhook_deliveries
+       WHERE scope_key=$1 AND replay_of=$2`,
+      [scopeKey, 1],
+    )
+  ).rows[0]['QUERY PLAN'][0].Plan
+  const index = (node) => node['Index Name'] ?? node.Plans?.map(index).find(Boolean)
+  const cascadePlan = `${plan['Node Type']}${index(plan) ? ` on ${index(plan)}` : ''}`
+  const probePool = database(process.env.TEST_DATABASE_URL, { statementTimeoutMs: 120_000 })
+  const started = performance.now()
+  try {
+    const deleted = await webhooks(probePool, schema, encryptionKey).worker.prune()
+    return {
+      seconds: +((performance.now() - started) / 1000).toFixed(2),
+      eventsDeleted: deleted,
+      cascadePlan: plan['Index Name']
+        ? `${plan['Node Type']} on ${plan['Index Name']}`
+        : plan['Node Type'],
+    }
+  } catch (error) {
+    if (error.code !== '57014') throw error
+    return { seconds: null, timedOut: '120 s', cascadePlan }
+  } finally {
+    await probePool.end()
   }
 }

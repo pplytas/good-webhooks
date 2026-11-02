@@ -25,10 +25,14 @@
 
 - The receive guide shows how to verify a stored request later with `now` ([#74](https://github.com/pplytas/good-webhooks/issues/74)).
 - The compatibility page states which runtimes are verified, now including Cloudflare Workers ([compatibility](https://good-webhooks.dev/docs/operations/compatibility)).
+- The [performance page](https://good-webhooks.dev/docs/operations/performance) publishes claim timings against 7 million delivery rows and contention runs at 8 and 32 workers ([#154](https://github.com/pplytas/good-webhooks/pull/154)).
+- The same page reports that `prune()` slows as history grows on schema 6, tracked in [#153](https://github.com/pplytas/good-webhooks/issues/153).
+- [`docs/proof-0-7-0.md`](docs/proof-0-7-0.md) tracks the 0.7.0 proof for the 1.0 gate.
 
 ### Docs and repository
 
 - CI runs on Node.js 26 as the primary line, keeps Node.js 24 on PostgreSQL 18, and adds a non-required PostgreSQL 19 RC1 job.
+- `pnpm benchmark:history` and `pnpm test:chaos:contention` run the published large-history and contention proofs.
 
 ## 0.6.0 (2026-10-27)
 

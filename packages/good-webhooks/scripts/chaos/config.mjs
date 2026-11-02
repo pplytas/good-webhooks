@@ -19,7 +19,8 @@ export const contention = {
   },
   maxInFlight: 16,
   controlPoolMax: 20,
-  budgetMs: 240_000,
+  // Generous: 32 workers on a shared 4-CPU Docker VM drain far slower than on an idle host.
+  budgetMs: 600_000,
   // The retry window outlasts the run, so only contention, not backlog age, can fail a delivery.
   retryMaxAgeMs: 300_000,
   sampleIntervalMs: 250,
