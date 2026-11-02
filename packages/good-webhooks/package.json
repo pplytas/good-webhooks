@@ -100,7 +100,9 @@
     "test:chaos": "pnpm run build && node scripts/check-chaos.mjs",
     "benchmark": "pnpm run build && node scripts/benchmark.mjs",
     "api-report": "pnpm run build && node scripts/api-report.mjs",
-    "api-report:check": "pnpm run build && node scripts/api-report.mjs --check"
+    "api-report:check": "pnpm run build && node scripts/api-report.mjs --check",
+    "test:chaos:contention": "pnpm run build && node scripts/check-chaos.mjs --workers \"${CHAOS_WORKERS:-8}\"",
+    "benchmark:history": "pnpm run build && node scripts/benchmark.mjs --history"
   },
   "dependencies": {
     "@better-fetch/fetch": "^1.3.3",

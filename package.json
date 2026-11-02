@@ -25,7 +25,9 @@
     "test:chaos": "pnpm --filter good-webhooks test:chaos",
     "benchmark": "pnpm --filter good-webhooks benchmark",
     "api-report": "pnpm --filter good-webhooks api-report",
-    "api-report:check": "pnpm --filter good-webhooks api-report:check"
+    "api-report:check": "pnpm --filter good-webhooks api-report:check",
+    "test:chaos:contention": "pnpm --filter good-webhooks test:chaos:contention",
+    "benchmark:history": "pnpm --filter good-webhooks benchmark:history"
   },
   "devDependencies": {
     "prettier": "^3.9.10"

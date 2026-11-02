@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { database, limits, webhooks } from './config.mjs'
+import { contention, database, limits, webhooks } from './config.mjs'
 
 assert(process.env.TEST_DATABASE_URL, 'TEST_DATABASE_URL is required.')
 assert(/^gw_chaos_[a-f0-9]+$/.test(process.env.CHAOS_SCHEMA ?? ''))
@@ -18,7 +18,12 @@ const fail = (error) => {
 }
 pool.on('error', fail)
 try {
-  const app = webhooks(pool, process.env.CHAOS_SCHEMA, process.env.CHAOS_ENCRYPTION_KEY)
+  const app = webhooks(
+    pool,
+    process.env.CHAOS_SCHEMA,
+    process.env.CHAOS_ENCRYPTION_KEY,
+    process.env.CHAOS_MODE === 'contention' ? { retryMaxAgeMs: contention.retryMaxAgeMs } : {},
+  )
   await app.check()
   process.send({ ready: true })
   await app.worker.run({

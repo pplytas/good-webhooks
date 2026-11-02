@@ -1,9 +1,9 @@
 ---
 title: Performance
-description: Measured publish and delivery throughput for a fixed profile on one machine, how it was measured, and what the numbers do not say.
+description: Measured throughput for a fixed profile, claim cost against millions of delivery rows, and many workers under faults, with methods and caveats.
 ---
 
-These numbers come from `pnpm benchmark` in the repository. They show what the library costs on its own, not a capacity guarantee for your receivers, network, or database.
+These numbers come from `pnpm benchmark`, `pnpm benchmark:history`, and `pnpm test:chaos:contention` in the repository. They show what the library costs on its own, not a capacity guarantee for your receivers, network, or database.
 
 **Profile:** 20 endpoints in separate scopes, 5,000 events (one delivery each), 2 worker processes with `concurrency: 32`, a per-endpoint cap of 8, 20 pool connections per process, and a local receiver that verifies the signature and answers `204` after 5 ms. Every event is published, each in its own transaction, before the workers start.
 
@@ -26,7 +26,99 @@ Time in queue reflects the backlog: the median event waited for half of it. With
 - **Receiver time dominates in production.** With a 300 ms receiver, throughput depends on `concurrency` and `maxInFlight`, not on the library.
 - **One machine.** Everything shares CPU. Separate hosts mean less contention and more network latency.
 - **No failures.** Retries, timeouts, and lease recoveries are slower by design.
-- **Empty tables.** Claims use partial indexes on status, so a large history should not slow them, but this profile does not prove it.
+- **Empty tables.** This profile starts empty. [Large history](#large-history) measures claims against millions of rows.
+
+## Large history
+
+Claims stayed in the low milliseconds from an empty table to 7 million deliveries. `prune()` did not: on schema 6, one call slows down as history grows, because no index serves the `replay_of` foreign key's cascade. [#153](https://github.com/pplytas/good-webhooks/issues/153) tracks the fix.
+
+**Method:** `pnpm benchmark:history` seeds succeeded deliveries by SQL in stages, each with one event and one attempt, spread over the 20 scopes of the profile and over the last 10 days. 30% of them are older than the default seven-day `retentionMs`, so `prune()` always has work. After each stage it runs `VACUUM (ANALYZE)`, a discarded warm-up, then the profile's live phase of 5,000 deliveries with `prune()` idle. It then times one `prune()` call on its own pool with a 120 s statement timeout.
+
+Claim timings are `pg_stat_statements` means of server-side execution time over each live phase. Each phase runs about 160 endpoint picks and 640 delivery picks. They exclude network and pool wait.
+
+Measured on 2 November 2026 on the same machine as above, with PostgreSQL 18.6 in Docker. One run per size:
+
+| Deliveries in the table      | 0           | 1.0 M   | 3.0 M   | 7.0 M   |
+| ---------------------------- | ----------- | ------- | ------- | ------- |
+| Deliveries table and indexes | 0.08 MB     | 0.76 GB | 2.27 GB | 5.28 GB |
+| Endpoint pick, mean          | 1.17 ms     | 0.61 ms | 1.05 ms | 1.13 ms |
+| Delivery pick, mean          | 0.28 ms     | 0.14 ms | 0.30 ms | 0.24 ms |
+| Reserve update, mean         | 0.68 ms     | 1.44 ms | 2.48 ms | 1.84 ms |
+| Lease recovery scan, mean    | 0.01 ms     | 0.02 ms | 0.03 ms | 0.02 ms |
+| Attempt latency, p95         | 29 ms       | 35 ms   | 46 ms   | 33 ms   |
+| Drain rate                   | 1,275/s     | 1,133/s | 896/s   | 1,041/s |
+| One `prune()` call           | nothing due | 2.65 s  | 12.2 s  | 50.3 s  |
+
+The endpoint and delivery picks read only partial indexes on pending and in-flight rows, so history does not reach them. The reserve update grew with history, from under 1 ms to about 2 ms; this run does not show why. Drain rate moved with the machine's other load, not with history size.
+
+A `prune()` call deletes up to 100 events and cascades to their deliveries. For each deleted delivery, PostgreSQL looks for replays that point at it, and with no index for that lookup it scans the scope's deliveries. At 7 million rows the lookup became a parallel full scan. A `prune()` loop running beside the workers at 1 million rows exceeded a 10 s statement timeout. While it ran, it also held locks that slowed claims.
+
+### With the missing index
+
+The last experiment adds `CREATE INDEX ON webhook_deliveries(scope_key, replay_of) WHERE replay_of IS NOT NULL` at 7 million rows. It then runs the live phase with `prune()` looping back to back, the shape of the shipped cleanup entry point:
+
+| Measurement at 7.0 M         | Schema 6, prune idle | With index, prune looping |
+| ---------------------------- | -------------------- | ------------------------- |
+| One `prune()` call           | 50.3 s               | 0.06 s                    |
+| `prune()` calls in the phase | none                 | 424                       |
+| Events pruned in the phase   | none                 | 30,432                    |
+| Endpoint pick, mean          | 1.13 ms              | 1.50 ms                   |
+| Reserve update, mean         | 1.84 ms              | 1.49 ms                   |
+| Attempt latency, p95         | 33 ms                | 34 ms                     |
+| Drain rate                   | 1,041/s              | 956/s                     |
+
+With the index, claims stayed flat while `prune()` deleted events beside them. Until the fix ships, run cleanup off-peak and watch its duration, or add the index above by hand.
+
+**Caveats:**
+
+- **One run per size on a busy machine.** Other work kept the load average between 5 and 27, and Docker had 4 CPUs and 4 GB.
+- **One shape of history.** Every seeded delivery succeeded on its first attempt, with no failures and no replays. Claims do not read those rows, but `prune()` does.
+- **The index is an experiment.** Schema 6 does not ship it.
+
+## Many workers under faults
+
+The contention run drains 20,000 events through one scope with 8 or 32 worker processes while faults hit them. Each worker has `concurrency: 16`, an 800 ms timeout, a 2 s lease, and 10 pool connections. The scope holds 8 endpoints with a cap of 16 in flight each: six answer `204`, one answers `503` to the first request per event, and one never answers the first request per event.
+
+Three faults land during the drain:
+
+1. At 10% drained, PostgreSQL terminates every worker connection.
+2. At 30%, two workers are killed with `SIGKILL` mid-send.
+3. At 50%, a transaction holds an exclusive lock on the deliveries table for 2.5 s.
+
+A supervisor restarts every worker that exits, as a process manager would. One run per worker count, measured on 2 November 2026 on the same machine as above with PostgreSQL 18.6 in Docker:
+
+| Measurement                 | 8 workers | 32 workers |
+| --------------------------- | --------- | ---------- |
+| Drain time                  | 41.0 s    | 40.2 s     |
+| Drain rate                  | 488/s     | 497/s      |
+| Attempts succeeded          | 20,000    | 20,000     |
+| Attempts retried            | 1,978     | 1,976      |
+| Attempts abandoned          | 64        | 94         |
+| Receiver requests           | 22,042    | 22,070     |
+| Worker restarts             | 18        | 65         |
+| Most in flight per endpoint | 16 of 16  | 16 of 16   |
+| Oldest expired lease seen   | 0 ms      | 208 ms     |
+| Endpoint pick, mean         | 1.77 ms   | 2.62 ms    |
+
+Eight workers already fill every endpoint's cap, so 32 workers did not drain faster. The faults and the failing receivers set the pace. Abandoned attempts are sends whose worker died or lost its connection before recording an outcome; each was recovered and retried. The 8-worker run saw a load average near 12 from other work on the machine, the 32-worker run near 5.
+
+Every invariant is checked against the database after the drain, and the run fails if any does not hold:
+
+| Invariant               | 8 workers | 32 workers |
+| ----------------------- | --------- | ---------- |
+| No lost event           | Held      | Held       |
+| No delivery stuck       | Held      | Held       |
+| Every attempt recorded  | Held      | Held       |
+| No double delivery      | Held      | Held       |
+| In-flight cap respected | Held      | Held       |
+
+- **No lost event.** Every published event has one delivery, every delivery ends `succeeded`, and the receiver saw every event.
+- **No delivery stuck.** Nothing is in flight at the end, and no expired lease outlived 5 s during the drain. That bound covers recovery after the 2.5 s lock, not steady state, where recovery takes tens of milliseconds.
+- **Every attempt recorded.** Each delivery's attempts are numbered 1 to its attempt count, none is left open, exactly one succeeded, and it is the last.
+- **No double delivery.** The receiver logs every request with the database clock. Each request falls inside exactly one attempt's window, from its row insert before sending to its recorded outcome, and no attempt window holds two requests.
+- **In-flight cap respected.** A sampler reads in-flight rows per endpoint every 250 ms, and the receiver counts open requests per endpoint. Neither exceeded 16.
+
+The run took only one schedule of faults, at one load. A delivery in flight through all three faults plus a failing receiver could exhaust its five attempts and fail the run, which is unlikely but possible.
 
 ## Run it yourself
 
@@ -36,3 +128,21 @@ pnpm benchmark
 ```
 
 The script runs in a temporary schema, prints a JSON report, and fails if any delivery does not succeed exactly once. Edit `scripts/benchmark/config.mjs` to model your own receiver delay or concurrency, and compare runs on the same machine only.
+
+The large-history and contention runs need more from the server. Start PostgreSQL with `pg_stat_statements` and enough connections for 32 workers:
+
+```sh
+docker run --name good-webhooks-proof \
+	-e POSTGRES_PASSWORD=webhooks_dev_only \
+	-e POSTGRES_DB=webhooks \
+	-p 127.0.0.1:55440:5432 \
+	-d postgres:18 \
+	-c shared_preload_libraries=pg_stat_statements \
+	-c max_connections=600 \
+	-c shared_buffers=1GB
+psql 'postgres://postgres:webhooks_dev_only@127.0.0.1:55440/webhooks' -c 'CREATE EXTENSION pg_stat_statements'
+export TEST_DATABASE_URL='postgres://postgres:webhooks_dev_only@127.0.0.1:55440/webhooks'
+pnpm benchmark:history
+CHAOS_WORKERS=8 pnpm test:chaos:contention
+CHAOS_WORKERS=32 pnpm test:chaos:contention
+```
