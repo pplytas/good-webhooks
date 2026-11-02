@@ -249,6 +249,27 @@ describe('schema upgrade to version 7', () => {
     },
   )
 
+  it.each([3, 4, 5, 6] as const)(
+    'ends with the same indexes as a fresh install after upgrading from version %i',
+    async (from) => {
+      const indexes = async () =>
+        (
+          await pool.query(
+            "SELECT indexdef FROM pg_indexes WHERE schemaname = 'public' AND tablename LIKE 'webhook\\_%' ORDER BY indexname",
+          )
+        ).rows
+      await apply(getPostgresMigration())
+      const fresh = await indexes()
+      expect(fresh).toContainEqual({
+        indexdef: expect.stringContaining('webhook_deliveries_replays'),
+      })
+      await cleanup()
+      await apply(await fixture('all', from))
+      await apply(getPostgresUpgrade({ from }))
+      expect(await indexes()).toEqual(fresh)
+    },
+  )
+
   it('rolls back as one unit and can be retried', async () => {
     await apply(await fixture('all'))
     const client = await pool.connect()

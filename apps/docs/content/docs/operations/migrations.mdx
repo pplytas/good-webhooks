@@ -92,14 +92,14 @@ The shipped equivalent is `good-webhooks/migrations/upgrades/007-all.sql`. From 
 
 The 5-to-6 step fills `webhook_deliveries.window_started_at` from `created_at` for every existing delivery, under the lock its `ALTER TABLE` takes. Producers and workers that touch the deliveries table wait until it commits, for a time that grows with the table's row count. `prune()` keeps the table near `retentionMs` only when it runs, so check the row count and any pruning backlog before you apply the step. Existing deliveries keep the age they already had.
 
-The 6-to-7 step adds the index `webhook_deliveries_replays`, which `prune()` needs to delete history quickly ([#153](https://github.com/pplytas/good-webhooks/issues/153)). Building it blocks writes to the deliveries table while it reads the table once. On a large table, build it first outside a transaction, then apply the step as usual:
+The 6-to-7 step adds the index `webhook_deliveries_replays`, which `prune()` needs to delete history quickly ([#153](https://github.com/pplytas/good-webhooks/issues/153)). Building it blocks writes to the deliveries table while it reads the table once. On a large table, build it first outside a transaction, with exactly this definition, then apply the step as usual:
 
 ```sql
 CREATE INDEX CONCURRENTLY IF NOT EXISTS webhook_deliveries_replays
   ON "public"."webhook_deliveries"(scope_key, replay_of) WHERE replay_of IS NOT NULL;
 ```
 
-The step then keeps that index. If the concurrent build fails, it leaves an invalid index, and the step refuses to run until you drop it.
+The step then keeps that index. If the concurrent build fails, it leaves an invalid index, and the step refuses to run until you drop it with `DROP INDEX "public"."webhook_deliveries_replays"`.
 
 ### Rollout order
 

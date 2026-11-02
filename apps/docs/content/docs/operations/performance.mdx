@@ -55,7 +55,7 @@ A `prune()` call deletes up to 100 events and cascades to their deliveries. For 
 
 ### With the schema 7 index
 
-The last experiment added `CREATE INDEX ON webhook_deliveries(scope_key, replay_of) WHERE replay_of IS NOT NULL` at 7 million rows, the index schema 7 ships. It then runs the live phase with `prune()` looping back to back, the shape of the shipped cleanup entry point:
+The last experiment added `CREATE INDEX ON webhook_deliveries(scope_key, replay_of) WHERE replay_of IS NOT NULL` at 7 million rows, the index schema 7 ships. It then ran the live phase with `prune()` looping back to back, the shape of the shipped cleanup entry point:
 
 | Measurement at 7.0 M         | Schema 6, prune idle | With index, prune looping |
 | ---------------------------- | -------------------- | ------------------------- |
