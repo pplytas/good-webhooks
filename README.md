@@ -75,7 +75,7 @@ Each example has its own npm lockfile, PostgreSQL setup, browser UI, receiver, a
 | [`examples`](examples)                             | Complete applications that install the published npm package |
 | [`docs`](docs)                                     | Engineering plans and architecture decisions                 |
 
-Use Node.js 24 and the repository's pinned pnpm version, 12.10.1. If Corepack is available, enable its shims with `corepack enable`; otherwise install that pnpm version using the [pnpm installation instructions](https://pnpm.io/installation).
+Use Node.js 24 or 26 and the repository's pinned pnpm version, 12.10.1. If Corepack is available, enable its shims with `corepack enable`; otherwise install that pnpm version using the [pnpm installation instructions](https://pnpm.io/installation).
 
 ```sh
 pnpm install --frozen-lockfile
