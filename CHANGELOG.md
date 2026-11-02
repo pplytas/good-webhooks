@@ -2,9 +2,10 @@
 
 ## Unreleased
 
-### CI
+### Added
 
 - A generated public API report (`packages/good-webhooks/api-report.md`) is checked in CI, so any export change is a visible diff.
+- `VerifyWebhookInput`, `CreateEndpointInput`, and `UpdateEndpointInput` are exported types.
 
 ## 0.6.0 (2026-10-27)
 

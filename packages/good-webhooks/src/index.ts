@@ -15,6 +15,8 @@ import type {
 export { WebhookError } from './errors.js'
 export type { WebhookErrorCode } from './errors.js'
 export { generateEncryptionKey, verifyWebhook } from './crypto.js'
+export type { VerifyWebhookInput } from './crypto.js'
+export type { CreateEndpointInput, UpdateEndpointInput } from './types.js'
 export type {
   Attempt,
   AttemptEvent,

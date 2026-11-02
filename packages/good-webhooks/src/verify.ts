@@ -7,6 +7,7 @@ import { toJson } from './json.js'
 import type { EventDefinitions } from './types.js'
 
 export { verifyWebhook } from './crypto.js'
+export type { VerifyWebhookInput } from './crypto.js'
 export { WebhookError } from './errors.js'
 export type { WebhookErrorCode } from './errors.js'
 

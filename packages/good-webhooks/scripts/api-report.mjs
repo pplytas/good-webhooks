@@ -1,7 +1,7 @@
 // Writes api-report.md: every export of every entry point, printed from the built .d.ts files.
 // `--check` compares instead of writing, so CI fails when an export changes without the report.
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -23,7 +23,12 @@ const entries = Object.entries(exports)
 const report = generate(entries)
 
 if (process.argv.includes('--check')) {
-  const committed = readFileSync(reportPath, 'utf8')
+  if (!existsSync(reportPath)) {
+    console.error(`api-report.md is missing. Generate it with \`${regenerate}\` and commit it.`)
+    process.exit(1)
+  }
+  // Compare with LF endings so a CRLF checkout does not fail the check.
+  const committed = readFileSync(reportPath, 'utf8').replace(/\r\n/g, '\n')
   if (committed !== report) {
     console.error(`api-report.md is stale. Regenerate it with \`${regenerate}\` and commit it.\n`)
     console.error(diff(committed, report))
@@ -66,7 +71,7 @@ function generate(entries) {
           const target =
             symbol.flags & SymbolFlags.Alias ? checker.getAliasedSymbol(symbol) : symbol
           const alias = target.name !== symbol.name ? ` (alias of ${target.name})` : ''
-          const declarations = target.declarations.map((handle) => {
+          const declarations = (target.declarations ?? []).map((handle) => {
             const node = handle.resolve(project)
             // A variable declaration prints without `export declare const`; print its statement.
             const printed = node.kind === SyntaxKind.VariableDeclaration ? node.parent.parent : node

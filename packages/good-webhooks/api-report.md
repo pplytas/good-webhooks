@@ -110,6 +110,17 @@ export declare function createDelivery<const E extends EventDefinitions>(options
 };
 ```
 
+### CreateEndpointInput
+
+```ts
+export interface CreateEndpointInput {
+    url: string;
+    description?: string;
+    eventTypes: readonly string[];
+    headers?: Record<string, string>;
+}
+```
+
 ### createWebhooks
 
 ```ts
@@ -578,10 +589,33 @@ export interface TestEventResult {
 }
 ```
 
+### UpdateEndpointInput
+
+```ts
+export interface UpdateEndpointInput {
+    url?: string;
+    description?: string | null;
+    eventTypes?: readonly string[];
+    headers?: Record<string, string> | null;
+}
+```
+
 ### verifyWebhook
 
 ```ts
 export declare function verifyWebhook(input: VerifyWebhookInput): void;
+```
+
+### VerifyWebhookInput
+
+```ts
+export interface VerifyWebhookInput {
+    body: string | Uint8Array;
+    headers: Headers | Record<string, string | string[] | undefined>;
+    secret: string | readonly string[];
+    now?: Date;
+    toleranceSeconds?: number;
+}
 ```
 
 ### WebhookClient
@@ -674,6 +708,18 @@ export declare function parseWebhook<const E extends EventDefinitions>(input: Ve
 
 ```ts
 export declare function verifyWebhook(input: VerifyWebhookInput): void;
+```
+
+### VerifyWebhookInput
+
+```ts
+export interface VerifyWebhookInput {
+    body: string | Uint8Array;
+    headers: Headers | Record<string, string | string[] | undefined>;
+    secret: string | readonly string[];
+    now?: Date;
+    toleranceSeconds?: number;
+}
 ```
 
 ### WebhookError
