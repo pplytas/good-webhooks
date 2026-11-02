@@ -129,6 +129,10 @@ npm install /absolute/path/to/packages/good-webhooks/good-webhooks-0.6.0.tgz
 
 `pnpm test:package` verifies the archive with fresh npm consumers, both with and without Better Auth, including the published declarations and SQL exports. Registry publication is a separate release step.
 
+## Maintenance
+
+One maintainer works on Good Webhooks part time. Releases run in GitHub Actions and publish through npm trusted publishing, so a release never depends on one person's laptop or npm token. The [support windows](https://good-webhooks.dev/docs/operations/compatibility#support-windows) and the [security response targets](SECURITY.md#response-targets) are published. If maintenance stops, the last release stays installable, the repository stays public under MIT, and the [handover guide](docs/handover.md) says how to take over.
+
 ## Contributing
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) before proposing changes. Maintainers use the [release guide](docs/releasing.md) to verify a candidate before publishing. Report vulnerabilities through the [security policy](SECURITY.md). Licensed under [MIT](LICENSE).
