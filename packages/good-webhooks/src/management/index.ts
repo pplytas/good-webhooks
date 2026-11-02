@@ -92,7 +92,7 @@ export function createManagement(options: ManagementOptions): EndpointManagement
       types.length > 100 ||
       types.some((name) => !allowed.has(name))
     )
-      invalid('An endpoint must subscribe to 1–100 configured event names.')
+      invalid('An endpoint must subscribe to 1 to 100 configured event names.')
     return [...new Set(types)]
   }
 

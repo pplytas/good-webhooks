@@ -49,7 +49,7 @@ describe('endpoint header validation', () => {
     ['', 'Header "" must be an HTTP token of 1 to 100 characters.'],
     ['bad header', 'Header "bad header" must be an HTTP token of 1 to 100 characters.'],
     ['x\ny', 'Header "x\\ny" must be an HTTP token of 1 to 100 characters.'],
-    ['x'.repeat(101), `Header "${'x'.repeat(99)} must be an HTTP token of 1 to 100 characters.`],
+    ['x'.repeat(101), `Header "${'x'.repeat(100)}…" must be an HTTP token of 1 to 100 characters.`],
   ])('names the invalid header %j in the error', (name, message) => {
     expect(() => validateEndpointHeaders({ [name]: 'value' })).toThrow(
       expect.objectContaining({ code: 'INVALID_INPUT', message }),
