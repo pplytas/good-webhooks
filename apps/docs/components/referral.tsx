@@ -28,7 +28,7 @@ export function Referral() {
     }
 
     url.searchParams.delete('ref')
-    window.history.replaceState(null, '', url)
+    window.history.replaceState(window.history.state, '', url)
   }, [])
 
   return null
