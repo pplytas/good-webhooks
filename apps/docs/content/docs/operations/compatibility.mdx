@@ -17,9 +17,9 @@ description: Supported runtimes and databases, what each release promises, and h
 
 The worker, publishing, and management run on Node.js only. `parseWebhook()` is verified on Bun, Deno, and Cloudflare Workers. On Workers it needs Node.js compatibility, because the verify entry point uses `node:crypto` and the `Buffer` global: compatibility date 2026-08-04 or later turns it on by default, and from 2024-09-23 the [`nodejs_compat`](https://developers.cloudflare.com/workers/configuration/compatibility-flags/) flag does. Earlier dates lack the `Buffer` global even with the flag. No other runtime is verified.
 
-Every change runs the full integration suite on Node.js 24 with PostgreSQL 16, plus the package and runtime checks. The rest of the matrix runs every Monday and before each release. What CI verifies for each:
+Every change runs the full integration suite on Node.js 24 with PostgreSQL 16, plus the package and runtime checks. The rest of the matrix runs every Monday and on manual dispatch before a release. What CI verifies for each:
 
-- **Node.js**: the full integration suite on Node.js 24 (Maintenance LTS) with PostgreSQL 16, and weekly on Node.js 26 (Active LTS) for every PostgreSQL version. ESM and CommonJS consumers on Node.js 24 and 26.
+- **Node.js**: the full integration suite on Node.js 24 (Maintenance LTS) with PostgreSQL 16, and weekly on Node.js 26 (Active LTS) for every PostgreSQL version. ESM and CommonJS consumers on Node.js 26 for every change, and on Node.js 24 weekly and at release.
 - **Bun**: Bun 1.4.4 runs `parseWebhook()` against a signed event and rejects a tampered body from the packed archive.
 - **Deno**: Deno 2.9.8 runs `parseWebhook()` against a signed event and rejects a tampered body from the packed archive.
 - **Cloudflare Workers**: workerd 1.20261006.1 through miniflare, on compatibility date 2026-10-01 with no flags, and on 2024-09-23 with `nodejs_compat`, runs `parseWebhook()` against a signed event and rejects a tampered body from the packed archive. The same date without the flag must fail to start.
