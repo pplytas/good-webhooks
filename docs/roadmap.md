@@ -37,7 +37,7 @@ The current stability policy already states most of the contract. 1.0 turns the 
 
 ## Releases
 
-The dates below are the plan as written in October 2026. 0.5.0 shipped on 26 October 2026, 0.6.0 on 27 October 2026, and 0.7.0 on 2 November 2026; the [changelog](../CHANGELOG.md) records what each release carried.
+The dates below are the plan as written in October 2026. 0.5.0 shipped on 26 October 2026, 0.6.0 on 27 October 2026, and 0.7.0 on 2 November 2026. 1.0.0-rc.1 shipped on 2 November 2026 on the `rc` tag, and its hold ends no earlier than 1 December 2026; the [changelog](../CHANGELOG.md) records what each release carried.
 
 ### 0.4.x patches, now to mid-November 2026
 

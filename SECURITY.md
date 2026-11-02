@@ -21,7 +21,7 @@ The advisory credits you unless you decline.
 | Last 1.x, after 2.0.0 | Security, 6 months |
 | Alpha, beta, and rc   | None               |
 
-The windows start when the next minor or major ships. 1.0.0 has not shipped yet.
+The windows start when the next minor or major ships. 1.0.0-rc.1 is out on the `rc` tag, and 1.0.0 is planned for early December 2026.
 
 The [compatibility policy](https://good-webhooks.dev/docs/operations/compatibility#support-windows) is the source for these windows. Upgrade guidance and affected versions belong in the advisory and release notes.
 

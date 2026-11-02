@@ -1,5 +1,35 @@
 # Changelog
 
+## 1.0.0-rc.1 (2026-11-02)
+
+Release candidate for 1.0.0, with the same code and schema `7` as 0.7.0.
+
+### Upgrade
+
+1. Install `good-webhooks@rc`, then restart producers and workers.
+   - From 0.7.0: no SQL and no code change.
+   - Older: follow [0.x to 1.0](apps/docs/content/docs/upgrading/from-0x.mdx).
+
+### Docs
+
+- [What 1.0 promises](apps/docs/content/docs/upgrading/contract.mdx).
+- The [upgrade matrix](apps/docs/content/docs/upgrading/matrix.mdx).
+- The [0.x to 1.0 guide](apps/docs/content/docs/upgrading/from-0x.mdx).
+
+### Hold
+
+- The candidate holds for at least four weeks.
+  - The Playground soaks on it meanwhile.
+- 1.0.0 is planned for early December 2026.
+- `latest` stays on 0.7.0 until then.
+
+### Feedback wanted
+
+- Promises you could not keep relying on for 1.x.
+- Names or types to change before the freeze.
+- Upgrade steps that failed or read unclearly.
+- Report them in [issues](https://github.com/pplytas/good-webhooks/issues).
+
 ## 0.7.0 (2026-11-02)
 
 Proof at scale, with schema `7` for one index ([roadmap](docs/roadmap.md#070-february-to-march-2027-proof-at-scale)).

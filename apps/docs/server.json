@@ -9,7 +9,7 @@
     "subfolder": "apps/docs"
   },
   "websiteUrl": "https://good-webhooks.dev/docs/ai",
-  "version": "0.7.0",
+  "version": "1.0.0-rc.1",
   "remotes": [
     {
       "type": "streamable-http",
