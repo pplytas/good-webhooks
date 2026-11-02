@@ -44,8 +44,8 @@ export function isReservedHeaderName(name: string): boolean {
 
 /** A header name as it can be shown in an error: bare when readable, JSON-quoted otherwise. */
 function shownName(name: string): string {
-  if (name.length <= MAX_NAME_LENGTH && /^[\x21-\x7e]+$/.test(name)) return name
-  return JSON.stringify(name).slice(0, MAX_NAME_LENGTH)
+  const cut = name.length > MAX_NAME_LENGTH ? `${name.slice(0, MAX_NAME_LENGTH)}…` : name
+  return /^[\x21-\x7e]+$/.test(cut) ? cut : JSON.stringify(cut)
 }
 
 function invalid(message: string): never {

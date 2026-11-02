@@ -304,7 +304,7 @@ Retries and replays can also deliver an event published before your latest deplo
 
 ## Verify a stored request later
 
-`parseWebhook()` rejects a timestamp more than five minutes from `now`, which defaults to the current time. To verify a request you stored earlier, pass the time you received it:
+`parseWebhook()` rejects a timestamp more than five minutes from `now`, which defaults to the current time. To verify a request you stored earlier, pass the time you received it. Store the raw body, the headers, and the receipt time.
 
 ```ts
 const event = await parseWebhook({
