@@ -174,6 +174,8 @@ if (detail.replayOf === null) await delivery.deliveries.replay(detail.id)
 
 `list` returns newest delivery IDs first. The result is `{ items, nextCursor }`; `nextCursor: null` marks the final page. Invalid query values throw `INVALID_INPUT`.
 
+An `eventId` follows the receiver's `webhook-id` rule: 1 to 255 printable ASCII characters without dots or commas. A valid ID that is not a UUID returns an empty page, because no event in this store has it.
+
 ### get
 
 `get` returns the delivery with its `attempts` array in attempt-number order. Delivery IDs are positive PostgreSQL bigint strings. A missing record in the selected scope produces `NOT_FOUND`.

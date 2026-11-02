@@ -8,3 +8,4 @@ pnpm-lock.yaml
 examples/*/public/*.js
 *.tgz
 next-env.d.ts
+packages/good-webhooks/api-report.md

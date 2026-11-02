@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### Added
+
+- A generated public API report (`packages/good-webhooks/api-report.md`) is checked in CI, so any export change is a visible diff.
+- `VerifyWebhookInput`, `CreateEndpointInput`, and `UpdateEndpointInput` are exported types.
+
+### Changed
+
+- `deliveries.list({ eventId })` returns an empty page for a well-formed non-UUID `webhook-id` instead of throwing ([#74](https://github.com/pplytas/good-webhooks/issues/74)).
+
+### Fixed
+
+- An invalid endpoint header name now appears in its error message ([#74](https://github.com/pplytas/good-webhooks/issues/74)).
+
 ### Tests
 
 - Property tests cover signature header parsing, timestamp tolerance, and more `Retry-After` formats.
@@ -10,6 +23,7 @@
 
 ### Docs
 
+- The receive guide shows how to verify a stored request later with `now` ([#74](https://github.com/pplytas/good-webhooks/issues/74)).
 - The compatibility page states which runtimes are verified, now including Cloudflare Workers ([compatibility](https://good-webhooks.dev/docs/operations/compatibility)).
 
 ### Docs and repository
