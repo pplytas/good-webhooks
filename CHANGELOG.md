@@ -15,9 +15,16 @@
 
 - An invalid endpoint header name now appears in its error message ([#74](https://github.com/pplytas/good-webhooks/issues/74)).
 
+### Tests
+
+- Property tests cover signature header parsing, timestamp tolerance, and more `Retry-After` formats.
+- A model-based property test checks the delivery state machine against Postgres.
+- CI verifies `parseWebhook()` on Cloudflare Workers through miniflare.
+
 ### Docs
 
 - The receive guide shows how to verify a stored request later with `now` ([#74](https://github.com/pplytas/good-webhooks/issues/74)).
+- The compatibility page states which runtimes are verified, now including Cloudflare Workers ([compatibility](https://good-webhooks.dev/docs/operations/compatibility)).
 
 ### Docs and repository
 
