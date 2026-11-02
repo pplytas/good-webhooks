@@ -27,8 +27,9 @@ export const history = {
     ? process.env.BENCHMARK_HISTORY_STAGES.split(',').map(Number)
     : [0, 1_000_000, 2_000_000, 4_000_000],
   batchSize: 250_000,
+  // The library's default retentionMs. Seeded events spread evenly over retentionMs / (1 - agedShare),
+  // 10 days, so prune always has work.
   retentionMs: 7 * 24 * 60 * 60 * 1000,
-  // Seeded events spread evenly over retentionMs / (1 - agedShare), 10 days, so prune always has work.
   agedShare: 0.3,
   drainBudgetMs: 300_000,
 }
@@ -49,14 +50,12 @@ export function database(connectionString) {
   })
 }
 
-/** Pass { retentionMs } in history mode only; the default profile keeps the library default. */
-export function webhooks(database, schema, encryptionKey, options = {}) {
+export function webhooks(database, schema, encryptionKey) {
   return createWebhooks({
     database,
     schema,
     encryptionKey,
     events,
-    ...(options.retentionMs === undefined ? {} : { retentionMs: options.retentionMs }),
     allowLocalhost: true,
     delivery: {
       concurrency: profile.concurrency,

@@ -32,10 +32,11 @@ export async function resetStatementStats(pool) {
   await pool.query('SELECT pg_stat_statements_reset()')
 }
 
-/** Read { calls, meanMs, maxMs } per statement for this schema; fail when a required one is absent. */
+/** Read { calls, meanMs, stddevMs, maxMs } per statement for this schema; fail when a required one is absent. */
 export async function statementStats(pool, schema, { names, required }) {
   const result = await pool.query(
-    `SELECT calls::float8 AS calls, mean_exec_time, max_exec_time, query FROM pg_stat_statements
+    `SELECT calls::float8 AS calls, mean_exec_time, stddev_exec_time, max_exec_time, query
+     FROM pg_stat_statements
      WHERE dbid=(SELECT oid FROM pg_database WHERE datname=current_database()) AND query LIKE $1`,
     [`%"${schema}"%`],
   )
@@ -49,10 +50,18 @@ export async function statementStats(pool, schema, { names, required }) {
       stats[name] = null
       continue
     }
-    const total = rows.reduce((sum, row) => sum + row.calls * row.mean_exec_time, 0)
+    // Pooled mean and standard deviation over the rows (usually one).
+    const mean = rows.reduce((sum, row) => sum + row.calls * row.mean_exec_time, 0) / calls
+    const variance =
+      rows.reduce(
+        (sum, row) =>
+          sum + row.calls * (row.stddev_exec_time ** 2 + (row.mean_exec_time - mean) ** 2),
+        0,
+      ) / calls
     stats[name] = {
       calls,
-      meanMs: +(total / calls).toFixed(2),
+      meanMs: +mean.toFixed(2),
+      stddevMs: +Math.sqrt(variance).toFixed(2),
       maxMs: +Math.max(...rows.map((row) => row.max_exec_time)).toFixed(2),
     }
   }

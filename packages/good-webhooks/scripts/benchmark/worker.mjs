@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { database, history, profile, webhooks } from './config.mjs'
+import { database, profile, webhooks } from './config.mjs'
 
 assert(process.env.TEST_DATABASE_URL, 'TEST_DATABASE_URL is required.')
 assert(/^gw_bench_[a-f0-9]+$/.test(process.env.BENCHMARK_SCHEMA ?? ''))
@@ -15,12 +15,7 @@ pool.on('error', (error) => {
   stop.abort()
 })
 try {
-  const app = webhooks(
-    pool,
-    process.env.BENCHMARK_SCHEMA,
-    process.env.BENCHMARK_ENCRYPTION_KEY,
-    process.env.BENCHMARK_MODE === 'history' ? { retentionMs: history.retentionMs } : {},
-  )
+  const app = webhooks(pool, process.env.BENCHMARK_SCHEMA, process.env.BENCHMARK_ENCRYPTION_KEY)
   await app.check()
   process.send({ ready: true })
   await app.worker.run({

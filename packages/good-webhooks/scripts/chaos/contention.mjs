@@ -1,5 +1,5 @@
 // Contention mode: N supervised workers drain 20,000 events on one scope while connections are
-// terminated, workers are SIGKILLed, and the deliveries table is locked. A sampler checks the
+// terminated, workers are SIGKILLed, and the deliveries table is locked. A sampler records the
 // per-endpoint cap and expired leases during the drain; the database is then checked for lost
 // events, stuck work, unrecorded attempts, and double delivery.
 import assert from 'node:assert/strict'
@@ -9,7 +9,10 @@ import { contention } from './config.mjs'
 
 const progress = (message) => console.error(`[chaos] ${message}`)
 
-/** Every sampleIntervalMs: in-flight count per endpoint and the oldest expired lease, in one snapshot. */
+/**
+ * Every sampleIntervalMs: in-flight count per endpoint and the oldest expired lease, in one
+ * snapshot. Paused while the deliveries table is locked, when nothing can change.
+ */
 function startSampler({ pool, schema, lanes, failures }) {
   const maxInFlight = Object.fromEntries([...lanes.values()].map((lane) => [lane, 0]))
   let maxExpiredLeaseMs = 0
@@ -34,14 +37,6 @@ function startSampler({ pool, schema, lanes, failures }) {
       const lane = lanes.get(row.endpoint_id)
       maxInFlight[lane] = Math.max(maxInFlight[lane], row.in_flight)
       maxExpiredLeaseMs = Math.max(maxExpiredLeaseMs, row.expired_ms)
-      assert(
-        row.in_flight <= row.max_in_flight,
-        `${lane} had ${row.in_flight} deliveries in flight, above its cap of ${row.max_in_flight}.`,
-      )
-      assert(
-        row.expired_ms < contention.maxExpiredLeaseMs,
-        `${lane} kept an expired lease for ${Math.round(row.expired_ms)} ms.`,
-      )
     }
   }
 
@@ -84,8 +79,7 @@ async function checkInvariants(pool, schema, counts, total) {
     await pool.query(
       `SELECT (SELECT count(*) FROM ${t('webhook_events')})::int AS events,
         (SELECT count(*) FROM ${t('webhook_deliveries')})::int AS deliveries,
-        (SELECT count(*) FROM ${t('receipts')})::int AS receipts,
-        (SELECT count(*) FROM ${t('receipts')} WHERE requests < 1)::int AS empty_receipts`,
+        (SELECT count(*) FROM ${t('receipts')})::int AS receipts`,
     )
   ).rows[0]
   const receiptLanes = Object.fromEntries(
@@ -116,13 +110,22 @@ async function checkInvariants(pool, schema, counts, total) {
       FROM per`,
     )
   ).rows[0]
+  // An attempt's window runs from its row insert, before the send, to its recorded outcome, after
+  // the response or lease expiry. Both clocks are the database's, so every request must fall in
+  // exactly one attempt window of its event's delivery, and no window may hold two requests.
   const doubles = (
     await pool.query(
-      `SELECT (SELECT count(*) FROM ${t('receipts')} r JOIN ${t('webhook_deliveries')} d
-          ON d.event_id=r.event_id WHERE r.requests > d.attempt_count)::int AS excess_requests,
-        (SELECT count(*) FROM ${t('webhook_attempts')} a JOIN ${t('webhook_attempts')} b
-          ON b.delivery_id=a.delivery_id AND a.number < b.number AND b.started_at < a.finished_at)::int
-          AS overlapping`,
+      `WITH matched AS (
+        SELECT r.ctid AS request, a.delivery_id, a.number FROM ${t('requests')} r
+        JOIN ${t('webhook_deliveries')} d ON d.event_id=r.event_id
+        LEFT JOIN ${t('webhook_attempts')} a ON a.delivery_id=d.id
+          AND r.received_at BETWEEN a.started_at AND a.finished_at
+      )
+      SELECT (SELECT count(*) FROM ${t('requests')})::int AS requests,
+        (SELECT count(*) FROM (SELECT request FROM matched GROUP BY request
+          HAVING count(number) <> 1) x)::int AS outside_one_window,
+        (SELECT count(*) FROM (SELECT delivery_id, number FROM matched WHERE number IS NOT NULL
+          GROUP BY delivery_id, number HAVING count(*) > 1) x)::int AS window_with_two`,
     )
   ).rows[0]
   const violations = {
@@ -132,12 +135,14 @@ async function checkInvariants(pool, schema, counts, total) {
       notSucceeded: total - (statuses.succeeded ?? 0),
       receipts: totals.receipts - total,
       laneReceipts: Object.entries(counts).filter(([lane, n]) => receiptLanes[lane] !== n).length,
-      emptyReceipts: totals.empty_receipts,
     },
     everyAttemptRecorded: attempts,
-    noDoubleDelivery: doubles,
+    noDoubleDelivery: {
+      outsideOneWindow: doubles.outside_one_window,
+      windowWithTwo: doubles.window_with_two,
+    },
   }
-  return { statuses, violations }
+  return { statuses, violations, requests: doubles.requests }
 }
 
 export async function runContention({ harness, pool, schema, workers }) {
@@ -215,7 +220,12 @@ export async function runContention({ harness, pool, schema, workers }) {
         required: ['endpointPick', 'deliveryPick', 'reserve'],
       })
     : null
-  const { statuses, violations } = await checkInvariants(pool, schema, counts, total)
+  const {
+    statuses,
+    violations,
+    requests: requestCount,
+  } = await checkInvariants(pool, schema, counts, total)
+  const receiverMax = Object.fromEntries(harness.maxOpenRequests)
   const clean = (checks) => Object.values(checks).every((n) => Number(n) === 0)
   const invariants = {
     noLostEvent: clean(violations.noLostEvent),
@@ -223,12 +233,17 @@ export async function runContention({ harness, pool, schema, workers }) {
       (statuses.in_flight ?? 0) === 0 && sampled.maxExpiredLeaseMs < contention.maxExpiredLeaseMs,
     everyAttemptRecorded: clean(violations.everyAttemptRecorded),
     noDoubleDelivery: clean(violations.noDoubleDelivery),
-    capRespected: Object.values(sampled.maxInFlight).every((n) => n <= maxInFlight),
-    // stopWorkers() asserts that every exit was the final SIGTERM or a recorded restart.
-    workersSupervised: true,
+    // Checked twice: in-flight rows in the sampled database, and open requests at the receiver,
+    // which would also catch a stale sender still sending after its lease was recovered.
+    capRespected:
+      Object.values(sampled.maxInFlight).every((n) => n <= maxInFlight) &&
+      Object.values(receiverMax).every((n) => n <= maxInFlight),
   }
   for (const [name, holds] of Object.entries(invariants))
-    assert(holds, `Invariant ${name} failed: ${JSON.stringify({ statuses, violations, sampled })}`)
+    assert(
+      holds,
+      `Invariant ${name} failed: ${JSON.stringify({ statuses, violations, sampled, receiverMax })}`,
+    )
 
   const outcomes = await pool.query(
     `SELECT outcome, count(*)::int AS n FROM "${schema}".webhook_attempts GROUP BY outcome ORDER BY outcome`,
@@ -248,8 +263,12 @@ export async function runContention({ harness, pool, schema, workers }) {
     receiverRequests: Object.fromEntries(requests.rows.map((row) => [row.lane, row.n])),
     restarts: restarts.map((restart) => ({ reason: restart.reason, ...restart.closed })),
     maxInFlightObserved: Object.fromEntries(
-      Object.entries(sampled.maxInFlight).map(([lane, max]) => [lane, { max, cap: maxInFlight }]),
+      Object.entries(sampled.maxInFlight).map(([lane, max]) => [
+        lane,
+        { database: max, receiver: receiverMax[lane], cap: maxInFlight },
+      ]),
     ),
+    receiverRequestsLogged: requestCount,
     maxExpiredLeaseMs: sampled.maxExpiredLeaseMs,
     samples: sampled.samples,
     invariants,

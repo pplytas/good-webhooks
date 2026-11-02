@@ -19,6 +19,9 @@ export function createHarness({ app, pool, schema, encryptionKey, mode, label, b
   const failures = []
   const workers = []
   const restarts = []
+  // Open receiver requests per lane, now and at most, to compare with maxInFlight.
+  const openRequests = new Map()
+  const maxOpenRequests = new Map()
   let supervising = true
   let schemaCreated = false
 
@@ -41,6 +44,10 @@ export function createHarness({ app, pool, schema, encryptionKey, mode, label, b
 
   async function receive(request, response) {
     const lane = request.url.slice(1)
+    const open = (openRequests.get(lane) ?? 0) + 1
+    openRequests.set(lane, open)
+    maxOpenRequests.set(lane, Math.max(maxOpenRequests.get(lane) ?? 0, open))
+    response.once('close', () => openRequests.set(lane, openRequests.get(lane) - 1))
     const chunks = []
     for await (const chunk of request) chunks.push(chunk)
     const event = await parseWebhook({
@@ -50,8 +57,10 @@ export function createHarness({ app, pool, schema, encryptionKey, mode, label, b
       events,
     })
     assert.equal(event.data.lane, lane, 'Delivery reached the wrong receiver.')
+    // Every request is logged with the database clock, so it can be matched to an attempt window.
     const receipt = await pool.query(
-      `INSERT INTO "${schema}".receipts(event_id,lane,sequence) VALUES ($1,$2,$3)
+      `WITH logged AS (INSERT INTO "${schema}".requests(event_id) VALUES ($1))
+       INSERT INTO "${schema}".receipts(event_id,lane,sequence) VALUES ($1,$2,$3)
        ON CONFLICT (event_id) DO UPDATE SET requests=receipts.requests+1 RETURNING requests`,
       [event.id, lane, event.data.sequence],
     )
@@ -80,6 +89,8 @@ export function createHarness({ app, pool, schema, encryptionKey, mode, label, b
     await pool.query(`CREATE TABLE "${schema}".receipts (
       event_id uuid PRIMARY KEY, lane text NOT NULL, sequence integer NOT NULL,
       requests integer NOT NULL DEFAULT 1, UNIQUE(lane,sequence))`)
+    await pool.query(`CREATE TABLE "${schema}".requests (
+      event_id uuid NOT NULL, received_at timestamptz NOT NULL DEFAULT clock_timestamp())`)
     await app.check()
     receiver.listen(0, '127.0.0.1')
     await once(receiver, 'listening')
@@ -131,7 +142,11 @@ export function createHarness({ app, pool, schema, encryptionKey, mode, label, b
           closed: running.closed,
           stderr: running.stderr.trim(),
         })
-        setTimeout(() => supervising && startWorker('restart'), 200).unref()
+        // Jittered so a mass exit does not reconnect every pool at the same instant.
+        setTimeout(
+          () => supervising && startWorker('restart'),
+          200 + Math.floor(Math.random() * 800),
+        ).unref()
       }
     })
     workers.push(running)
@@ -177,6 +192,7 @@ export function createHarness({ app, pool, schema, encryptionKey, mode, label, b
     failures,
     workers,
     restarts,
+    maxOpenRequests,
     healthy,
     waitUntil,
     setup,

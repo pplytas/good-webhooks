@@ -29,12 +29,7 @@ const historyMode = process.argv.includes('--history')
 const schema = `gw_bench_${randomUUID().replaceAll('-', '')}`
 const pool = database(process.env.TEST_DATABASE_URL)
 const encryptionKey = generateEncryptionKey()
-const app = webhooks(
-  pool,
-  schema,
-  encryptionKey,
-  historyMode ? { retentionMs: history.retentionMs } : {},
-)
+const app = webhooks(pool, schema, encryptionKey)
 const secrets = new Map()
 const children = []
 const failures = []
@@ -63,12 +58,7 @@ const receiver = createServer(async (request, response) => {
 
 function startWorker() {
   const child = fork(new URL('./benchmark/worker.mjs', import.meta.url), [], {
-    env: {
-      ...process.env,
-      BENCHMARK_SCHEMA: schema,
-      BENCHMARK_ENCRYPTION_KEY: encryptionKey,
-      BENCHMARK_MODE: historyMode ? 'history' : 'profile',
-    },
+    env: { ...process.env, BENCHMARK_SCHEMA: schema, BENCHMARK_ENCRYPTION_KEY: encryptionKey },
     stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
   })
   const running = { child, ready: false, closed: null, stopping: false, stderr: '' }
@@ -175,9 +165,13 @@ async function drainLive(liveFrom, budgetMs) {
     child.stopping = true
     child.child.kill('SIGTERM')
   }
-  await waitUntil(() => workers.every((child) => child.closed), 'worker shutdown', 10_000).catch(
-    () => {},
-  )
+  try {
+    await waitUntil(() => workers.every((child) => child.closed), 'worker shutdown', 10_000)
+  } catch {
+    // A straggler must not keep claiming into the next phase.
+    for (const child of workers) if (!child.closed) child.child.kill('SIGKILL')
+    await waitUntil(() => workers.every((child) => child.closed), 'worker kill', 5000)
+  }
   return {
     workerStartupSeconds: seconds(startupMs),
     drain: {
@@ -253,9 +247,13 @@ async function livePhase(index, pruning) {
   received = 0
   await resetStatementStats(pool)
   const stopPrune = pruning === 'loop' ? startPruneLoop(app, (error) => failures.push(error)) : null
-  const publish = await publishLive(`stage-${index}:${pruning}:`)
-  const { workerStartupSeconds, drain } = await drainLive(liveFrom, history.drainBudgetMs)
-  const prune = stopPrune ? await stopPrune() : null
+  let publish, workerStartupSeconds, drain, prune
+  try {
+    publish = await publishLive(`stage-${index}:${pruning}:`)
+    ;({ workerStartupSeconds, drain } = await drainLive(liveFrom, history.drainBudgetMs))
+  } finally {
+    prune = stopPrune ? await stopPrune() : null
+  }
   if (failures.length) throw new AggregateError(failures, 'Receiver or prune loop failed.')
   const claim = await statementStats(pool, schema, {
     names: ['endpointPick', 'deliveryPick', 'reserve', 'expiredScan', 'pruneCandidates'],
@@ -273,8 +271,9 @@ async function livePhase(index, pruning) {
   }
 }
 
-// Each stage runs the live phase twice on the same history: first with prune() idle, to isolate
-// the cost of history size, then with prune() looping back to back, the documented cleanup shape.
+// Each stage runs the live phase three times on the same history: a discarded warm-up, then with
+// prune() idle, to isolate the cost of history size, then with prune() looping back to back, the
+// documented cleanup shape.
 async function runHistory() {
   await setup()
   if (!(await hasStatementStats(pool))) throw new Error(missingExtension)
@@ -289,6 +288,9 @@ async function runHistory() {
     const seedSeconds = seconds(performance.now() - seedStarted)
     const atStart = await tableStats(pool, schema)
     progress(`${label}: seeded in ${seedSeconds} s, ${atStart.deliveries} deliveries in the table`)
+    // The bulk load and VACUUM evict the cache. A discarded phase warms it so both measured
+    // phases start from the same state.
+    await livePhase(index, 'warmup')
     const pruneIdle = await livePhase(index, 'idle')
     progress(`${label}: prune idle, ${pruneIdle.drain.deliveriesPerSecond}/s`)
     const pruneLoop = await livePhase(index, 'loop')
@@ -304,6 +306,8 @@ async function runHistory() {
       pruneIdle,
       pruneLoop,
     })
+    // The full stage as JSON on stderr, so an interrupted run still leaves its finished stages.
+    progress(`${label}: ${JSON.stringify(stages.at(-1))}`)
   }
   return {
     mode: 'history',

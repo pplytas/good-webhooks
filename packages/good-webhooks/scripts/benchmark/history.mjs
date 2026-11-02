@@ -49,7 +49,8 @@ export async function seedHistory(pool, schema, first, count) {
     for (const table of ['webhook_events', 'webhook_deliveries', 'webhook_attempts'])
       await client.query(`VACUUM (ANALYZE) "${schema}".${table}`)
   } finally {
-    client.release()
+    // Discard the connection: it carries statement_timeout = 0.
+    client.release(true)
   }
 }
 
