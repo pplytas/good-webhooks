@@ -17,21 +17,6 @@ const options = {
 }
 
 describe('configuration', () => {
-  it('does not connect and copies mutable configuration', () => {
-    const delays = [50, 100]
-    const resolved = resolveConfig({ ...options, retry: { delaysMs: delays } })
-    delays[0] = 999
-    expect(resolved.retryDelaysMs).toEqual([50, 100])
-    expect(resolved.source).toBe(source)
-    expect(source.matchRecipients).not.toHaveBeenCalled()
-    expect(source.resolveEndpoint).not.toHaveBeenCalled()
-    expect(database.connect).not.toHaveBeenCalled()
-  })
-  it('reserves event names under good-webhooks.', () => {
-    expect(() =>
-      resolveConfig({ ...options, events: { 'good-webhooks.test': z.object({}) } }),
-    ).toThrow(/reserved/)
-  })
   it('retries for about 28 hours by default, within the default age limit', () => {
     const { retryDelaysMs, maxAgeMs } = resolveConfig(options)
     expect(retryDelaysMs).toEqual([

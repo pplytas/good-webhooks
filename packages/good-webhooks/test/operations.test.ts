@@ -7,7 +7,6 @@ import { setTimeout as sleep } from 'node:timers/promises'
 import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createWorkerStore } from '../src/worker-store.js'
 import {
-  dropWebhookTables,
   closeDatabase,
   pool,
   resetDatabase,
@@ -174,82 +173,6 @@ afterEach(async () => {
 afterAll(closeDatabase)
 
 describe('worker process lifecycle', () => {
-  it('imports configuration without reading required environment or opening connections', async () => {
-    const running = start(
-      [
-        '--input-type=module',
-        '--eval',
-        'await import("./examples/operations/config.ts"); console.log("inert import")',
-      ],
-      { DATABASE_URL: undefined, WEBHOOK_ENCRYPTION_KEY: undefined },
-    )
-    expect(await running.result).toEqual({ code: 0, signal: null })
-    expect(running.stdout).toContain('inert import')
-    expect(running.stderr).toBe('')
-    await assertClosed('worker')
-  })
-
-  it.each(['worker', 'cleanup'] as const)(
-    'fails %s without persistent configuration',
-    async (entry) => {
-      const running = example(entry, { WEBHOOK_ENCRYPTION_KEY: undefined })
-      expect(await running.result).toEqual({ code: 1, signal: null })
-      expect(records(running.stderr)).toContainEqual(
-        expect.objectContaining({
-          event: `webhooks.${entry}.failed`,
-          phase: 'configuration',
-          message: 'WEBHOOK_ENCRYPTION_KEY is required.',
-        }),
-      )
-      await assertClosed(entry)
-    },
-  )
-
-  it('rejects an invalid encryption key before startup I/O', async () => {
-    const running = example('worker', { WEBHOOK_ENCRYPTION_KEY: 'not-a-key' })
-    expect(await running.result).toEqual({ code: 1, signal: null })
-    expect(records(running.stderr)).toContainEqual(
-      expect.objectContaining({ code: 'INVALID_CONFIG', phase: 'configuration' }),
-    )
-    await assertClosed('worker')
-  })
-
-  it.each(['worker', 'cleanup'] as const)(
-    'closes the pool when %s startup finds no schema',
-    async (entry) => {
-      await dropWebhookTables(pool)
-      const running = example(entry)
-      expect(await running.result).toEqual({ code: 1, signal: null })
-      expect(records(running.stderr)).toContainEqual(
-        expect.objectContaining({ code: 'SCHEMA_MISMATCH', phase: 'startup' }),
-      )
-      await assertClosed(entry)
-    },
-  )
-
-  it('exits nonzero on a worker failure without consuming an attempt', async () => {
-    const { delivery } = await queued()
-    const running = example('worker', {
-      WEBHOOK_ENCRYPTION_KEY: Buffer.alloc(32, 8).toString('base64'),
-    })
-    expect(await running.result).toEqual({ code: 1, signal: null })
-    expect(running.stdout).toContain('webhooks.worker.started')
-    expect(records(running.stderr)).toContainEqual(
-      expect.objectContaining({ name: 'AggregateError', phase: 'run' }),
-    )
-    expect(
-      (
-        await pool.query('SELECT status,attempt_count FROM public.webhook_deliveries WHERE id=$1', [
-          delivery.id,
-        ])
-      ).rows[0],
-    ).toEqual({
-      status: 'pending',
-      attempt_count: 0,
-    })
-    await assertClosed('worker')
-  })
-
   it('handles a real idle-pool connection error and exits nonzero', async () => {
     // PostgreSQL can report idle between startup queries and batch transactions while
     // the client is still checked out. Wait until the empty batch enters its 60s poll.

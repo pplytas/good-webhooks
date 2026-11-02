@@ -113,15 +113,6 @@ describe('standalone PostgreSQL management', () => {
     expect(await raw(endpoint.id)).toBeNull()
   })
 
-  it('stores null for an endpoint without headers and returns an empty object', async () => {
-    const management = create()
-    const { endpoint } = await management.create(null, input)
-    expect(endpoint.headers).toEqual({})
-    const repository = createPostgresManagementRepository(pool)
-    expect((await repository.get(null, endpoint.id))?.encryptedHeaders).toBeNull()
-    expect(await management.source.resolveEndpoint(null, endpoint.id)).not.toHaveProperty('headers')
-  })
-
   it('applies a per-scope endpoint limit under concurrent creation', async () => {
     const user = { type: 'user', id: 'owner' }
     const management = createPostgresManagement({

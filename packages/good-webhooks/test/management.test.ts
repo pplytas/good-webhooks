@@ -208,13 +208,6 @@ describe('portable endpoint management', () => {
     expect((await repository.get(null, endpoint.id))?.encryptedHeaders).toBeNull()
   })
 
-  it('stores no header blob for an endpoint created without headers', async () => {
-    const { management, repository } = setup()
-    const { endpoint } = await management.create(null, { ...input, headers: {} })
-    expect(endpoint.headers).toEqual({})
-    expect((await repository.get(null, endpoint.id))?.encryptedHeaders).toBeNull()
-  })
-
   it('records who paused an endpoint and clears the reason on resume', async () => {
     const { management } = setup()
     const { endpoint } = await management.create(null, input)

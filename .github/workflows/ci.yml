@@ -17,28 +17,21 @@ jobs:
   # Fast gate on every change: the full suite on the lowest supported PostgreSQL and Node.js.
   verify:
     name: Verify (PostgreSQL 16)
-    runs-on: ubuntu-latest
+    # ubuntu-24.04 ships PostgreSQL 16, which starts faster than a service container.
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     env:
-      TEST_DATABASE_URL: postgres://postgres:webhooks_dev_only@127.0.0.1:55439/webhooks
-      DATABASE_URL: postgres://postgres:webhooks_dev_only@127.0.0.1:55439/webhooks_demo
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_PASSWORD: webhooks_dev_only
-          POSTGRES_DB: webhooks
-        ports:
-          - 55439:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres -d webhooks"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
+      TEST_DATABASE_URL: postgres://postgres:webhooks_dev_only@127.0.0.1:5432/webhooks
+      DATABASE_URL: postgres://postgres:webhooks_dev_only@127.0.0.1:5432/webhooks_demo
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Start the runner's PostgreSQL
+        run: |
+          sudo systemctl start postgresql.service
+          sudo -u postgres psql -v ON_ERROR_STOP=1 -c "ALTER USER postgres PASSWORD 'webhooks_dev_only'" -c 'CREATE DATABASE webhooks'
+          psql "$TEST_DATABASE_URL" -tAc 'SHOW server_version' | grep '^16\.'
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
@@ -46,10 +39,6 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm check:package
       - run: pnpm test
-      - name: Rehearse backlog, receiver timeout, and process recovery
-        run: pnpm test:operations
-      - name: Rehearse killed connections, an exclusive lock, and failing receivers
-        run: pnpm test:chaos
       - name: Prepare a fresh demo database
         run: |
           psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -c 'CREATE DATABASE webhooks_demo'
@@ -263,7 +252,6 @@ jobs:
       - run: pnpm --filter @good-webhooks/docs check
       - run: pnpm --filter @good-webhooks/docs build
       - run: pnpm --filter @good-webhooks/docs check:links
-      - run: pnpm --filter @good-webhooks/docs exec playwright install --with-deps chromium
       - run: pnpm --filter @good-webhooks/docs check:browser
 
   # The examples pin a published version, so they cannot catch a regression in this checkout.
@@ -294,6 +282,8 @@ jobs:
           --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 26

@@ -13,7 +13,6 @@
     "check": "pnpm --filter good-webhooks check && pnpm --filter @good-webhooks/docs check",
     "check:package": "pnpm --filter good-webhooks check",
     "test": "pnpm --filter good-webhooks test",
-    "test:unit": "pnpm --filter good-webhooks test:unit",
     "test:package": "pnpm --filter good-webhooks test:package",
     "test:adapters": "pnpm --filter good-webhooks test:adapters",
     "example": "pnpm --filter good-webhooks example",

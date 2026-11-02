@@ -5,7 +5,8 @@ import { startServer } from './server.mjs'
 const { url, stop } = await startServer()
 let browser
 try {
-  browser = await chromium.launch()
+  // Uses the installed Google Chrome: the CI runner image ships it, so no browser download.
+  browser = await chromium.launch({ channel: 'chrome' })
   const context = await browser.newContext({
     viewport: { width: 1280, height: 900 },
     colorScheme: 'light',

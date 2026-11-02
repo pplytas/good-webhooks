@@ -72,8 +72,7 @@ pnpm --filter good-webhooks build
 pnpm --filter @good-webhooks/docs check
 pnpm --filter @good-webhooks/docs build
 pnpm --filter @good-webhooks/docs check:links
-pnpm --filter @good-webhooks/docs exec playwright install chromium
 pnpm --filter @good-webhooks/docs check:browser
 ```
 
-The checks compile the app and reference examples, verify that generated tables track their TypeScript inputs, and build every page and Markdown export. `check:links` starts `next start` on a free port, crawls every sitemap page and every Markdown export listed in `llms.txt`, and validates links, assets, fragments, content negotiation, search, and the MCP server. The browser smoke check starts its own server the same way. It verifies the landing page, docs routes, a Markdown export, a generated table, search navigation, the theme switch, and mobile navigation. Install Chromium once locally; CI installs it with system dependencies. Use `preview` for visual review and code copying.
+The checks compile the app and reference examples, verify that generated tables track their TypeScript inputs, and build every page and Markdown export. `check:links` starts `next start` on a free port, crawls every sitemap page and every Markdown export listed in `llms.txt`, and validates links, assets, fragments, content negotiation, search, and the MCP server. The browser smoke check starts its own server the same way. It verifies the landing page, docs routes, a Markdown export, a generated table, search navigation, the theme switch, and mobile navigation. It launches the installed Google Chrome, which the CI runners ship. Use `preview` for visual review and code copying.

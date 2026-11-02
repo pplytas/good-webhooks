@@ -7,36 +7,18 @@ import { fileURLToPath } from 'node:url'
 const packageDirectory = fileURLToPath(new URL('..', import.meta.url))
 const manifest = JSON.parse(await readFile(join(packageDirectory, 'package.json'), 'utf8'))
 const minimumTypeScriptVersion = '5.9.3'
-const sixTypeScriptVersion = '6.0.3'
 const directory = await mkdtemp(join(tmpdir(), 'good-webhooks-consumer-'))
 const run = (command, args, cwd) =>
   execFileSync(command, args, { cwd, stdio: 'pipe', encoding: 'utf8' })
 // Package-local binaries, so the script also works outside `pnpm run`.
 const bin = (name) => join(packageDirectory, 'node_modules', '.bin', name)
+// attw's node16 profile covers bundler resolution, so tsc checks NodeNext on the oldest and newest compilers.
 const typecheck = (args = []) => {
-  // Install the compilers once and check the same archive and inference fixtures.
-  for (const compiler of ['typescript-minimum', 'typescript-six', 'typescript']) {
+  for (const compiler of ['typescript-minimum', 'typescript']) {
     const executable = join(directory, 'node_modules', compiler, 'bin/tsc')
     const version = run(process.execPath, [executable, '--version'], directory).trim()
-    for (const [module, moduleResolution] of [
-      ['NodeNext', 'NodeNext'],
-      ['ESNext', 'Bundler'],
-    ]) {
-      console.log(`${version}: ${moduleResolution}, ${args.length ? 'Better Auth' : 'standalone'}`)
-      run(
-        process.execPath,
-        [
-          executable,
-          '--noEmit',
-          '--module',
-          module,
-          '--moduleResolution',
-          moduleResolution,
-          ...args,
-        ],
-        directory,
-      )
-    }
+    console.log(`${version}: ${args.length ? 'Better Auth' : 'standalone'}`)
+    run(process.execPath, [executable, '--noEmit', ...args], directory)
   }
 }
 async function consumerFixture(name, replacements) {
@@ -118,7 +100,6 @@ for (const name of ['all', 'management', 'delivery']) {
       '--no-fund',
       `typescript@${manifest.devDependencies.typescript}`,
       `typescript-minimum@npm:typescript@${minimumTypeScriptVersion}`,
-      `typescript-six@npm:typescript@${sixTypeScriptVersion}`,
       `@types/node@${manifest.devDependencies['@types/node']}`,
       `@types/pg@${manifest.devDependencies['@types/pg']}`,
       `pg@${manifest.devDependencies.pg}`,

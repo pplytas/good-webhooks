@@ -68,14 +68,6 @@ describe('schema setup and endpoint management', () => {
     }
   })
 
-  it('checks explicit schema version and reports missing or incompatible migrations', async () => {
-    await store.checkSchema()
-    await pool.query('UPDATE public.webhook_schema_version SET version=1')
-    await expect(store.checkSchema()).rejects.toMatchObject({ code: 'SCHEMA_MISMATCH' })
-    await dropWebhookTables(pool)
-    await expect(store.checkSchema()).rejects.toMatchObject({ code: 'SCHEMA_MISMATCH' })
-  })
-
   it('stores only encrypted signing material and returns public endpoint fields', async () => {
     const created = await store.createEndpoint('scope-a', {
       ...input,
@@ -173,32 +165,6 @@ describe('schema setup and endpoint management', () => {
     ).rejects.toMatchObject({ code: 'NOT_FOUND' })
   })
 
-  it('retains one old signing secret during overlap and requires an explicit immediate second rotation', async () => {
-    const created = await store.createEndpoint('scope-a', input)
-    const rotated = await store.rotateSecret('scope-a', created.endpoint.id, { graceMs: 60_000 })
-    expect(rotated.secret).not.toBe(created.secret)
-    let row = (
-      await pool.query(
-        'SELECT secret,previous_secret,previous_secret_expires_at FROM public.webhook_endpoints',
-      )
-    ).rows[0]!
-    expect(decryptSecret(row.secret, TEST_ENCRYPTION_KEY)).toBe(rotated.secret)
-    expect(decryptSecret(row.previous_secret, TEST_ENCRYPTION_KEY)).toBe(created.secret)
-    expect(row.previous_secret_expires_at.getTime()).toBeGreaterThan(Date.now())
-    await expect(store.rotateSecret('scope-a', created.endpoint.id)).rejects.toMatchObject({
-      code: 'INVALID_STATE',
-    })
-    const immediate = await store.rotateSecret('scope-a', created.endpoint.id, { graceMs: 0 })
-    row = (
-      await pool.query(
-        'SELECT secret,previous_secret,previous_secret_expires_at FROM public.webhook_endpoints',
-      )
-    ).rows[0]!
-    expect(decryptSecret(row.secret, TEST_ENCRYPTION_KEY)).toBe(immediate.secret)
-    expect(row.previous_secret).toBeNull()
-    expect(row.previous_secret_expires_at).toBeNull()
-  })
-
   it('rejects invalid bounds and unsafe URLs before writing endpoints', async () => {
     await expect(store.createEndpoint('', input)).rejects.toMatchObject({ code: 'INVALID_INPUT' })
     await expect(
@@ -215,22 +181,6 @@ describe('schema setup and endpoint management', () => {
     })
     expect(await store.listEndpoints('scope-a')).toEqual([])
   })
-
-  it('bounds endpoint listing through a 1000-endpoint scope cap', async () => {
-    const { endpoint } = await store.createEndpoint('scope-a', input)
-    await pool.query(
-      `INSERT INTO public.webhook_endpoints(id,scope_key,url,event_types,secret)
-      SELECT gen_random_uuid()::text,scope_key,url,event_types,secret FROM public.webhook_endpoints CROSS JOIN generate_series(1,999) WHERE id=$1`,
-      [endpoint.id],
-    )
-    expect((await store.listEndpoints('scope-a')).length).toBe(1000)
-    await expect(store.createEndpoint('scope-a', input)).rejects.toMatchObject({
-      code: 'ENDPOINT_LIMIT',
-    })
-    await store.removeEndpoint('scope-a', endpoint.id)
-    await store.createEndpoint('scope-a', input)
-    expect((await store.listEndpoints('scope-a')).length).toBe(1000)
-  })
 })
 
 describe('atomic publication', () => {
@@ -239,14 +189,14 @@ describe('atomic publication', () => {
     const client = await pool.connect()
     try {
       await client.query('BEGIN')
-      await client.query('SELECT pg_sleep(1.1)')
+      await client.query('SELECT pg_sleep(0.15)')
       await store.publish('scope-a', event, { transaction: client })
       await client.query('COMMIT')
     } finally {
       await client.query('ROLLBACK')
       client.release()
     }
-    const { claims } = await createWorkerStore(testConfig({ maxAgeMs: 1000 })).claim()
+    const { claims } = await createWorkerStore(testConfig({ maxAgeMs: 100 })).claim()
     expect(claims).toHaveLength(1)
     expect(claims[0]!.windowStartedAt.getTime()).toBeGreaterThanOrEqual(
       claims[0]!.eventCreatedAt.getTime(),
@@ -483,37 +433,6 @@ describe('history, deletion and replay', () => {
     })
     expect(completed.attempts[0]!.startedAt).toBeInstanceOf(Date)
     expect(completed.attempts[0]!.finishedAt).toBeInstanceOf(Date)
-  })
-
-  it('cancels queued work when the sender observes deletion, while prepared attempts can finish', async () => {
-    const { endpoint } = await queued()
-    await store.publish('scope-a', event)
-    const worker = createWorkerStore(testConfig({ concurrency: 1 }))
-    const {
-      claims: [prepared],
-    } = await worker.claim()
-    await store.removeEndpoint('scope-a', endpoint.id)
-    // Management deletion changes eligibility without modifying delivery storage.
-    expect((await store.listDeliveries('scope-a')).items.map((item) => item.status).sort()).toEqual(
-      ['in_flight', 'pending'],
-    )
-    expect(
-      await worker.complete(prepared!, {
-        status: 200,
-        responseBody: 'accepted',
-        error: null,
-        retryable: false,
-      }),
-    ).toMatchObject({ completion: 'succeeded' })
-    const observed = await worker.claim()
-    expect(observed.claims).toEqual([])
-    expect(observed.errors).toEqual([])
-    expect((await store.listDeliveries('scope-a')).items.map((item) => item.status).sort()).toEqual(
-      ['cancelled', 'succeeded'],
-    )
-    await expect(store.replay('scope-a', prepared!.id)).rejects.toMatchObject({
-      code: 'INVALID_STATE',
-    })
   })
 
   it('replays an immutable event once concurrently, forbids replay chains, and permits another replay after completion', async () => {

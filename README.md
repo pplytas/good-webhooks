@@ -90,7 +90,7 @@ pnpm --filter @good-webhooks/docs check:links
 pnpm --filter @good-webhooks/docs preview
 ```
 
-Run `pnpm check`, `pnpm format:check`, and `pnpm test:unit` for checks without a PostgreSQL server. The [contribution guide](CONTRIBUTING.md) covers integration tests, adapter checks, and documentation verification.
+Run `pnpm check` and `pnpm format:check` for checks without a PostgreSQL server. The [contribution guide](CONTRIBUTING.md) covers integration tests, adapter checks, and documentation verification.
 
 ## Try the example
 

@@ -11,7 +11,7 @@ description: Supported runtimes and databases, what each release promises, and h
 | Bun                | `parseWebhook()` only | 1.4.4                     |
 | Deno               | `parseWebhook()` only | 2.9.8                     |
 | Cloudflare Workers | `parseWebhook()` only | workerd 1.20261006.1      |
-| TypeScript         | 5.9.3 or later        | 5.9.3, 6.0, and 7.0       |
+| TypeScript         | 5.9.3 or later        | 5.9.3 and 7.0             |
 | PostgreSQL         | 16, 17, and 18        | 16 to 18, and 19 RC1      |
 | Better Auth        | 1.7.7 through 1.8     | 1.7.7, newest 1.7 and 1.8 |
 
@@ -23,7 +23,7 @@ Every change runs the full integration suite on Node.js 24 with PostgreSQL 16, p
 - **Bun**: Bun 1.4.4 runs `parseWebhook()` against a signed event and rejects a tampered body from the packed archive.
 - **Deno**: Deno 2.9.8 runs `parseWebhook()` against a signed event and rejects a tampered body from the packed archive.
 - **Cloudflare Workers**: workerd 1.20261006.1 through miniflare, on compatibility date 2026-10-01 with no flags, and on 2024-09-23 with `nodejs_compat`, runs `parseWebhook()` against a signed event and rejects a tampered body from the packed archive. The same date without the flag must fail to start.
-- **TypeScript**: 5.9.3, 6.0, and 7.0, with NodeNext and Bundler resolution.
+- **TypeScript**: 5.9.3 and 7.0 with NodeNext resolution; `@arethetypeswrong/cli` checks Bundler resolution.
 - **PostgreSQL**: the full integration suite on 16 for every change, and weekly on 16, 17, 18, and the 19 release candidate. 19 joins the supported list when its GA image ships.
 - **Better Auth**: 1.7.7, the newest 1.7, and the newest 1.8 including betas, across the [adapter matrix](/docs/better-auth#supported-databases), weekly. Every change runs the 1.7.7 integration tests on PostgreSQL. The Monday run tests new Better Auth releases without a change here.
 

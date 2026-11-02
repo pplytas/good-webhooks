@@ -20,7 +20,7 @@ The failure table in [Run workers](../apps/docs/content/docs/operations/workers.
 | Retry and permanent-failure status codes                          | `test/worker.test.ts`, "retries HTTP" and "fails permanently on HTTP 410"                               |
 | Timeout and stalled responses retry                               | `test/worker.test.ts`, "retries a timed out request" and the partial-response cases                     |
 | A delivery that waits behind a pause keeps its full retry window  | `test/pause-window.test.ts`, "retries a delivery that waited behind a pause longer than retry.maxAgeMs" |
-| Wrong key consumes no attempt                                     | `test/operations.test.ts`, "exits nonzero on a worker failure without consuming an attempt"             |
+| Wrong key consumes no attempt                                     | `test/worker.test.ts`, "does not consume an attempt when encryption configuration is wrong"             |
 | Mid-transaction and idle disconnects                              | `test/operations.test.ts`, "handles a database disconnect" and "idle-pool connection error"             |
 | Blocked startup and stalled handshake bound                       | `test/operations.test.ts`, "bounds a blocked startup statement" and "never completes startup"           |
 | `SIGTERM` finishes the active delivery                            | `test/operations.test.ts`, "finishes an active delivery on SIGTERM before closing the pool"             |
