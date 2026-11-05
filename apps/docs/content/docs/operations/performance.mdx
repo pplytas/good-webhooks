@@ -159,7 +159,7 @@ Two planned faults never reached Railway because its API edge blocked the fault 
 
 - **Canary resumed.** The canary arrived on its next scheduled tick after every fault. No tick was late or retried.
 - **Health.** `/api/health` answered `200` and healthy on every poll in the 10 minutes after each fault.
-- **Nothing left in flight.** Checks at 2, 10, and 30 minutes after each fault took 34 samples. Two showed one attempt in progress, each to the slow receiver, after Wednesday 13:10 and Wednesday 17:55. The next sample showed none.
+- **Nothing left in flight.** Checks at 2, 10, and 30 minutes after each fault took 35 samples; one more got no response from the polling machine. Thirty-three showed nothing in flight. Two showed one attempt in progress, each to the slow receiver, after Wednesday 13:10 and Wednesday 17:55. The next sample showed none.
 
 ### Invariants
 
