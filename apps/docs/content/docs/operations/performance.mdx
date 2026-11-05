@@ -122,94 +122,65 @@ The run took only one schedule of faults, at one load. A delivery in flight thro
 
 ## 72-hour soak
 
-The soak ran good-webhooks 0.7.0 on schema 7 in the public [Playground](/docs/examples#try-the-playground) for 72 hours. It started on Monday 2 November 2026 at 09:56 and ended on Thursday 5 November at 10:00, Athens time. The Playground runs on Railway as a web service, a worker service, and PostgreSQL 18.6. These receivers ran the whole time:
+The soak ran good-webhooks 0.7.0 on schema 7 in the public [Playground](/docs/examples#try-the-playground) for 72 hours. It started on Monday 2 November 2026 at 09:56 and ended on Thursday 5 November at 10:00, Athens time. The Playground runs on Railway as a web service, a worker service, and PostgreSQL 18.6. Each of these receivers got one event per 5-minute tick for the whole run:
 
-| Receiver | Behavior                      |
-| -------- | ----------------------------- |
-| canary   | Healthy, one event per 5 min  |
-| demo     | One event per 5 min           |
-| flaky    | Fails some requests           |
-| slow     | Answers past the 10 s timeout |
-| busy     | `429` with `Retry-After`      |
-| failing  | `500`                         |
-| gone     | `410`, endpoint paused        |
+| Receiver | Behavior                 |
+| -------- | ------------------------ |
+| canary   | `204`                    |
+| demo     | `204`                    |
+| flaky    | `500` on 30% of requests |
+| slow     | 12 s on 20% of requests  |
+| busy     | `429` on 25% of requests |
+| failing  | `500`                    |
+| gone     | `410`, endpoint paused   |
 
 The soak found no library defect.
 
 ### Faults
 
-Twelve faults restarted a service through the Railway API: 8 worker restarts and 4 PostgreSQL restarts. Each fired 8 s after a 5-minute tick, so attempts to the slow receiver were in flight. PostgreSQL logs confirm each restart: a fast shutdown, then accepting connections again in about 1.5 s.
+Twelve faults restarted a service through the Railway API: 8 worker restarts and 4 PostgreSQL restarts. Each fired 8 s after a 5-minute tick, while an attempt to the slow receiver could still be in flight. No attempt was abandoned, so no restart cut off a send; the [contention run](#many-workers-under-faults) covers kills mid-send. PostgreSQL logs confirm each restart: a fast shutdown, then accepting connections again in about 1.5 s.
 
-| Time (Athens) | Restarted  | Canary resumed | Health |
-| ------------- | ---------- | -------------- | ------ |
-| Mon 17:00     | PostgreSQL | Next tick      | 200    |
-| Mon 19:35     | Worker     | Next tick      | 200    |
-| Tue 03:20     | Worker     | Next tick      | 200    |
-| Tue 07:05     | PostgreSQL | Next tick      | 200    |
-| Tue 11:45     | Worker     | Next tick      | 200    |
-| Tue 21:10     | Worker     | Next tick      | 200    |
-| Wed 01:25     | PostgreSQL | Next tick      | 200    |
-| Wed 08:30     | Worker     | Next tick      | 200    |
-| Wed 13:10     | Worker     | Next tick      | 200    |
-| Wed 17:55     | Worker     | Next tick      | 200    |
-| Wed 23:50     | PostgreSQL | Next tick      | 200    |
-| Thu 05:40     | Worker     | Next tick      | 200    |
+| Time (Athens) | Restarted  |
+| ------------- | ---------- |
+| Mon 17:00     | PostgreSQL |
+| Mon 19:35     | Worker     |
+| Tue 03:20     | Worker     |
+| Tue 07:05     | PostgreSQL |
+| Tue 11:45     | Worker     |
+| Tue 21:10     | Worker     |
+| Wed 01:25     | PostgreSQL |
+| Wed 08:30     | Worker     |
+| Wed 13:10     | Worker     |
+| Wed 17:55     | Worker     |
+| Wed 23:50     | PostgreSQL |
+| Thu 05:40     | Worker     |
 
-Two planned faults never reached Railway because its API edge blocked the fault script's default Python user agent, so they ran later, at Monday 17:00 and Wednesday 13:10.
-
-- **Canary resumed.** The canary arrived on its next scheduled tick after every fault. No tick was late or retried.
+- **Canary resumed.** The canary arrived on its next scheduled tick after every fault, with no tick late or retried.
 - **Health.** `/api/health` answered `200` and healthy on every poll in the 10 minutes after each fault.
-- **Nothing left in flight.** Checks at 2, 10, and 30 minutes after each fault took 35 samples; one more got no response from the polling machine. Thirty-three showed nothing in flight. Two showed one attempt in progress, each to the slow receiver, after Wednesday 13:10 and Wednesday 17:55. The next sample showed none.
+- **Nothing left in flight.** Of 36 checks at 2, 10, and 30 minutes after each fault, 33 found nothing in flight.
+  - Two found one attempt in progress, after the Wednesday 13:10 and 17:55 faults, and the next sample showed none.
+  - One, 10 minutes after the Tuesday 21:10 fault, got no response on the polling machine.
 
 ### Invariants
 
-| Invariant              | Result |
-| ---------------------- | ------ |
-| No lost event          | Held   |
-| No delivery stuck      | Held   |
-| Every attempt recorded | Held   |
-| No double delivery     | Held   |
+These checks read the Playground's status page, so they are lighter than the contention run's.
 
-Daily snapshots covered the previous 24 hours:
+- **No lost event.** Canary and demo each had 288 deliveries succeed and none fail in every 24 hours.
+- **No delivery stuck.** Each daily snapshot showed nothing in flight and no attempt in progress.
+- **No attempt abandoned.** Every check after a fault showed 0 abandoned attempts in the last hour.
+- **No double delivery.** Every canary and demo delivery succeeded on its first attempt, with no retry.
 
-| Snapshot (Athens)    | Tue 10:03 | Wed 10:00 | Thu 10:00 |
-| -------------------- | --------- | --------- | --------- |
-| Canary succeeded     | 288       | 288       | 288       |
-| Canary failed        | 0         | 0         | 0         |
-| Demo succeeded       | 288       | 288       | 288       |
-| Demo failed          | 0         | 0         | 0         |
-| In flight            | 0         | 0         | 0         |
-| Attempts in progress | 0         | 0         | 0         |
-| Abandoned, last hour | 0         | 0         | 0         |
+Retries to the slow, flaky, and busy receivers repeat requests by design, so the lost and double delivery checks cover canary and demo only.
 
-A 5-minute schedule has 288 ticks per day, so every tick was delivered. A sampler also read the demo receiver's last 10 deliveries every 20 minutes:
+Daily snapshots at about 10:00 on Tuesday, Wednesday, and Thursday each counted 288 ticks for canary and demo, one per 5 minutes. A sampler also read the demo receiver's latest deliveries every 20 minutes and saw 854 of the 864 ticks, each delivered once on its first attempt. It missed the 10 ticks from Tuesday 17:00 to 17:45, during an outage of the polling machine, and the daily counts cover them.
 
-| Demo tick windows          | Count |
-| -------------------------- | ----- |
-| In 72 hours                | 864   |
-| Sampled                    | 854   |
-| Succeeded on first attempt | 854   |
-| Delivered twice            | 0     |
-
-The 10 unsampled windows fall between Tuesday 17:00 and 17:45, during an outage of the polling machine. The daily counts cover them.
-
-The oldest pending delivery stayed at 168 to 169 hours. That is the paused gone receiver's backlog from before the soak, held as designed.
+The oldest pending delivery stayed at 168 to 169 hours. The paused gone receiver queues one delivery per tick, and hourly pruning removes them at the 7-day retention.
 
 ### Health polling
 
-| Health polls     | Result |
-| ---------------- | ------ |
-| Sent, every 30 s | 8,427  |
-| No response      | 171    |
-| HTTP errors      | 0      |
-| Longest gap      | 68 min |
-| Latency, p50     | 0.39 s |
-| Latency, p95     | 0.76 s |
-| Latency, max     | 16 s   |
+A separate machine polled `/api/health` every 30 s, 8,427 times in all. None returned an HTTP error, but 171 got no response, in a few blocks of up to 68 minutes. The Playground kept delivering through each block, which points to outages on the polling machine, so these polls do not measure availability.
 
-The polls ran from a separate machine. Every failed poll got no response on that machine, in a few blocks, the longest on Tuesday from 17:10 to 18:17. The Playground kept delivering through each block, with first-attempt demo ticks and full daily counts. So these failures were outages on the polling machine, not Playground downtime, and the polls do not measure availability.
-
-The soak used light, steady traffic and one fault schedule. It shows that 0.7.0 recovers on its own from restarts and stays correct, not how fast it drains.
+The soak used light, steady traffic and one fault schedule. It shows that 0.7.0 recovers on its own from restarts, not how fast it drains.
 
 ## Run it yourself
 

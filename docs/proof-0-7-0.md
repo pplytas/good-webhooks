@@ -12,4 +12,4 @@ The large-history run found that `prune()` slowed with history on schema 6 ([#15
 
 Repeat the large-history and contention runs with the commands on the performance page. Each is a single run on one machine, so compare results on the same machine only.
 
-The soak ran 12 restarts of the worker and PostgreSQL over 72 hours on the public Playground. Every invariant held, and the canary arrived on its next tick after every fault.
+The soak restarted the worker 8 times and PostgreSQL 4 times over 72 hours on the public Playground. The canary arrived on its next tick after every restart, and no delivery was lost or left stuck.
