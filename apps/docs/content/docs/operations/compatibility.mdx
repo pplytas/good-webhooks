@@ -86,21 +86,20 @@ They grow by these rules:
 - New methods, callbacks, and fields are optional.
 - New inputs arrive in a trailing options object.
 - A field missing from a stored row reads as its default.
-- `SecretCipher` gains no methods. Only new inputs, in a trailing options object.
+- `SecretCipher` never gains a method, even an optional one.
 
-`EndpointManagement` is not on this list. The library builds it with `createManagement`, `createPostgresManagement`, or `createBetterAuthManagement`. You customise it through the repository, cipher, and options. To change one method, wrap a provider by spreading it, as in `{ ...management, create }`. A spread wrapper picks up methods a 1.x minor adds. A class that implements `EndpointManagement` itself can break in a minor.
+`EndpointManagement` is not on this list. The library builds it with `createManagement`, `createPostgresManagement`, or `createBetterAuthManagement`. You customize it through the repository, cipher, and options. To change one method, wrap a provider by spreading it, as in `{ ...management, create }`. A spread wrapper picks up methods a 1.x minor adds. A class that implements `EndpointManagement` itself can break in a minor.
 
 The exported surface of every entry point is recorded in [`api-report.md`](https://github.com/pplytas/good-webhooks/blob/main/packages/good-webhooks/api-report.md), and CI fails when an export changes without updating it.
 
 ### Releases
 
 - Releases follow [semantic versioning](https://semver.org). A patch release never contains a breaking change.
-- Breaking means a passing consumer type-check fails, existing runtime behavior changes, a supported Node.js or PostgreSQL version is dropped, or SQL must run before upgrading. Existing behavior includes option defaults, error codes, the request format, and the signature scheme.
+- Breaking means a passing consumer type-check fails, except as the rules below allow, existing runtime behavior changes, a supported Node.js or PostgreSQL version is dropped, or SQL must run before upgrading. Existing behavior includes option defaults, error codes, the request format, and the signature scheme.
 - Additions are not breaking: new optional options, new fields in results (optional in types that hosts implement), new exports, and new request headers. Changing or removing an existing one is.
-- Unions you receive may gain members in a 1.x minor, for example `WebhookErrorCode`, `DeliveryStatus`, attempt outcomes, and `PauseReason`. Handle unknown values, for example with a `default` branch.
+- Unions you receive may gain members in a 1.x minor, for example `WebhookErrorCode`, `DeliveryStatus`, and attempt outcomes. Handle unknown values, for example with a `default` branch.
+- `ManagementAction`, `PauseReason`, and `EndpointStatus` are the exceptions: their values are fixed for 1.x.
 - A union your code returns never gains a value you must return.
-- `ManagementAction` is the exception: its four values are fixed for 1.x.
-- Changing or removing an error code is breaking.
 - Dropping a Better Auth or TypeScript line follows the [drop policy](#drop-policy) and is not breaking.
 - From 1.0.0, a breaking change ships only in a major release.
 

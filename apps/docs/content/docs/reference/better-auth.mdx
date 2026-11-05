@@ -129,7 +129,7 @@ const authorizeScope: ScopePolicy = ({ scope, action, user }) =>
 export const plugin = goodWebhooks({ eventTypes: ['invoice.paid'] as const, authorizeScope })
 ```
 
-The policy defaults to denial and never overrides user or organization authorization. A policy that throws produces a `500`. The four `ManagementAction` values are fixed for 1.x. API keys do not authenticate these routes.
+The policy defaults to denial and never overrides user or organization authorization. A policy that throws an error other than an `APIError` produces a `500`. API keys do not authenticate these routes.
 
 ## Route errors
 

@@ -54,7 +54,7 @@ export interface EndpointSource {
 }
 
 /**
- * Built by the library with createManagement; hosts do not implement it. Customise it through the
+ * Built by the library with createManagement; hosts do not implement it. Customize it through the
  * repository, cipher, and options. A wrapper that spreads one keeps new methods added in 1.x minors.
  */
 export interface EndpointManagement {
@@ -81,7 +81,8 @@ export interface EndpointManagement {
 /**
  * Persistence contract for management providers. Never expose stored records to clients.
  * Lists its fields itself, so fields added to Endpoint later do not reach the repository.
- * Growth rule: fields added later are optional, and a field missing from a stored row reads as its default.
+ * Growth rule: fields added later are optional, a repository stores every field it receives, and a
+ * field missing from a stored row reads as its default.
  */
 export interface StoredEndpoint {
   id: string
@@ -107,7 +108,7 @@ export type StoredEndpointPatch = Partial<Omit<StoredEndpoint, 'id' | 'createdAt
 
 /** Growth rule: new methods are optional, and new inputs arrive in a trailing options object. */
 export interface ManagementRepository {
-  /** Return every live endpoint in scope. Never truncate; enforce the 1000 endpoint bound. */
+  /** Return every live endpoint in scope, newest first. Never truncate; enforce the 1000 endpoint bound. */
   list(scope: ManagementScope): Promise<StoredEndpoint[]>
   get(scope: ManagementScope, id: string): Promise<StoredEndpoint | null>
   /**

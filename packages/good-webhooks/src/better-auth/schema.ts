@@ -1,5 +1,24 @@
 import type { BetterAuthPlugin } from 'better-auth'
 
+export type WebhookEndpointField =
+  | 'scopeKey'
+  | 'allocationKey'
+  | 'creationToken'
+  | 'url'
+  | 'description'
+  | 'eventTypes'
+  | 'additionalEventTypes'
+  | 'status'
+  | 'pauseReason'
+  | 'encryptedSecret'
+  | 'previousEncryptedSecret'
+  | 'previousSecretExpiresAt'
+  | 'encryptedHeaders'
+  | 'revision'
+  | 'createdAt'
+  | 'updatedAt'
+type FieldAttribute = NonNullable<BetterAuthPlugin['schema']>[string]['fields'][string]
+
 const fields = {
   scopeKey: { type: 'string', required: true, input: false, returned: false },
   allocationKey: { type: 'string', required: true, input: false, returned: false },
@@ -26,9 +45,8 @@ const fields = {
   revision: { type: 'number', required: true, defaultValue: 0, input: false, returned: false },
   createdAt: { type: 'date', required: true },
   updatedAt: { type: 'date', required: true },
-} as const satisfies NonNullable<BetterAuthPlugin['schema']>[string]['fields']
+} as const satisfies Record<WebhookEndpointField, FieldAttribute>
 
-export type WebhookEndpointField = keyof typeof fields
 export interface BetterAuthManagementSchemaOptions {
   modelName?: string
   fields?: Partial<Record<WebhookEndpointField, string>>

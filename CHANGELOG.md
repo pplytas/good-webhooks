@@ -4,7 +4,10 @@
 
 - `QueryResult` is exported from the package root.
 - `BetterAuthManagementSchemaOptions` and `WebhookEndpointField` are exported from `good-webhooks/better-auth`.
-- `EndpointManagement` is library-built; wrap a provider by spreading it.
+- `EndpointManagement` is library-built, and a 1.x minor may add methods to it.
+  - Wrap a provider by spreading it.
+- `ManagementRepository.list` returns endpoints newest first.
+- Repository-generated endpoint IDs are 1 to 255 characters.
 - `StoredEndpoint` lists its own fields instead of extending `Endpoint`.
 - The [host-implemented interfaces](apps/docs/content/docs/operations/compatibility.mdx#host-implemented-interfaces) are frozen for 1.x.
 

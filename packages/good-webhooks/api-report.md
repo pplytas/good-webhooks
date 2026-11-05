@@ -1710,7 +1710,7 @@ export type WebhookEndpointDTO<EventType extends string = string> = Omit<Managed
 ### WebhookEndpointField
 
 ```ts
-export type WebhookEndpointField = keyof typeof fields;
+export type WebhookEndpointField = 'scopeKey' | 'allocationKey' | 'creationToken' | 'url' | 'description' | 'eventTypes' | 'additionalEventTypes' | 'status' | 'pauseReason' | 'encryptedSecret' | 'previousEncryptedSecret' | 'previousSecretExpiresAt' | 'encryptedHeaders' | 'revision' | 'createdAt' | 'updatedAt';
 ```
 
 ## good-webhooks/better-auth/client
