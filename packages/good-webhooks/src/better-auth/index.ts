@@ -15,17 +15,21 @@ import type {
 } from '../management/types.js'
 import { authorizeManagement, type ManagementAction, type ScopePolicy } from './authorization.js'
 import { managementForContext, type AuthContext } from './provider.js'
-import { createBetterAuthManagementSchema } from './schema.js'
+import {
+  createBetterAuthManagementSchema,
+  type BetterAuthManagementSchemaOptions,
+} from './schema.js'
 
 export { createBetterAuthManagement } from './provider.js'
 export type { ManagementAction, ScopeAuthorization, ScopePolicy } from './authorization.js'
 export type { EndpointLimit } from '../management/types.js'
+export type { BetterAuthManagementSchemaOptions, WebhookEndpointField } from './schema.js'
 
 export interface GoodWebhooksOptions<EventTypes extends readonly string[] = readonly string[]> {
   eventTypes: EventTypes
   /** Development only: allow HTTP localhost destinations. */
   allowLocalhost?: boolean
-  schema?: Parameters<typeof createBetterAuthManagementSchema>[0]
+  schema?: BetterAuthManagementSchemaOptions
   /** Required for application and custom scopes. User/org scopes always use native BA authorization. */
   authorizeScope?: ScopePolicy
   /** Most nondeleted endpoints a scope may have, from 0 to 1000. Defaults to 1000. */

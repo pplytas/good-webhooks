@@ -41,6 +41,7 @@ export type {
   PublishInput,
   PublishOptions,
   PublishResult,
+  QueryResult,
   ReplayManyInput,
   ReplayManyResult,
   SqlClient,

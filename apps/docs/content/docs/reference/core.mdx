@@ -98,7 +98,7 @@ const { endpoint, secret } = await webhooks.endpoints.create({
 await webhooks.endpoints.rotateSecret(endpoint.id, { graceMs: 60 * 60 * 1000 })
 ```
 
-Endpoint methods follow the [management contract and limits](/docs/reference/management#endpointmanagement), including its errors. `EndpointInput<E>` and `EndpointPatch<E>` restrict subscriptions to event names in `E`, and take optional [`headers`](/docs/reference/management#endpoint-headers). Built-in management returns `headers` on every `Endpoint`, `{}` when there are none; a custom `EndpointManagement` may omit it. `removeScope` and `reencrypt` are direct provider operations, not members of this client. The [endpoints guide](/docs/guides/endpoints) covers the lifecycle.
+Endpoint methods follow the [management contract and limits](/docs/reference/management#endpointmanagement), including its errors. `EndpointInput<E>` and `EndpointPatch<E>` restrict subscriptions to event names in `E`, and take optional [`headers`](/docs/reference/management#endpoint-headers). Built-in management returns `headers` on every `Endpoint`, `{}` when there are none; a wrapper or test double may omit it. `removeScope` and `reencrypt` are direct provider operations, not members of this client. The [endpoints guide](/docs/guides/endpoints) covers the lifecycle.
 
 ### forScope
 
@@ -190,8 +190,18 @@ Returns 32 cryptographically random bytes encoded as base64. The key is the stor
 The root also exports these types:
 
 - **Events**: `EventDefinitions`, `EventName`, `EventDescription`, `DescribeEventsOptions`, `JsonValue`, `PublishInput`, `PublishOptions`, `PublishResult`
-- **Database**: `SqlClient`, `DatabaseClient`, `Database`
+- **Database**: `SqlClient`, `DatabaseClient`, `Database`, `QueryResult`
 - **Endpoints**: `Endpoint`, `EndpointStatus`, `PauseReason`, `EndpointWithSecret`, `EndpointInput`, `EndpointPatch`
 - **Delivery**: `Delivery`, `DeliveryDetail`, `DeliveryStatus`, `DeliveryQuery`, `DeliveryStats`, `ReplayManyInput`, `ReplayManyResult`, `Attempt`, `Page`, `WorkerResult`, `DeliveryOptions`, `DeliveryEngine`, `DeliveryHooks`, `AttemptEvent`, `EndpointPausedEvent`, `EndpointHealthOptions`
 - **Composition**: `WebhookOptions`, `Webhooks`, `WebhookClient`, `EndpointManagement`, `EndpointSource`, `EndpointResolution`, `AutomaticPauseInput`, `AutomaticPauseReason`, `ManagementScope`, `Scope`
 - **Errors**: `WebhookErrorCode`
+
+### Database adapters
+
+A node-postgres `Pool` satisfies `Database`. Another driver needs an adapter that behaves like node-postgres:
+
+- A failed query rejects with the PostgreSQL SQLSTATE in `error.code`. For example, `25P01` becomes `TRANSACTION_REQUIRED`.
+- `timestamptz` columns read as `Date` values.
+- `text[]` columns read as arrays of strings.
+- `integer` columns read as numbers.
+- `connect()` returns a client pinned to one session until `release()`. `BEGIN`, `SAVEPOINT`, and advisory transaction locks depend on it.

@@ -1,4 +1,5 @@
 import type {
+  EndpointStatus,
   PauseReason,
   Scope,
   Endpoint,
@@ -52,7 +53,10 @@ export interface EndpointSource {
   pause?(scope: ManagementScope, id: string, input: AutomaticPauseInput): Promise<boolean>
 }
 
-/** Growth rule: new methods are optional, and new inputs arrive in a trailing options object. */
+/**
+ * Built by the library with createManagement; hosts do not implement it. Customize it through the
+ * repository, cipher, and options. A wrapper that spreads one keeps new methods added in 1.x minors.
+ */
 export interface EndpointManagement {
   readonly source: EndpointSource
   create(scope: ManagementScope, input: CreateManagedEndpoint): Promise<ManagedEndpointWithSecret>
@@ -76,9 +80,20 @@ export interface EndpointManagement {
 
 /**
  * Persistence contract for management providers. Never expose stored records to clients.
- * Growth rule: fields added later are optional, and a repository stores every field it receives.
+ * Lists its fields itself, so fields added to Endpoint later do not reach the repository.
+ * Growth rule: fields added later are optional, a repository stores every field it receives, and a
+ * field missing from a stored row reads as its default.
  */
-export interface StoredEndpoint extends Omit<ManagedEndpoint, 'headers'> {
+export interface StoredEndpoint {
+  id: string
+  url: string
+  description: string | null
+  eventTypes: string[]
+  status: EndpointStatus
+  /** Set while paused. null when active, deleted, or paused before schema version 5. */
+  pauseReason?: PauseReason | null
+  createdAt: Date
+  updatedAt: Date
   revision: number
   encryptedSecret: string
   previousEncryptedSecret: string | null
@@ -93,7 +108,7 @@ export type StoredEndpointPatch = Partial<Omit<StoredEndpoint, 'id' | 'createdAt
 
 /** Growth rule: new methods are optional, and new inputs arrive in a trailing options object. */
 export interface ManagementRepository {
-  /** Return every live endpoint in scope. Never truncate; enforce the 1000 endpoint bound. */
+  /** Return every live endpoint in scope, newest first. Never truncate; enforce the 1000 endpoint bound. */
   list(scope: ManagementScope): Promise<StoredEndpoint[]>
   get(scope: ManagementScope, id: string): Promise<StoredEndpoint | null>
   /**
@@ -114,7 +129,7 @@ export interface ManagementRepository {
   ): Promise<StoredEndpoint | null>
 }
 
-/** Growth rule: new inputs arrive in a trailing options object. */
+/** Host-implemented. Its growth rule is in the compatibility policy. */
 export interface SecretCipher {
   encrypt(value: string): Promise<string>
   decrypt(value: string): Promise<string>

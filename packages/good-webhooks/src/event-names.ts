@@ -1,5 +1,6 @@
 /** Event types under this prefix belong to Good Webhooks; applications cannot define them. */
 export const RESERVED_EVENT_PREFIX = 'good-webhooks.'
+/** ParsedTestEvent spells this literal out; test/consumer-types.ts checks that they match. */
 export const TEST_EVENT_TYPE = 'good-webhooks.test'
 
 const EVENT_NAME = /^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,119}$/
