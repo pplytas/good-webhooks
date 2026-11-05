@@ -3,7 +3,8 @@ import { describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import type { StandardSchemaV1 } from '@standard-schema/spec'
 import { generateSecret, signWebhook } from '../src/crypto.js'
-import { parseWebhook, WebhookError } from '../src/verify.js'
+import { TEST_EVENT_TYPE } from '../src/event-names.js'
+import { parseWebhook, WebhookError, type ParsedTestEvent } from '../src/verify.js'
 
 const secret = generateSecret()
 const now = new Date('2026-10-06T12:00:00.000Z')
@@ -301,5 +302,12 @@ describe('typed receiver parsing', () => {
         parseWebhook({ ...signed(body), secret: generateSecret() }),
       ).rejects.toMatchObject({ code: 'SIGNATURE_INVALID' })
     }
+  })
+})
+
+describe('ParsedTestEvent', () => {
+  it('spells out the same test event type the sender uses', () => {
+    const type: ParsedTestEvent['type'] = TEST_EVENT_TYPE
+    expect(type).toBe('good-webhooks.test')
   })
 })

@@ -10,13 +10,7 @@ import {
   type WebhookClient,
   type Scope,
 } from '../src/index.js'
-import { TEST_EVENT_TYPE } from '../src/event-names.js'
-import {
-  parseWebhook,
-  verifyWebhook,
-  type ParsedTestEvent,
-  type ParsedWebhook,
-} from '../src/verify.js'
+import { parseWebhook, verifyWebhook, type ParsedWebhook } from '../src/verify.js'
 import type { IncomingMessage } from 'node:http'
 
 // Compiled, never executed. These assertions test the consumer's public TypeScript experience.
@@ -233,7 +227,3 @@ async function receiverTypes(request: IncomingMessage) {
   void missing
 }
 void receiverTypes
-
-// The receiver type spells the test event literal out; it must match the constant the sender uses.
-const testEventType: ParsedTestEvent['type'] = TEST_EVENT_TYPE
-void testEventType
