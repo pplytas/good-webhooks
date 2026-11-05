@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- `QueryResult` is exported from the package root.
+- `BetterAuthManagementSchemaOptions` and `WebhookEndpointField` are exported from `good-webhooks/better-auth`.
+- `EndpointManagement` is library-built; wrap a provider by spreading it.
+- `StoredEndpoint` lists its own fields instead of extending `Endpoint`.
+- The [host-implemented interfaces](apps/docs/content/docs/operations/compatibility.mdx#host-implemented-interfaces) are frozen for 1.x.
+
 ## 1.0.0-rc.1 (2026-11-02)
 
 Release candidate for 1.0.0, with the same code and schema `7` as 0.7.0.

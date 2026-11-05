@@ -13,6 +13,8 @@ import type {
   ManagementAction,
   ScopeAuthorization,
   ScopePolicy,
+  BetterAuthManagementSchemaOptions,
+  WebhookEndpointField,
 } from 'good-webhooks/better-auth'
 ```
 
@@ -44,6 +46,7 @@ Returns the `good-webhooks` Better Auth server plugin. It adds one management mo
 - **`allowLocalhost`**: optional boolean, default `false`. Permits development HTTP loopback destinations.
 - **`schema.modelName`**: optional physical model name, default `webhookEndpoint`. This is not a PostgreSQL namespace.
 - **`schema.fields`**: optional mapping from logical fields to physical field names.
+  - `schema` has the type `BetterAuthManagementSchemaOptions`, and `WebhookEndpointField` names the logical fields.
 - **`authorizeScope`**: optional policy required for application and custom scopes. It cannot override user or organization rules.
 - **`maxEndpoints`**: optional `(scope) => number | Promise<number>` from 0 to 1,000, default 1,000. It sets the most endpoints a scope may have.
 
@@ -98,7 +101,7 @@ Every body accepts `scope?`. The other body fields and the result of each method
 
 The test event route returns the receiver's answer with status 200 even when the receiver fails; see [test events](/docs/reference/management#test-events). Each call makes your server send a request, so the plugin rate-limits the route to 10 requests per 60 seconds. Better Auth applies plugin rate limits only when its rate limiter is on, which by default means production. Your own `rateLimit.customRules` replace plugin rules for the paths they match, and the first matching key wins, so a wildcard such as `'/good-webhooks/*'` also replaces this limit. List `'/good-webhooks/send-test-event'` before it to keep one.
 
-`WebhookEndpointDTO<EventType>` contains `id`, `url`, nullable `description`, `eventTypes`, `status`, `headers`, `createdAt`, and `updatedAt`. `headers` is always present, `{}` when there are none, and returns the values the owner set. Its timestamps are ISO strings, unlike trusted provider results, which contain `Date` values. Ordinary route results contain no signing material. Creation and rotation return the new secret separately.
+`WebhookEndpointDTO<EventType>` contains `id`, `url`, nullable `description`, `eventTypes`, `status`, `pauseReason`, `headers`, `createdAt`, and `updatedAt`. `headers` is always present, `{}` when there are none, and returns the values the owner set. Its timestamps are ISO strings, unlike trusted provider results, which contain `Date` values. Ordinary route results contain no signing material. Creation and rotation return the new secret separately.
 
 ## Scope authorization
 
@@ -126,7 +129,7 @@ const authorizeScope: ScopePolicy = ({ scope, action, user }) =>
 export const plugin = goodWebhooks({ eventTypes: ['invoice.paid'] as const, authorizeScope })
 ```
 
-The policy defaults to denial and never overrides user or organization authorization. API keys do not authenticate these routes.
+The policy defaults to denial and never overrides user or organization authorization. A policy that throws produces a `500`. The four `ManagementAction` values are fixed for 1.x. API keys do not authenticate these routes.
 
 ## Route errors
 

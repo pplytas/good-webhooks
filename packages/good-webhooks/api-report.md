@@ -536,6 +536,15 @@ export interface PublishResult {
 }
 ```
 
+### QueryResult
+
+```ts
+export interface QueryResult<R> {
+    rows: R[];
+    rowCount: number | null;
+}
+```
+
 ### ReplayManyInput
 
 ```ts
@@ -675,7 +684,7 @@ export interface WorkerResult {
 ```ts
 export interface ParsedTestEvent {
     id: string;
-    type: typeof TEST_EVENT_TYPE;
+    type: 'good-webhooks.test';
     occurredAt: string;
     data: {
         endpointId: string;
@@ -1087,7 +1096,15 @@ export interface SecretCipher {
 ### StoredEndpoint
 
 ```ts
-export interface StoredEndpoint extends Omit<ManagedEndpoint, 'headers'> {
+export interface StoredEndpoint {
+    id: string;
+    url: string;
+    description: string | null;
+    eventTypes: string[];
+    status: EndpointStatus;
+    pauseReason?: PauseReason | null;
+    createdAt: Date;
+    updatedAt: Date;
     revision: number;
     encryptedSecret: string;
     previousEncryptedSecret: string | null;
@@ -1147,6 +1164,15 @@ export interface PostgresManagementOptions {
 ```
 
 ## good-webhooks/better-auth
+
+### BetterAuthManagementSchemaOptions
+
+```ts
+export interface BetterAuthManagementSchemaOptions {
+    modelName?: string;
+    fields?: Partial<Record<WebhookEndpointField, string>>;
+}
+```
 
 ### createBetterAuthManagement
 
@@ -1641,7 +1667,7 @@ export declare function goodWebhooks<const EventTypes extends readonly string[]>
 export interface GoodWebhooksOptions<EventTypes extends readonly string[] = readonly string[]> {
     eventTypes: EventTypes;
     allowLocalhost?: boolean;
-    schema?: Parameters<typeof createBetterAuthManagementSchema>[0];
+    schema?: BetterAuthManagementSchemaOptions;
     authorizeScope?: ScopePolicy;
     maxEndpoints?: EndpointLimit;
 }
@@ -1679,6 +1705,12 @@ export type WebhookEndpointDTO<EventType extends string = string> = Omit<Managed
     eventTypes: EventType[];
     headers: Record<string, string>;
 };
+```
+
+### WebhookEndpointField
+
+```ts
+export type WebhookEndpointField = keyof typeof fields;
 ```
 
 ## good-webhooks/better-auth/client

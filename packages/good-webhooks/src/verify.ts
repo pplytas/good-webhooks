@@ -14,7 +14,7 @@ export type { WebhookErrorCode } from './errors.js'
 /** A test event an endpoint owner sent from endpoint management. Answer it with 2xx. */
 export interface ParsedTestEvent {
   id: string
-  type: typeof TEST_EVENT_TYPE
+  type: 'good-webhooks.test'
   occurredAt: string
   data: { endpointId: string }
 }
