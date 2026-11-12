@@ -31,7 +31,7 @@ You publish typed events. Good Webhooks stores them in your PostgreSQL database,
   </picture>
 </p>
 
-> **Stable API.** From `0.1.0` the public API and upgrade path follow the [stability policy](https://good-webhooks.dev/docs/operations/compatibility#stability-policy). Throughput beyond the [measured profile](https://good-webhooks.dev/docs/operations/performance) is not yet verified.
+> **Stable API.** From `1.0.0` the public API and upgrade path follow the 1.x [stability policy](https://good-webhooks.dev/docs/operations/compatibility#stability-policy). Throughput beyond the [measured profile](https://good-webhooks.dev/docs/operations/performance) is not yet verified.
 
 ## Features
 

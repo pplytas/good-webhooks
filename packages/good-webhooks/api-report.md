@@ -1667,7 +1667,7 @@ export declare function goodWebhooks<const EventTypes extends readonly string[]>
 export interface GoodWebhooksOptions<EventTypes extends readonly string[] = readonly string[]> {
     eventTypes: EventTypes;
     allowLocalhost?: boolean;
-    schema?: BetterAuthManagementSchemaOptions;
+    schema?: BetterAuthManagementSchemaOptions | undefined;
     authorizeScope?: ScopePolicy;
     maxEndpoints?: EndpointLimit;
 }

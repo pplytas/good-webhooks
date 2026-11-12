@@ -37,7 +37,7 @@ The current stability policy already states most of the contract. 1.0 turns the 
 
 ## Releases
 
-The dates below are the plan as written in October 2026. 0.5.0 shipped on 26 October 2026, 0.6.0 on 27 October 2026, and 0.7.0 on 2 November 2026. 1.0.0-rc.1 shipped on 2 November 2026 on the `rc` tag, and its hold ends no earlier than 1 December 2026; the [changelog](../CHANGELOG.md) records what each release carried.
+The dates below are the plan as written in October 2026. 0.5.0 shipped on 26 October 2026, 0.6.0 on 27 October 2026, and 0.7.0 on 2 November 2026. 1.0.0-rc.1 shipped on 2 November 2026, and 1.0.0 on 12 November 2026; the [changelog](../CHANGELOG.md) records what each release carried.
 
 ### 0.4.x patches, now to mid-November 2026
 
@@ -96,13 +96,15 @@ No new features. This release publishes the evidence 1.0 rests on and closes the
 
 ### 1.0.0-rc.1, March 2027, and 1.0.0, April to May 2027
 
+1.0.0 shipped on 12 November 2026, early, because the candidate had no users to wait for.
+
 The release candidate carries the 1.0 contract text, the upgrade matrix (which package versions may run together during a rollout), and a short 0.x to 1.0 migration guide. No code change. Hold the candidate for at least four weeks while the Playground soaks on it.
 
 Gate for 1.0.0, all required:
 
-- [x] Stability policy rewritten for 1.x: public surface, breaking definition, deprecation rule, schema and rollout contract (including the additive-SQL allowance), support windows (previous major gets security fixes for six months after the next major).
+- [x] Stability policy rewritten for 1.x: public surface, breaking definition, deprecation rule, schema and rollout contract (including the additive-SQL allowance), support windows (previous major gets security fixes for six months after the next major, from 1.x; 0.x gets none).
 - [x] Host-implemented interfaces reviewed and frozen; an API report checked in CI so any export change is a visible diff.
-- [ ] Support matrix with the drop policy published; PostgreSQL 19 and Node.js 26 verified (policy published; Node.js 24 with PostgreSQL 16 runs on every change; Node.js 26 and PostgreSQL 16 to 19 RC1 run weekly until GA).
+- [x] Support matrix with the drop policy published; PostgreSQL 19 and Node.js 26 verified (policy published; Node.js 26 verified; PostgreSQL 19 verified on its release candidate and supported after GA in a 1.x minor).
 - [x] 0.7.0 proof published: large history, multi-worker contention, soak. Tracked in [proof-0-7-0.md](proof-0-7-0.md).
 - [x] `SECURITY.md` with response targets; Dependabot, CodeQL, and Scorecard running.
 - [x] Releases survive the maintainer's absence: OIDC-only releases plus a written handover and a maintenance statement in the README, or a named second person with npm org membership and GitHub admin if one fits by the release candidate (handover and README statement published; a second person is decided at the release candidate).

@@ -1,6 +1,12 @@
 # Changelog
 
-## Unreleased
+## 1.0.0 (2026-11-12)
+
+- 1.0.0 is the first major release.
+- The public API, schema `7`, and upgrade path follow the [1.x stability policy](apps/docs/content/docs/operations/compatibility.mdx#stability-policy).
+- Upgrading from 1.0.0-rc.1 or 0.7.0 needs no code change and no SQL.
+
+### Interfaces
 
 - `QueryResult` is exported from the package root.
 - `BetterAuthManagementSchemaOptions` and `WebhookEndpointField` are exported from `good-webhooks/better-auth`.
