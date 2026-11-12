@@ -29,7 +29,7 @@ export interface GoodWebhooksOptions<EventTypes extends readonly string[] = read
   eventTypes: EventTypes
   /** Development only: allow HTTP localhost destinations. */
   allowLocalhost?: boolean
-  schema?: BetterAuthManagementSchemaOptions
+  schema?: BetterAuthManagementSchemaOptions | undefined
   /** Required for application and custom scopes. User/org scopes always use native BA authorization. */
   authorizeScope?: ScopePolicy
   /** Most nondeleted endpoints a scope may have, from 0 to 1000. Defaults to 1000. */

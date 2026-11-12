@@ -102,7 +102,7 @@ The release candidate carries the 1.0 contract text, the upgrade matrix (which p
 
 Gate for 1.0.0, all required:
 
-- [x] Stability policy rewritten for 1.x: public surface, breaking definition, deprecation rule, schema and rollout contract (including the additive-SQL allowance), support windows (previous major gets security fixes for six months after the next major).
+- [x] Stability policy rewritten for 1.x: public surface, breaking definition, deprecation rule, schema and rollout contract (including the additive-SQL allowance), support windows (previous major gets security fixes for six months after the next major, from 1.x; 0.x gets none).
 - [x] Host-implemented interfaces reviewed and frozen; an API report checked in CI so any export change is a visible diff.
 - [x] Support matrix with the drop policy published; PostgreSQL 19 and Node.js 26 verified (policy published; Node.js 26 verified; PostgreSQL 19 verified on its release candidate and supported after GA in a 1.x minor).
 - [x] 0.7.0 proof published: large history, multi-worker contention, soak. Tracked in [proof-0-7-0.md](proof-0-7-0.md).

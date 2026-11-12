@@ -24,7 +24,7 @@ Every change runs the full integration suite on Node.js 24 with PostgreSQL 16, p
 - **Deno**: Deno 2.9.8 runs `parseWebhook()` against a signed event and rejects a tampered body from the packed archive.
 - **Cloudflare Workers**: workerd 1.20261006.1 through miniflare, on compatibility date 2026-10-01 with no flags, and on 2024-09-23 with `nodejs_compat`, runs `parseWebhook()` against a signed event and rejects a tampered body from the packed archive. The same date without the flag must fail to start.
 - **TypeScript**: 5.9.3 and 7.0 with NodeNext resolution; `@arethetypeswrong/cli` checks Bundler resolution.
-- **PostgreSQL**: the full integration suite on 16 for every change, and weekly on 16, 17, 18, and the 19 release candidate. 19 joins the supported list in a 1.x minor after its GA.
+- **PostgreSQL**: the full integration suite on 16 for every change, and weekly on 16, 17, 18, and the 19 release candidate.
 - **Better Auth**: 1.7.7, the newest 1.7, and the newest 1.8 including betas, across the [adapter matrix](/docs/better-auth#supported-databases), weekly. Every change runs the 1.7.7 integration tests on PostgreSQL. The Monday run tests new Better Auth releases without a change here.
 
 The package ships ESM and also loads through CommonJS `require()`. Standalone consumers are checked with `strict: true` and `skipLibCheck: false`. Better Auth consumers need `skipLibCheck` for upstream declarations; their own types stay fully checked. The Bun, Deno, and Cloudflare Workers checks cover only `parseWebhook()` from the packed `good-webhooks/verify` entry point, not publishing, delivery workers, or database-backed management.
@@ -46,7 +46,7 @@ Upstream end of life for the supported lines:
 | PostgreSQL 17 | 2029-11-08  |
 | PostgreSQL 18 | 2030-11-14  |
 
-Node.js 26 has been Active LTS since 2026-10-28. PostgreSQL 19 is at release candidate 1, with GA planned for 2026-11-19. 1.0.0 supports PostgreSQL 16, 17, and 18, and the weekly run tests 19 until GA. A 1.x minor then adds 19 to the supported list. Adding a PostgreSQL version is not a breaking change. Today's TypeScript range, 5.9.3 or later, is wider than the policy's minimum.
+Node.js 26 has been Active LTS since 2026-10-28. PostgreSQL 19 is a release candidate, with GA planned for 2026-11-19. 1.0.0 supports PostgreSQL 16, 17, and 18, and the weekly run tests 19 until GA. A 1.x minor then adds 19 to the supported list. Adding a PostgreSQL version is not a breaking change. Today's TypeScript range, 5.9.3 or later, is wider than the policy's minimum.
 
 ## Stability policy
 

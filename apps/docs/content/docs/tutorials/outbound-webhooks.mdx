@@ -668,7 +668,7 @@ Deduplication is the receiver's job in both columns. The library gives it a stab
 - **No dashboard or portal.** History comes from `list()`, `get()`, and `stats()`. The UI is yours.
 - **No rate limiting to receivers** beyond the per-endpoint in-flight cap.
 - **No hosted service.** The worker is a process you run and supervise.
-- **PostgreSQL 16 or later and Node.js 24 or later** only.
+- **PostgreSQL 16 to 18 and Node.js 24 or later** only.
 - **No payload transformations or pull API.**
 
 The [comparison page](/docs/concepts/compared) sets this against Svix, Outpost, Convoy, and pg-boss plus `fetch`.

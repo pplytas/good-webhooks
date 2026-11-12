@@ -62,6 +62,4 @@ Steps:
 Steps:
 
 1. Install `good-webhooks@1.0.0` and restart producers, then workers. Better Auth needs no migration.
-2. A class that implements `EndpointManagement` becomes a spread wrapper over a built-in provider.
-
-Moving from 1.0.0-rc.1 to 1.0.0 needs no code change or SQL.
+2. Optional: if a class implements `EndpointManagement`, make it a spread wrapper over a built-in provider, so methods added in 1.x minors do not break it.
