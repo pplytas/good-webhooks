@@ -1,6 +1,6 @@
 # Contribute to Good Webhooks
 
-Use Node.js 24 or later and PostgreSQL 16 or later. The repository pins pnpm 12.10.1 in `package.json`. Clone the repository, enable Corepack if you use it, then run `pnpm install --frozen-lockfile`.
+Use Node.js 24 or later and PostgreSQL 16 or later. The repository pins pnpm 12.18.0 in `package.json`. Clone the repository, enable Corepack if you use it, then run `pnpm install --frozen-lockfile`.
 
 ## Run checks
 
