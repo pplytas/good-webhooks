@@ -16,12 +16,13 @@ The advisory credits you unless you decline.
 
 | Version               | Fixes              |
 | --------------------- | ------------------ |
-| Latest minor          | All fixes          |
-| Previous minor        | Security, 3 months |
+| Latest 1.x minor      | All fixes          |
+| Previous 1.x minor    | Security, 3 months |
 | Last 1.x, after 2.0.0 | Security, 6 months |
+| 0.x                   | None               |
 | Alpha, beta, and rc   | None               |
 
-The windows start when the next minor or major ships. 1.0.0-rc.1 is out on the `rc` tag, and 1.0.0 is planned for early December 2026.
+The windows start when the next minor or major ships. 1.0.0 shipped on 12 November 2026, and upgrading to it from 0.7.0 needs no code change or SQL.
 
 The [compatibility policy](https://good-webhooks.dev/docs/operations/compatibility#support-windows) is the source for these windows. Upgrade guidance and affected versions belong in the advisory and release notes.
 
