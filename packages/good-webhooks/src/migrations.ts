@@ -144,23 +144,39 @@ interface UpgradeStep {
   management(tables: Tables): string
 }
 
+// A schema name may contain % or $$. Inside the RAISE format string % is a placeholder, and
+// $$ would close the DO block early, so both are escaped. The escapes are no-ops for ordinary
+// names, which keeps the published upgrade files byte-identical (see the generator parity test).
+function escapeFormat(value: string): string {
+  return value.replaceAll("'", "''").replaceAll('%', '%%')
+}
+
+function dollarTag(value: string): string {
+  if (!value.includes('$$')) return '$$'
+  for (let i = 1; ; i += 1) {
+    const tag = `$gw${i}$`
+    if (!value.includes(tag)) return tag
+  }
+}
+
 function expectVersion(tables: Tables, component: PostgresComponent, from: number): string {
-  return `DO $$ BEGIN
+  const tag = dollarTag(tables.schemaVersion)
+  return `DO ${tag} BEGIN
   IF NOT EXISTS (SELECT 1 FROM ${tables.schemaVersion} WHERE component = '${component}' AND version = ${from}) THEN
-    RAISE EXCEPTION 'good-webhooks: expected ${component} schema version ${from} in ${tables.schemaVersion.replaceAll("'", "''")} before upgrading to ${from + 1}';
+    RAISE EXCEPTION 'good-webhooks: expected ${component} schema version ${from} in ${escapeFormat(tables.schemaVersion)} before upgrading to ${from + 1}';
   END IF;
-END $$;`
+END ${tag};`
 }
 
 /** Published steps are immutable. Each one upgrades a recorded version to the next. */
 const UPGRADES: Record<number, UpgradeStep> = {
   // Schema 4 records a version per component instead of one unkeyed delivery row.
   3: {
-    delivery: (tables) => `DO $$ BEGIN
+    delivery: (tables) => `DO ${dollarTag(tables.schemaVersion)} BEGIN
   IF (SELECT count(*) FROM ${tables.schemaVersion}) <> 1 OR NOT EXISTS (SELECT 1 FROM ${tables.schemaVersion} WHERE version = 3) THEN
-    RAISE EXCEPTION 'good-webhooks: expected delivery schema version 3 in ${tables.schemaVersion.replaceAll("'", "''")} before upgrading to 4';
+    RAISE EXCEPTION 'good-webhooks: expected delivery schema version 3 in ${escapeFormat(tables.schemaVersion)} before upgrading to 4';
   END IF;
-END $$;
+END ${dollarTag(tables.schemaVersion)};
 ALTER TABLE ${tables.schemaVersion} DROP CONSTRAINT webhook_schema_version_pkey;
 ALTER TABLE ${tables.schemaVersion} ADD COLUMN component text;
 UPDATE ${tables.schemaVersion} SET component = 'delivery', version = 4;
@@ -205,15 +221,15 @@ UPDATE ${tables.schemaVersion} SET version = 6 WHERE component = 'management';`,
     // The build blocks delivery writes while it scans the table. Hosts with large tables may build the
     // same index CONCURRENTLY beforehand; IF NOT EXISTS then skips it, and the guard rejects a failed build.
     delivery: (tables) => {
-      const index = tables.deliveries
-        .replace(/"webhook_deliveries"$/, '"webhook_deliveries_replays"')
-        .replaceAll("'", "''")
+      const index = escapeFormat(
+        tables.deliveries.replace(/"webhook_deliveries"$/, '"webhook_deliveries_replays"'),
+      )
       return `${expectVersion(tables, 'delivery', 6)}
-DO $$ BEGIN
+DO ${dollarTag(tables.deliveries)} BEGIN
   IF EXISTS (SELECT 1 FROM pg_index WHERE indexrelid = to_regclass('${index}') AND NOT indisvalid) THEN
     RAISE EXCEPTION 'good-webhooks: index ${index} is invalid; drop it before upgrading to 7';
   END IF;
-END $$;
+END ${dollarTag(tables.deliveries)};
 CREATE INDEX IF NOT EXISTS webhook_deliveries_replays ON ${tables.deliveries}(scope_key,replay_of) WHERE replay_of IS NOT NULL;
 UPDATE ${tables.schemaVersion} SET version = 7 WHERE component = 'delivery';`
     },
