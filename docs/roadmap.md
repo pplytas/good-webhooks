@@ -104,7 +104,7 @@ Gate for 1.0.0, all required:
 
 - [x] Stability policy rewritten for 1.x: public surface, breaking definition, deprecation rule, schema and rollout contract (including the additive-SQL allowance), support windows (previous major gets security fixes for six months after the next major, from 1.x; 0.x gets none).
 - [x] Host-implemented interfaces reviewed and frozen; an API report checked in CI so any export change is a visible diff.
-- [x] Support matrix with the drop policy published; PostgreSQL 19 and Node.js 26 verified (policy published; Node.js 26 verified; PostgreSQL 19 verified on its release candidate and supported after GA in a 1.x minor).
+- [x] Support matrix with the drop policy published; PostgreSQL 19 and Node.js 26 verified (policy published; Node.js 26 verified; PostgreSQL 19 supported from 2026-11-20).
 - [x] 0.7.0 proof published: large history, multi-worker contention, soak. Tracked in [proof-0-7-0.md](proof-0-7-0.md).
 - [x] `SECURITY.md` with response targets; Dependabot, CodeQL, and Scorecard running.
 - [x] Releases survive the maintainer's absence: OIDC-only releases plus a written handover and a maintenance statement in the README, or a named second person with npm org membership and GitHub admin if one fits by the release candidate (handover and README statement published; a second person is decided at the release candidate).

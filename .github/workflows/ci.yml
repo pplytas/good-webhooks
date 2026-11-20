@@ -60,9 +60,9 @@ jobs:
         postgres: [16, 17, 18]
         node: [26]
         include:
-          - postgres: 19rc1
+          - postgres: 19
             node: 26
-            label: PostgreSQL 19 RC1
+            label: PostgreSQL 19
     env:
       TEST_DATABASE_URL: postgres://postgres:webhooks_dev_only@127.0.0.1:55439/webhooks
       DATABASE_URL: postgres://postgres:webhooks_dev_only@127.0.0.1:55439/webhooks_demo
