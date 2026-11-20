@@ -196,11 +196,15 @@ describe('atomic publication', () => {
       await client.query('ROLLBACK')
       client.release()
     }
+    // The 150ms sleep runs before publish, so only the publication statement sets the window.
+    // maxAgeMs stays below that sleep: were the window taken from the transaction start, the
+    // delivery would already be too old to claim. Assert the age itself rather than relying on a
+    // real wait, so a slow runner that stretches the gap before claim() cannot fail the test.
     const { claims } = await createWorkerStore(testConfig({ maxAgeMs: 100 })).claim()
     expect(claims).toHaveLength(1)
-    expect(claims[0]!.windowStartedAt.getTime()).toBeGreaterThanOrEqual(
-      claims[0]!.eventCreatedAt.getTime(),
-    )
+    const claim = claims[0]!
+    expect(claim.windowStartedAt.getTime()).toBeGreaterThanOrEqual(claim.eventCreatedAt.getTime())
+    expect(claim.windowStartedAt.getTime() - claim.eventCreatedAt.getTime()).toBeLessThan(150)
   })
 
   it('fans out only to matching scope subscriptions, includes paused endpoints, and excludes deleted endpoints', async () => {
