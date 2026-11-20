@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- PostgreSQL 19 is supported from 1.0.0, with no package change, and tested weekly.
+
 ## 1.0.0 (2026-11-12)
 
 - 1.0.0 is the first major release.

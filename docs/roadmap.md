@@ -90,7 +90,7 @@ No new features. This release publishes the evidence 1.0 rests on and closes the
 - Multi-worker contention: 8 to 32 workers on one scope with an invariant checker (no lost event, no delivery stuck in flight, every attempt recorded). The chaos script already has the primitives.
 - The 72-hour Playground soak with periodic worker kills, database restarts, and slow receivers, reported in the dogfood log.
 - Property tests with fast-check for the retry schedule and `Retry-After` clamping, signature parsing with malformed headers, and the delivery state machine (shipped in #149, removed on 2026-11-02 to trim CI; `worker.test.ts` checks the invariants per scenario). Cross-check signing against the Standard Webhooks reference vectors.
-- CI on PostgreSQL 19 (RC1 shipped 2026-10-15, GA planned for October), Node.js 26 as the primary LTS line (Active LTS from 2026-10-28), Better Auth 1.8 stable if it has shipped.
+- CI on PostgreSQL 19 (RC1 shipped 2026-10-15, GA on 2026-11-19), Node.js 26 as the primary LTS line (Active LTS from 2026-10-28), Better Auth 1.8 stable if it has shipped.
 - A runtime statement: the worker is Node.js only; `parseWebhook()` is verified on Bun, Deno, and Cloudflare Workers (Web Crypto only), or the docs say which are not.
 - Default changes announced in 0.6.1, if any. This is the last release where a default may change without a deprecation.
 
@@ -104,7 +104,7 @@ Gate for 1.0.0, all required:
 
 - [x] Stability policy rewritten for 1.x: public surface, breaking definition, deprecation rule, schema and rollout contract (including the additive-SQL allowance), support windows (previous major gets security fixes for six months after the next major, from 1.x; 0.x gets none).
 - [x] Host-implemented interfaces reviewed and frozen; an API report checked in CI so any export change is a visible diff.
-- [x] Support matrix with the drop policy published; PostgreSQL 19 and Node.js 26 verified (policy published; Node.js 26 verified; PostgreSQL 19 verified on its release candidate and supported after GA in a 1.x minor).
+- [x] Support matrix with the drop policy published; PostgreSQL 19 and Node.js 26 verified (policy published; Node.js 26 verified; PostgreSQL 19 supported from 2026-11-20).
 - [x] 0.7.0 proof published: large history, multi-worker contention, soak. Tracked in [proof-0-7-0.md](proof-0-7-0.md).
 - [x] `SECURITY.md` with response targets; Dependabot, CodeQL, and Scorecard running.
 - [x] Releases survive the maintainer's absence: OIDC-only releases plus a written handover and a maintenance statement in the README, or a named second person with npm org membership and GitHub admin if one fits by the release candidate (handover and README statement published; a second person is decided at the release candidate).

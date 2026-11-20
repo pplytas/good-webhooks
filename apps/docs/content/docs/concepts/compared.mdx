@@ -142,7 +142,7 @@ General notes:
 - **Transformations.** Svix runs JavaScript per endpoint and Convoy on broker sources, and here the validated payload is sent as is.
 - **mTLS to receivers.** Svix and Convoy offer it on Enterprise plans.
 - **Rate limiting to receivers.** Svix and Convoy accept a per-endpoint rate, and here each endpoint has only a [`maxInFlight`](/docs/reference/delivery#deliverysettings) cap of 2 by default.
-- **Storage other than PostgreSQL.** Delivery needs PostgreSQL 16, 17, or 18, and nothing else is supported.
+- **Storage other than PostgreSQL.** Delivery needs PostgreSQL 16 to 19, and nothing else is supported.
 - **A hosted service.** Svix, Outpost, and Convoy each run one.
 - **Ordering guarantees.** Svix sells FIFO endpoints on Enterprise and pg-boss has a strict FIFO policy per key, and here delivery is [at least once with no order](/docs/concepts/delivery-guarantees), so receivers compare versions.
 - **Senders in other languages.** The sender is TypeScript on Node.js 24 or later, while receivers in any language verify with any Standard Webhooks library.
